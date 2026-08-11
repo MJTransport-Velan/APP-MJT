@@ -1,0 +1,4153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  email        String?  @unique
+  fullName     String
+  password     String
+  isActive     Boolean  @default(true)
+  refreshToken String?
+  profilePhoto String?
+  phone        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Phase 14 (docs Phase 8) — additive Security Foundation fields.
+  // Nullable/defaulted so every existing user row and every existing
+  // query against User keeps working unchanged; MFA is opt-in per user.
+  mfaEnabled         Boolean   @default(false)
+  mfaSecret          String?
+  mfaBackupCodesJson String?
+  passwordChangedAt  DateTime?
+
+  userRoles UserRole[]
+  userTeams UserTeam[]
+
+  groupMembership GroupMembership?
+
+  auditLogs AuditLog[]
+  tripNotes TripNote[]
+
+  createdIntents Intent[]
+  createdTrips   Trip[]   @relation("TripCreatedBy")
+  assignedTrips  Trip[]   @relation("TripAssignedBy")
+
+  employee Employee?
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles           UserRole[]
+  rolePermissions     RolePermission[]
+  roleMenuPermissions RoleMenuPermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+// ===========================================================
+// PHASE 2 — ADMINISTRATION MODULE
+// ===========================================================
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  companies Company[]
+  members   GroupMembership[]
+
+  @@map("groups")
+}
+
+// A user belongs to at most one group at a time — userId is @unique (not
+// @@unique([groupId, userId])) to enforce "one group per person" at the DB
+// level. Which of the 4 operational buckets (Intent Creator / Own Fleet /
+// Market Fleet / Accounts Executive) a member falls into is derived from
+// their UserRole assignment, not duplicated here.
+model GroupMembership {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String   @unique
+  createdAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("group_memberships")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teams Team[]
+
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  fixedAssets        FixedAsset[]
+  assetTransfersFrom AssetTransfer[] @relation("AssetTransferFromDepartment")
+  assetTransfersTo   AssetTransfer[] @relation("AssetTransferToDepartment")
+
+  @@map("departments")
+}
+
+model Team {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  departmentId String
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  userTeams  UserTeam[]
+
+  @@map("teams")
+}
+
+model UserTeam {
+  id        String   @id @default(uuid())
+  userId    String
+  teamId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("user_teams")
+}
+
+model Company {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  groupId       String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  logo          String?
+  gstNumber     String?
+  panNumber     String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Phase 10 — Receivables Credit Control. Additive only.
+  creditLimit   Decimal?  @db.Decimal(12, 2)
+  creditDays    Int?
+  isBlocked     Boolean   @default(false)
+  blockedReason String?
+  blockedAt     DateTime?
+  blockedById   String?
+
+  group                Group                @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  branches             Branch[]
+  intents              Intent[]
+  invoices             Invoice[]
+  receipts             Receipt[]
+  collectionActivities CollectionActivity[]
+
+  @@index([groupId])
+  @@map("companies")
+}
+
+// Immutable record of sensitive actions (create/update/delete/login/logout/role change/permission change/company assignment).
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  description String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// ActivityLog removed in the Phase 14 architecture optimization pass — it
+// had zero write paths anywhere in the application (only ever populated
+// by a one-off seed script) and its intended purpose, a "Recent
+// Activities" feed, is served by AuditLog directly (see
+// audit.service.ts's recentActivity() helper). Use AuditLog for any new
+// "who did what" write.
+
+// ===========================================================
+// DYNAMIC MENU SYSTEM
+// ===========================================================
+
+model Module {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  menus Menu[]
+
+  @@map("modules")
+}
+
+model Menu {
+  id        String   @id @default(uuid())
+  moduleId  String?
+  parentId  String?
+  label     String
+  icon      String?
+  routePath String?
+  order     Int      @default(0)
+  isVisible Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  module   Module? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  parent   Menu?   @relation("MenuChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children Menu[]  @relation("MenuChildren")
+
+  roleMenuPermissions RoleMenuPermission[]
+
+  @@index([parentId])
+  @@map("menus")
+}
+
+model RoleMenuPermission {
+  id        String   @id @default(uuid())
+  roleId    String
+  menuId    String
+  canView   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, menuId])
+  @@map("role_menu_permissions")
+}
+
+// ===========================================================
+// PHASE 3 — MASTERS MODULE
+// ===========================================================
+// Design note: createdById/updatedById are plain scalar String?
+// audit columns (not Prisma relations). With 18 master tables all
+// referencing User for both created/updated, modeling them as real
+// relations would require 36 named back-relation arrays on User —
+// pure noise with no query benefit for this use case. They're kept
+// as plain ids, consistent with how AuditLog already records the
+// full trail of who-did-what-when.
+
+enum VehicleOwnership {
+  OWN
+  MARKET
+}
+
+model Branch {
+  id          String    @id @default(uuid())
+  companyId   String
+  name        String
+  code        String    @unique
+  address     String?
+  phone       String?
+  email       String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("branches")
+}
+
+model Location {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  city        String?
+  state       String?
+  pincode     String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  routesFrom  TransportRoute[] @relation("RouteFrom")
+  routesTo    TransportRoute[] @relation("RouteTo")
+  intentsFrom Intent[]         @relation("IntentFromLocation")
+  intentsTo   Intent[]         @relation("IntentToLocation")
+  tripsFrom   Trip[]           @relation("TripFromLocation")
+  tripsTo     Trip[]           @relation("TripToLocation")
+
+  @@map("locations")
+}
+
+model TransportRoute {
+  id             String    @id @default(uuid())
+  name           String
+  code           String    @unique
+  fromLocationId String
+  toLocationId   String
+  distanceKm     Decimal?  @db.Decimal(10, 2)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  fromLocation       Location            @relation("RouteFrom", fields: [fromLocationId], references: [id])
+  toLocation         Location            @relation("RouteTo", fields: [toLocationId], references: [id])
+  trips              Trip[]
+  driverEarningRules DriverEarningRule[]
+
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("transport_routes")
+}
+
+model VehicleType {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  vehicles           Vehicle[]
+  intents            Intent[]
+  driverEarningRules DriverEarningRule[]
+
+  @@map("vehicle_types")
+}
+
+model TrailerType {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("trailer_types")
+}
+
+model Vehicle {
+  id                  String           @id @default(uuid())
+  registrationNumber  String           @unique
+  vehicleTypeId       String
+  ownership           VehicleOwnership @default(OWN)
+  supplierId          String?
+  manufacturer        String?
+  model               String?
+  capacityTon         Decimal?         @db.Decimal(10, 2)
+  photo               String?
+  rcDocument          String?
+  rcExpiryDate        DateTime?
+  insuranceDocument   String?
+  insuranceExpiryDate DateTime?
+  permitDocument      String?
+  permitExpiryDate    DateTime?
+  fitnessDocument     String?
+  fitnessExpiryDate   DateTime?
+  pucDocument         String?
+  pucExpiryDate       DateTime?
+  fastagNumber        String?          @unique
+  gpsDeviceNumber     String?          @unique
+  status              VehicleStatus    @default(AVAILABLE)
+  isActive            Boolean          @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  vehicleType VehicleType @relation(fields: [vehicleTypeId], references: [id])
+  supplier    Supplier?   @relation(fields: [supplierId], references: [id])
+
+  assignments                 VehicleAssignment[]
+  fuelEntries                 FuelEntry[]
+  fuelCards                   FuelCard[]
+  maintenanceRecords          MaintenanceRecord[]
+  sparePartUsages             SparePartUsage[]
+  expenses                    VehicleExpense[]
+  trips                       Trip[]
+  driverAdvances              DriverAdvance[]
+  driverExpenseReimbursements DriverExpenseReimbursement[]
+
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  fixedAsset          FixedAsset?
+  vehicleLoans        VehicleLoan[]
+  complianceRecords   VehicleComplianceRecord[]
+  tyres               VehicleTyre[]
+  batteries           VehicleBattery[]
+  fastTagTransactions FastTagTransaction[]
+
+  // Phase 15 — Business Financial Entry.
+  financialEntries FinancialEntry[]
+
+  @@index([vehicleTypeId])
+  @@index([supplierId])
+  @@map("vehicles")
+}
+
+model Driver {
+  id                String    @id @default(uuid())
+  name              String
+  code              String    @unique
+  licenseNumber     String    @unique
+  phone             String?
+  licenseExpiryDate DateTime?
+  licenseDocument   String?
+  isActive          Boolean   @default(true)
+  deletedAt         DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  assignments VehicleAssignment[]
+  trips       Trip[]
+
+  // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
+  advances              DriverAdvance[]
+  expenseReimbursements DriverExpenseReimbursement[]
+  earnings              DriverEarning[]
+  penalties             DriverPenalty[]
+  settlements           DriverSettlement[]
+
+  fuelEntries FuelEntry[]
+
+  @@map("drivers")
+}
+
+model Supplier {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  gstNumber     String?
+  panNumber     String?
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  document      String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  vehicles         Vehicle[]
+  trips            Trip[]
+  supplierPayments SupplierPayment[]
+  supplierBills    SupplierBill[]
+
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  fixedAssets     FixedAsset[]
+  vehicleExpenses VehicleExpense[]
+
+  fuelEntries FuelEntry[]
+
+  @@map("suppliers")
+}
+
+model Material {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  unit        String?
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  intents Intent[]
+
+  @@map("materials")
+}
+
+model ExpenseCategory {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("expense_categories")
+}
+
+model FuelStation {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  location      String?
+  contactPerson String?
+  phone         String?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  fuelEntries      FuelEntry[]
+  financialEntries FinancialEntry[]
+
+  @@map("fuel_stations")
+}
+
+model Bank {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  branch      String?
+  ifscCode    String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("banks")
+}
+
+// Extended additively in Phase 9 (Banking & Cash Management) with the
+// richer banking-config fields (type/requiresBankAccount/chargeApplicable/
+// defaultChargeLedgerId/isSystemMode/organizationId) — this is the SAME
+// table Fleet (VehicleExpense) and Accounts (Receipt, SupplierPayment)
+// already reference; Banking does not stand up a second PaymentMode
+// concept alongside it. organizationId is nullable: existing/most rows
+// are system-wide defaults available to every org, matching the Currency/
+// CostCategory global-reference convention from Phase 7.
+model PaymentMode {
+  id                    String          @id @default(uuid())
+  organizationId        String?
+  name                  String
+  code                  String          @unique
+  description           String?
+  type                  PaymentModeType @default(CUSTOM)
+  requiresBankAccount   Boolean         @default(true)
+  requiresChequeDetails Boolean         @default(false)
+  chargeApplicable      Boolean         @default(false)
+  isSystemMode          Boolean         @default(false)
+  isActive              Boolean         @default(true)
+  deletedAt             DateTime?
+  createdById           String?
+  updatedById           String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  organization     Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vehicleExpenses  VehicleExpense[]
+  receipts         Receipt[]
+  supplierPayments SupplierPayment[]
+  bankTransfers    BankTransfer[]
+  driverAdvances   DriverAdvance[]
+  employeeAdvances EmployeeAdvance[]
+  financialEntries FinancialEntry[]
+  fuelEntries      FuelEntry[]
+
+  @@map("payment_modes")
+}
+
+model Tyre {
+  id          String    @id @default(uuid())
+  brand       String
+  code        String    @unique
+  size        String?
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  vehicleTyres VehicleTyre[]
+
+  @@map("tyres")
+}
+
+model ServiceCategory {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  maintenanceRecords MaintenanceRecord[]
+
+  @@map("service_categories")
+}
+
+model Designation {
+  id          String    @id @default(uuid())
+  name        String
+  code        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employees Employee[]
+
+  @@map("designations")
+}
+
+// Phase 13 — GST, Taxation, Financial Reporting & Financial Closing (docs
+// Phase 7). cgst/sgst/igst/cessRatePercent are additive and nullable —
+// existing rows (and every Invoice/SupplierBill/VehicleExpense line that
+// already reasons only in terms of ratePercent) are untouched. When set,
+// cgst+sgst (intra-state) or igst (inter-state) should sum to ratePercent;
+// enforced in the service layer, not the database, same convention as
+// AccountGroup.classification vs parent.
+enum GstTaxCategory {
+  TAXABLE
+  EXEMPT
+  ZERO_RATED
+  NIL_RATED
+}
+
+model GstMaster {
+  id              String         @id @default(uuid())
+  name            String
+  code            String         @unique
+  ratePercent     Decimal        @db.Decimal(5, 2)
+  hsnSacCode      String?
+  cgstRatePercent Decimal?       @db.Decimal(5, 2)
+  sgstRatePercent Decimal?       @db.Decimal(5, 2)
+  igstRatePercent Decimal?       @db.Decimal(5, 2)
+  cessRatePercent Decimal?       @db.Decimal(5, 2)
+  taxCategory     GstTaxCategory @default(TAXABLE)
+  isReverseCharge Boolean        @default(false)
+  isActive        Boolean        @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  invoices        Invoice[]
+  vehicleExpenses VehicleExpense[]
+
+  @@map("gst_masters")
+}
+
+// ===========================================================
+// PHASE 4 — FLEET MANAGEMENT
+// ===========================================================
+
+enum VehicleStatus {
+  AVAILABLE
+  RUNNING
+  UNDER_MAINTENANCE
+  INACTIVE
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum MaintenanceType {
+  SERVICE
+  REPAIR
+  BREAKDOWN
+  ACCIDENT
+}
+
+enum MaintenanceStatus {
+  OPEN
+  COMPLETED
+}
+
+enum SparePartUsageType {
+  ISSUE
+  RETURN
+}
+
+enum VehicleExpenseCategory {
+  FUEL
+  MAINTENANCE
+  INSURANCE
+  PERMIT
+  MISCELLANEOUS
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  REPAIR
+  SERVICE
+  TYRE
+  BATTERY
+  FITNESS
+  ROAD_TAX
+  FASTTAG
+  ACCESSORIES
+  GREASE_LUBRICANTS
+  BREAKDOWN
+}
+
+// Driver assigned to a vehicle. Only one ACTIVE assignment per vehicle is
+// allowed at a time (enforced in the service layer, not a DB constraint,
+// since history rows for the same vehicle are expected).
+model VehicleAssignment {
+  id           String           @id @default(uuid())
+  vehicleId    String
+  driverId     String
+  status       AssignmentStatus @default(ACTIVE)
+  assignedAt   DateTime         @default(now())
+  unassignedAt DateTime?
+  notes        String?
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver  @relation(fields: [driverId], references: [id])
+
+  @@index([vehicleId])
+  @@index([driverId])
+  @@map("vehicle_assignments")
+}
+
+model FuelCard {
+  id          String    @id @default(uuid())
+  cardNumber  String    @unique
+  issuedTo    String?
+  vehicleId   String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
+  fuelEntries FuelEntry[]
+
+  @@index([vehicleId])
+  @@map("fuel_cards")
+}
+
+enum FuelType {
+  DIESEL
+  PETROL
+  CNG
+  OTHER
+}
+
+// How the fuel purchase was actually billed at the pump — distinct from the
+// generic accounting PaymentMode master (Cash/Cheque/UPI/...): FUEL_CARD
+// means a linked FuelCard was swiped (see fuelCardId), OTP means an
+// OTP-authorized fuel-card/app transaction with no physical card on file,
+// DIRECT_PAYMENT covers cash/UPI paid directly by the driver.
+enum FuelBillingMethod {
+  FUEL_CARD
+  OTP
+  DIRECT_PAYMENT
+}
+
+// Mileage (kmpl) and distance are computed at entry time relative to the
+// vehicle's previous fuel entry odometer reading, then stored — avoids
+// recomputing the whole history on every read. isAnomaly/anomalyReasons are
+// likewise computed and cached at create/update time by fuel-entry.service's
+// anomaly checks (duplicate, unusual quantity, low mileage, odometer jump,
+// too-frequent entries) rather than recomputed on every list read.
+model FuelEntry {
+  id              String             @id @default(uuid())
+  vehicleId       String
+  fuelCardId      String?
+  fuelStationId   String?
+  fuelType        FuelType           @default(DIESEL)
+  billingMethod   FuelBillingMethod?
+  location        String?
+  tripId          String?
+  driverId        String?
+  supplierId      String?
+  paymentModeId   String?
+  advanceId       String?
+  quantityLiters  Decimal            @db.Decimal(10, 2)
+  ratePerLiter    Decimal            @db.Decimal(10, 2)
+  totalAmount     Decimal            @db.Decimal(12, 2)
+  odometerReading Int
+  distanceCovered Int?
+  mileageKmpl     Decimal?           @db.Decimal(10, 2)
+  invoiceNumber   String?
+  referenceNumber String?
+  remarks         String?
+  isAnomaly       Boolean            @default(false)
+  anomalyReasons  String?
+  entryDate       DateTime           @default(now())
+  billDocument    String?
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  vehicle     Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fuelCard    FuelCard?      @relation(fields: [fuelCardId], references: [id])
+  fuelStation FuelStation?   @relation(fields: [fuelStationId], references: [id])
+  trip        Trip?          @relation(fields: [tripId], references: [id])
+  driver      Driver?        @relation(fields: [driverId], references: [id])
+  supplier    Supplier?      @relation(fields: [supplierId], references: [id])
+  paymentMode PaymentMode?   @relation(fields: [paymentModeId], references: [id])
+  advance     DriverAdvance? @relation(fields: [advanceId], references: [id])
+
+  financialEntries FinancialEntry[]
+
+  @@index([vehicleId])
+  @@index([fuelStationId])
+  @@index([tripId])
+  @@index([driverId])
+  @@map("fuel_entries")
+}
+
+model MaintenanceRecord {
+  id                     String            @id @default(uuid())
+  vehicleId              String
+  type                   MaintenanceType
+  serviceCategoryId      String?
+  description            String
+  serviceDate            DateTime          @default(now())
+  cost                   Decimal?          @db.Decimal(12, 2)
+  odometerReading        Int?
+  nextServiceDueDate     DateTime?
+  nextServiceDueOdometer Int?
+  billDocument           String?
+  accidentPhoto          String?
+  status                 MaintenanceStatus @default(OPEN)
+  deletedAt              DateTime?
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  vehicle         Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  serviceCategory ServiceCategory? @relation(fields: [serviceCategoryId], references: [id])
+  sparePartUsages SparePartUsage[]
+
+  @@index([vehicleId])
+  @@index([serviceCategoryId])
+  @@map("maintenance_records")
+}
+
+// New master introduced by Phase 4 (no equivalent exists in Masters) —
+// the spare-parts catalog itself, with running stock quantity.
+model SparePart {
+  id            String    @id @default(uuid())
+  name          String
+  code          String    @unique
+  unit          String?
+  stockQuantity Int       @default(0)
+  reorderLevel  Int?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  usages SparePartUsage[]
+
+  @@map("spare_parts")
+}
+
+// ISSUE decrements SparePart.stockQuantity, RETURN increments it —
+// enforced transactionally in the service layer.
+model SparePartUsage {
+  id                  String             @id @default(uuid())
+  vehicleId           String
+  sparePartId         String
+  maintenanceRecordId String?
+  type                SparePartUsageType
+  quantity            Int
+  usageDate           DateTime           @default(now())
+  notes               String?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  vehicle           Vehicle            @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  sparePart         SparePart          @relation(fields: [sparePartId], references: [id])
+  maintenanceRecord MaintenanceRecord? @relation(fields: [maintenanceRecordId], references: [id])
+
+  @@index([vehicleId])
+  @@index([sparePartId])
+  @@map("spare_part_usages")
+}
+
+// Fuel and Maintenance costs are mirrored here automatically by their
+// respective services (referenceType/referenceId trace back to the
+// source record) so Fleet Dashboard cost summaries have one place to
+// query regardless of expense category.
+model VehicleExpense {
+  id            String                 @id @default(uuid())
+  vehicleId     String
+  category      VehicleExpenseCategory
+  amount        Decimal                @db.Decimal(12, 2)
+  expenseDate   DateTime               @default(now())
+  description   String?
+  paymentModeId String?
+  billDocument  String?
+  referenceType String?
+  referenceId   String?
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  // Additive — wires this pre-existing Fleet-phase document into the
+  // Voucher Engine for the first time, the same move Phase 10 made for
+  // Invoice/Receipt and Phase 11 made for Driver documents. Confirmed
+  // safe: trip-financial.service.ts and management-report.repository.ts
+  // read TripExpense exclusively, never this table, so extending it
+  // carries no risk to existing trip-profitability numbers.
+  tripId         String?
+  supplierId     String?
+  gstMasterId    String?
+  taxAmount      Decimal?       @db.Decimal(12, 2)
+  totalAmount    Decimal?       @db.Decimal(12, 2)
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedById   String?
+  organizationId String?
+
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  paymentMode PaymentMode? @relation(fields: [paymentModeId], references: [id])
+  trip        Trip?        @relation(fields: [tripId], references: [id])
+  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
+  gstMaster   GstMaster?   @relation(fields: [gstMasterId], references: [id])
+
+  @@index([vehicleId])
+  @@index([category])
+  @@map("vehicle_expenses")
+}
+
+// ===========================================================
+// PHASE 5 — OPERATIONS
+// ===========================================================
+
+enum IntentStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  CONVERTED
+  REJECTED
+  CANCELLED
+}
+
+enum LoadMode {
+  FULL
+  PART
+}
+
+enum TripStatus {
+  DRAFT
+  PLANNED
+  APPROVED
+  ASSIGNED
+  STARTED
+  LOADING
+  IN_TRANSIT
+  REACHED_DESTINATION
+  UNLOADING
+  COMPLETED
+  CANCELLED
+}
+
+enum PodStatus {
+  PENDING
+  UPLOADED
+  VERIFIED
+}
+
+// Still used as the Zod-validated vocabulary for Attachment.category
+// when entityType='TRIP', even though the DB column itself is now a
+// plain String shared with every other entity type's attachments.
+enum TripDocumentType {
+  POD
+  LR_COPY
+  INVOICE_COPY
+  DELIVERY_PROOF
+  OTHER
+}
+
+enum TripExpenseCategory {
+  FUEL
+  DRIVER_BATA
+  TOLL
+  LOADING
+  UNLOADING
+  MISCELLANEOUS
+}
+
+// Customer transportation request. Intent Creators may only create
+// intents for companies in their own Group (GroupMembership, Phase 2) —
+// enforced in the service layer.
+model Intent {
+  id                   String            @id @default(uuid())
+  intentNumber         String            @unique
+  companyId            String
+  fromLocationId       String
+  toLocationId         String
+  materialId           String?
+  vehicleTypeId        String?
+  quantityTon          Decimal?          @db.Decimal(10, 2)
+  expectedPickupDate   DateTime?
+  expectedDeliveryDate DateTime?
+  freightAmount        Decimal?          @db.Decimal(12, 2)
+  // Set by the Operation Manager at authorization (approve()) — the ceiling
+  // the market truck hiring cost may not exceed. Distinct from freightAmount
+  // (the final amount billed to the client, fixed at intent creation).
+  opsAmount            Decimal?          @db.Decimal(12, 2)
+  // Mandatory choice made by the Operation Manager at approve() — which
+  // team's queue the auto-created Trip is routed to. Nullable only because
+  // intents created before this field existed have no value; every intent
+  // approved from now on always sets it (see intent.validator.ts).
+  fleetType            VehicleOwnership?
+  poNumber             String?
+  packages             Int?
+  volumeCbm            Decimal?          @db.Decimal(10, 2)
+  loadMode             LoadMode          @default(FULL)
+  podRequired          Boolean           @default(true)
+  insuranceRequired    Boolean           @default(false)
+  baseFreightAmount    Decimal?          @db.Decimal(12, 2)
+  tollCharges          Decimal?          @db.Decimal(12, 2)
+  loadingCharges       Decimal?          @db.Decimal(12, 2)
+  otherCharges         Decimal?          @db.Decimal(12, 2)
+  status               IntentStatus      @default(DRAFT)
+  remarks              String?
+  rejectionReason      String?
+  approvedById         String?
+  approvedAt           DateTime?
+  isActive             Boolean           @default(true)
+  deletedAt            DateTime?
+  createdById          String?
+  updatedById          String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  company      Company      @relation(fields: [companyId], references: [id])
+  fromLocation Location     @relation("IntentFromLocation", fields: [fromLocationId], references: [id])
+  toLocation   Location     @relation("IntentToLocation", fields: [toLocationId], references: [id])
+  material     Material?    @relation(fields: [materialId], references: [id])
+  vehicleType  VehicleType? @relation(fields: [vehicleTypeId], references: [id])
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  trips Trip[]
+
+  @@index([companyId])
+  @@index([status])
+  @@map("intents")
+}
+
+// The execution unit of an approved Intent. One Intent may spawn more
+// than one Trip (e.g. split loads across multiple vehicles).
+model Trip {
+  id                   String            @id @default(uuid())
+  tripNumber           String            @unique
+  intentId             String
+  vehicleId            String?
+  driverId             String?
+  supplierId           String?
+  routeId              String?
+  fromLocationId       String
+  toLocationId         String
+  freightAmount        Decimal?          @db.Decimal(12, 2)
+  supplierRate         Decimal?          @db.Decimal(12, 2)
+  // Copied from Intent.fleetType at creation — which team's queue this trip
+  // belongs to, decided at intent approval rather than at asset allocation.
+  // Null on trips created before this field existed; those keep falling back
+  // to the old shared-queue-until-assigned behavior (see trip.repository.ts).
+  fleetType            VehicleOwnership?
+  // Ad-hoc market-truck identity — set only when a Market Truck is allocated
+  // without a pre-registered fleet Vehicle/Driver (vehicleId/driverId stay null).
+  marketVehicleNumber  String?
+  marketDriverName     String?
+  marketDriverContact  String?
+  loadWeight           Decimal?          @db.Decimal(10, 2)
+  loadDescription      String?
+  status               TripStatus        @default(DRAFT)
+  scheduledStartDate   DateTime?
+  actualStartDate      DateTime?
+  expectedDeliveryDate DateTime?
+  actualEndDate        DateTime?
+  podRequired          Boolean           @default(true)
+  podStatus            PodStatus         @default(PENDING)
+  cancelReason         String?
+  invoiceId            String?
+  isActive             Boolean           @default(true)
+  deletedAt            DateTime?
+  createdById          String?
+  updatedById          String?
+  assignedById         String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  intent       Intent          @relation(fields: [intentId], references: [id])
+  vehicle      Vehicle?        @relation(fields: [vehicleId], references: [id])
+  driver       Driver?         @relation(fields: [driverId], references: [id])
+  supplier     Supplier?       @relation(fields: [supplierId], references: [id])
+  route        TransportRoute? @relation(fields: [routeId], references: [id])
+  fromLocation Location        @relation("TripFromLocation", fields: [fromLocationId], references: [id])
+  toLocation   Location        @relation("TripToLocation", fields: [toLocationId], references: [id])
+  invoice      Invoice?        @relation(fields: [invoiceId], references: [id])
+  createdBy    User?           @relation("TripCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  // Whichever OWN_FLEET_OPERATOR/MARKET_FLEET_OPERATOR user actually ran
+  // assign()/allocate() on this trip — distinct from createdBy (set at
+  // auto-creation on intent approval, usually the Operation Manager). Used to
+  // scope the Trip List so an already-assigned trip only shows for the
+  // operator who claimed it, while unassigned (APPROVED) trips stay visible
+  // to the whole team as a shared queue.
+  assignedBy   User?           @relation("TripAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  statusHistory    TripStatusHistory[]
+  expenses         TripExpense[]
+  supplierPayments SupplierPayment[]
+  supplierBills    SupplierBill[]
+  notes            TripNote[]
+
+  // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
+  driverAdvances              DriverAdvance[]
+  driverExpenseReimbursements DriverExpenseReimbursement[]
+  driverEarnings              DriverEarning[]
+  driverPenalties             DriverPenalty[]
+
+  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
+  vehicleExpensesTagged VehicleExpense[]
+  fastTagTransactions   FastTagTransaction[]
+
+  // Phase 15 — Business Financial Entry.
+  financialEntries FinancialEntry[]
+
+  // Dedicated FASTag & Diesel/Fuel modules.
+  fuelEntries FuelEntry[]
+
+  @@index([intentId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([status])
+  @@index([invoiceId])
+  @@map("trips")
+}
+
+// Trip Timeline / Trip Tracking — one row per status transition.
+model TripStatusHistory {
+  id          String     @id @default(uuid())
+  tripId      String
+  status      TripStatus
+  notes       String?
+  changedAt   DateTime   @default(now())
+  createdById String?
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@map("trip_status_history")
+}
+
+// Freeform notes on a Trip — distinct from TripStatusHistory (which only
+// logs status transitions). Used by the Trip Follow-up page.
+model TripNote {
+  id          String   @id @default(uuid())
+  tripId      String
+  note        String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  trip      Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tripId])
+  @@map("trip_notes")
+}
+
+// POD / LR Copy / Invoice Copy / Delivery Proof / other Trip documents.
+// TripDocument removed — merged into the generic Attachment table above
+// (entityType='TRIP'). trip-document.service.ts keeps its own rules
+// (POD upload flips Trip.podStatus) but no longer owns a dedicated table.
+
+// Trip-scoped expenses (Fuel/Driver Bata/Toll/Loading/Unloading/Misc).
+// Deliberately separate from Phase 4's VehicleExpense, which tracks the
+// vehicle's lifetime cost ledger rather than a specific trip's P&L.
+model TripExpense {
+  id           String              @id @default(uuid())
+  tripId       String
+  category     TripExpenseCategory
+  amount       Decimal             @db.Decimal(12, 2)
+  expenseDate  DateTime            @default(now())
+  description  String?
+  billDocument String?
+  deletedAt    DateTime?
+  createdById  String?
+  updatedById  String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+  @@map("trip_expenses")
+}
+
+// ===========================================================
+// PHASE 6 — ACCOUNTS
+// ===========================================================
+// This is deliberately NOT general-purpose accounting software — only
+// the transportation billing/settlement cycle described in the brief:
+// completed trips -> customer invoice -> receipts, and completed
+// supplier trips -> supplier payments. Trip P&L (income/expenses/
+// supplier charges/profit) is intentionally NOT a stored table — it's
+// computed on demand from Trip + TripExpense + supplierRate, which are
+// already the single source of truth from Phase 5. Storing a derived
+// snapshot would just invite it to go stale.
+
+enum InvoiceStatus {
+  DRAFT
+  GENERATED
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+// One invoice can bill one or many completed trips (Trip.invoiceId is
+// the link — see the Trip model, extended in Phase 5's block above).
+model Invoice {
+  id                String        @id @default(uuid())
+  invoiceNumber     String        @unique
+  companyId         String
+  gstMasterId       String?
+  invoiceDate       DateTime      @default(now())
+  dueDate           DateTime?
+  subtotal          Decimal       @db.Decimal(12, 2)
+  taxAmount         Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount       Decimal       @db.Decimal(12, 2)
+  paidAmount        Decimal       @default(0) @db.Decimal(12, 2)
+  outstandingAmount Decimal       @db.Decimal(12, 2)
+  status            InvoiceStatus @default(DRAFT)
+  notes             String?
+  isActive          Boolean       @default(true)
+  deletedAt         DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Phase 10 — Receivables & Payables. Additive — wires this pre-existing
+  // Phase 6 document into the Voucher Engine for the first time. See the
+  // Phase 4 design doc's Business Overview for why this was necessary.
+  organizationId   String?
+  creditPeriodDays Int?
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  gstMaster    GstMaster?    @relation(fields: [gstMasterId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  trips                Trip[]
+  creditNotes          CreditNote[]
+  customerDebitNotes   CustomerDebitNote[]
+  receipts             Receipt[]
+  charges              InvoiceCharge[]
+  collectionActivities CollectionActivity[]
+
+  @@index([companyId])
+  @@index([status])
+  @@map("invoices")
+}
+
+enum InvoiceChargeType {
+  FUEL_RECOVERY
+  DETENTION
+  LOADING
+  UNLOADING
+  DISCOUNT
+  ROUND_OFF
+  OTHER
+}
+
+// Itemized additional charges on an invoice, on top of trip freight —
+// discount/round-off carry a negative amount by convention (§8 of the
+// Phase 4 design doc), never a separate signed-flag column.
+model InvoiceCharge {
+  id          String            @id @default(uuid())
+  invoiceId   String
+  chargeType  InvoiceChargeType
+  description String?
+  amount      Decimal           @db.Decimal(12, 2)
+  sequence    Int               @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_charges")
+}
+
+enum CustomerCreditNoteCategory {
+  RATE_DIFFERENCE
+  SERVICE_CANCELLATION
+  DAMAGE
+  SHORT_DELIVERY
+  DISCOUNT
+  BILLING_CORRECTION
+  OTHER
+}
+
+model CreditNote {
+  id               String    @id @default(uuid())
+  creditNoteNumber String    @unique
+  invoiceId        String
+  amount           Decimal   @db.Decimal(12, 2)
+  reason           String
+  creditNoteDate   DateTime  @default(now())
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Phase 10 — additive.
+  category CustomerCreditNoteCategory @default(OTHER)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("credit_notes")
+}
+
+enum CustomerDebitNoteCategory {
+  ADDITIONAL_CHARGES
+  PENALTY
+  INTEREST
+  FUEL_DIFFERENCE
+  SHORT_COLLECTION
+  OTHER
+}
+
+// New in Phase 10 — the customer side had CreditNote only; DebitNote never
+// existed. Mirrors CreditNote's shape exactly.
+model CustomerDebitNote {
+  id              String                    @id @default(uuid())
+  debitNoteNumber String                    @unique
+  invoiceId       String
+  category        CustomerDebitNoteCategory @default(OTHER)
+  amount          Decimal                   @db.Decimal(12, 2)
+  reason          String
+  debitNoteDate   DateTime                  @default(now())
+  isActive        Boolean                   @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("customer_debit_notes")
+}
+
+// Customer receipts. isAdvance receipts start with invoiceId = null and
+// get linked later via the /allocate endpoint (Receipt Allocation).
+model Receipt {
+  id              String    @id @default(uuid())
+  receiptNumber   String    @unique
+  companyId       String
+  invoiceId       String?
+  amount          Decimal   @db.Decimal(12, 2)
+  receiptDate     DateTime  @default(now())
+  paymentModeId   String?
+  referenceNumber String?
+  isAdvance       Boolean   @default(false)
+  remarks         String?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Phase 10 — additive. fundAccountType/Id is the polymorphic Bank/Cash
+  // pair reused verbatim from Phase 9; chequeId reuses Phase 9's Cheque
+  // (direction=RECEIVED, partyType=CUSTOMER) rather than re-modeling one.
+  organizationId  String?
+  fundAccountType FundAccountType?
+  fundAccountId   String?
+  chequeId        String?          @unique
+
+  company      Company       @relation(fields: [companyId], references: [id])
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
+  paymentMode  PaymentMode?  @relation(fields: [paymentModeId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  cheque       Cheque?       @relation("ReceiptCheque", fields: [chequeId], references: [id])
+
+  @@index([companyId])
+  @@index([invoiceId])
+  @@map("receipts")
+}
+
+enum SupplierBillStatus {
+  DRAFT
+  GENERATED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+// New in Phase 10 — the missing AP mirror of Invoice. Nothing resembling a
+// "bill received from a supplier" existed before this phase; SupplierPayment
+// alone (advance/tripId, no bill concept) could not represent an
+// outstanding payable. See the Phase 4 design doc's Business Overview.
+model SupplierBill {
+  id                String             @id @default(uuid())
+  billNumber        String             @unique
+  supplierId        String
+  tripId            String?
+  organizationId    String?
+  billDate          DateTime           @default(now())
+  dueDate           DateTime?
+  subtotal          Decimal            @db.Decimal(12, 2)
+  taxAmount         Decimal            @default(0) @db.Decimal(12, 2)
+  totalAmount       Decimal            @db.Decimal(12, 2)
+  retentionAmount   Decimal            @default(0) @db.Decimal(12, 2)
+  paidAmount        Decimal            @default(0) @db.Decimal(12, 2)
+  outstandingAmount Decimal            @db.Decimal(12, 2)
+  status            SupplierBillStatus @default(DRAFT)
+  notes             String?
+  isActive          Boolean            @default(true)
+  deletedAt         DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  supplier     Supplier      @relation(fields: [supplierId], references: [id])
+  trip         Trip?         @relation(fields: [tripId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
+  payments    SupplierPayment[]
+  creditNotes SupplierCreditNote[]
+  debitNotes  SupplierDebitNote[]
+
+  @@index([supplierId])
+  @@index([tripId])
+  @@index([status])
+  @@map("supplier_bills")
+}
+
+enum SupplierCreditNoteCategory {
+  BILL_CORRECTION
+  RATE_REVISION
+  DISCOUNT
+  ADJUSTMENT
+  REFUND
+  OTHER
+}
+
+// New in Phase 10 — no supplier-side credit note existed at all.
+model SupplierCreditNote {
+  id               String                     @id @default(uuid())
+  creditNoteNumber String                     @unique
+  billId           String
+  category         SupplierCreditNoteCategory @default(OTHER)
+  amount           Decimal                    @db.Decimal(12, 2)
+  reason           String
+  creditNoteDate   DateTime                   @default(now())
+  isActive         Boolean                    @default(true)
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  bill SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+  @@map("supplier_credit_notes")
+}
+
+enum SupplierDebitNoteCategory {
+  DAMAGE_RECOVERY
+  PENALTY
+  SHORT_DELIVERY
+  QUALITY_ISSUE
+  FUEL_RECOVERY
+  COMMISSION_RECOVERY
+  OTHER
+}
+
+// New in Phase 10 — no supplier-side debit note existed at all.
+model SupplierDebitNote {
+  id              String                    @id @default(uuid())
+  debitNoteNumber String                    @unique
+  billId          String
+  category        SupplierDebitNoteCategory @default(OTHER)
+  amount          Decimal                   @db.Decimal(12, 2)
+  reason          String
+  debitNoteDate   DateTime                  @default(now())
+  isActive        Boolean                   @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  bill SupplierBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId])
+  @@map("supplier_debit_notes")
+}
+
+// Supplier payments, optionally linked to the specific completed trip
+// being settled (advance payments may have tripId = null).
+model SupplierPayment {
+  id              String    @id @default(uuid())
+  paymentNumber   String    @unique
+  supplierId      String
+  tripId          String?
+  amount          Decimal   @db.Decimal(12, 2)
+  paymentDate     DateTime  @default(now())
+  paymentModeId   String?
+  referenceNumber String?
+  isAdvance       Boolean   @default(false)
+  remarks         String?
+  isActive        Boolean   @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Phase 10 — additive, same reuse pattern as Receipt above.
+  organizationId     String?
+  billId             String?
+  fundAccountType    FundAccountType?
+  fundAccountId      String?
+  chequeId           String?          @unique
+  isRetentionRelease Boolean          @default(false)
+
+  supplier     Supplier      @relation(fields: [supplierId], references: [id])
+  trip         Trip?         @relation(fields: [tripId], references: [id])
+  paymentMode  PaymentMode?  @relation(fields: [paymentModeId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  bill         SupplierBill? @relation(fields: [billId], references: [id])
+  cheque       Cheque?       @relation("SupplierPaymentCheque", fields: [chequeId], references: [id])
+
+  @@index([supplierId])
+  @@index([tripId])
+  @@index([billId])
+  @@map("supplier_payments")
+}
+
+enum CollectionActivityType {
+  CALL
+  EMAIL
+  REMINDER
+  PROMISE_TO_PAY
+  NOTE
+}
+
+// New in Phase 10 — lightweight follow-up log, deliberately non-financial:
+// no Voucher, no ledger effect. SMS is explicitly deferred (brief marks it
+// "Future").
+model CollectionActivity {
+  id             String                 @id @default(uuid())
+  companyId      String
+  invoiceId      String?
+  activityType   CollectionActivityType
+  notes          String?
+  promisedAmount Decimal?               @db.Decimal(12, 2)
+  promisedDate   DateTime?
+  followUpDate   DateTime?
+  createdById    String?
+  createdAt      DateTime               @default(now())
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([invoiceId])
+  @@map("collection_activities")
+}
+
+// ===========================================================
+// PHASE 7 — ACCOUNTING FOUNDATION
+// ===========================================================
+// Chart of Accounts, Ledgers, Financial Years/Periods, Cost Centers,
+// Number Series and Opening Balances — the structures every future
+// Voucher Engine / Banking / Receivables-Payables / Payroll / Assets /
+// GST phase posts into. No voucher, posting engine or balance-moving
+// logic exists yet; this block only prepares the accounting vocabulary.
+//
+// `Company` (above) and `Branch` are the customer/client side of this
+// ERP (who an Intent/Invoice bills) — they are NOT MJ Transport's own
+// legal entity. Since no such entity existed in the schema, `Organization`
+// is introduced here as the tenant every accounting table is scoped to,
+// keeping "who we bill" and "whose books these are" from being conflated.
+// Exactly one Organization row is seeded today; the FK makes multi-company
+// support additive later instead of a retrofit.
+
+model Organization {
+  id          String    @id @default(uuid())
+  code        String    @unique
+  name        String
+  gstNumber   String?
+  panNumber   String?
+  tanNumber   String?
+  address     String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  bankAccounts      BankAccount[]
+  cashAccounts      CashAccount[]
+  paymentModes      PaymentMode[]
+  bankTransfers     BankTransfer[]
+  chequeBooks       ChequeBook[]
+  cheques           Cheque[]
+  pettyCashRequests PettyCashRequest[]
+  invoices          Invoice[]
+  supplierBills     SupplierBill[]
+  receipts          Receipt[]
+  supplierPayments  SupplierPayment[]
+  financialEntries  FinancialEntry[]
+
+  @@map("organizations")
+}
+
+// Global reference data (no organizationId) — same convention as the
+// existing GstMaster/Bank/PaymentMode lookups, which aren't per-company
+// either. Unused by any transaction until a later multi-currency phase.
+model Currency {
+  id               String    @id @default(uuid())
+  code             String    @unique
+  name             String
+  symbol           String?
+  decimalPrecision Int       @default(2)
+  isBaseCurrency   Boolean   @default(false)
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  exchangeRates ExchangeRate[]
+
+  @@map("currencies")
+}
+
+enum ExchangeRateSource {
+  MANUAL
+  API
+}
+
+model ExchangeRate {
+  id          String             @id @default(uuid())
+  currencyId  String
+  rateDate    DateTime           @db.Date
+  rateToBase  Decimal            @db.Decimal(18, 6)
+  source      ExchangeRateSource @default(MANUAL)
+  createdById String?
+  createdAt   DateTime           @default(now())
+
+  currency Currency @relation(fields: [currencyId], references: [id], onDelete: Cascade)
+
+  @@unique([currencyId, rateDate])
+  @@map("exchange_rates")
+}
+
+enum AttachmentStatus {
+  UPLOADED
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
+model Attachment {
+  id            String           @id @default(uuid())
+  entityType    String
+  entityId      String
+  category      String
+  fileName      String?
+  filePath      String
+  fileType      String?
+  fileSizeBytes Int?
+  remarks       String?
+  status        AttachmentStatus @default(UPLOADED)
+  verifiedById  String?
+  verifiedAt    DateTime?
+  uploadedById  String?
+  uploadedAt    DateTime         @default(now())
+  deletedAt     DateTime?
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+enum BankAccountType {
+  SAVINGS
+  CURRENT
+  OD
+  CC
+  FIXED_DEPOSIT
+}
+
+// Phase 15 — Business Financial Entry rewrite. currentBalance is now a
+// directly-maintained running balance (every money movement updates it in
+// the same transaction as the movement itself), replacing the old
+// Ledger-derived computation — no double-entry engine backs this anymore.
+model BankAccount {
+  id                      String          @id @default(uuid())
+  organizationId          String
+  accountHolderName       String
+  accountNumber           String
+  bankName                String?
+  accountType             BankAccountType @default(CURRENT)
+  ifscCode                String?
+  micrCode                String?
+  swiftCode               String?
+  branchName              String?
+  openingBalance          Decimal         @default(0) @db.Decimal(18, 2)
+  currentBalance          Decimal         @default(0) @db.Decimal(18, 2)
+  openingDate             DateTime?       @db.Date
+  isPrimary               Boolean         @default(false)
+  isDefaultPaymentAccount Boolean         @default(false)
+  isDefaultReceiptAccount Boolean         @default(false)
+  isActive                Boolean         @default(true)
+  deletedAt               DateTime?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  chequeBooks      ChequeBook[]
+  chequesDrawn     Cheque[]     @relation("ChequeBankAccount")
+  chequesDeposited Cheque[]     @relation("ChequeDepositedIntoBankAccount")
+
+  @@unique([organizationId, accountNumber])
+  @@index([organizationId])
+  @@map("bank_accounts")
+}
+
+enum CashAccountType {
+  MAIN
+  PETTY
+  BRANCH
+  SITE
+  EMERGENCY
+}
+
+// A CashAccount never receives funds from nowhere — "allocating" petty
+// cash IS a BankTransfer (Bank -> Cash), reused rather than duplicated as
+// its own table. currentBalance is directly maintained, same as BankAccount.
+model CashAccount {
+  id                  String          @id @default(uuid())
+  organizationId      String
+  cashAccountType     CashAccountType @default(PETTY)
+  responsiblePersonId String?
+  openingBalance      Decimal         @default(0) @db.Decimal(18, 2)
+  currentBalance      Decimal         @default(0) @db.Decimal(18, 2)
+  maximumLimit        Decimal?        @db.Decimal(18, 2)
+  approvalLimit       Decimal?        @db.Decimal(18, 2)
+  isActive            Boolean         @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  pettyCashRequests PettyCashRequest[]
+
+  @@index([organizationId])
+  @@map("cash_accounts")
+}
+
+enum PaymentModeType {
+  CASH
+  CHEQUE
+  UPI
+  RTGS
+  NEFT
+  IMPS
+  BANK_TRANSFER
+  DD
+  CARD
+  WALLET
+  QR
+  CUSTOM
+}
+
+enum FundAccountType {
+  BANK
+  CASH
+}
+
+// A single Contra Voucher per transfer. fromAccountType/fromAccountId and
+// toAccountType/toAccountId are app-level polymorphic refs (a column can't
+// physically FK two different tables) — resolved and validated in the
+// service layer against BankAccount or CashAccount, same pattern as
+// CostCenter.refType/refId from Phase 7.
+model BankTransfer {
+  id              String          @id @default(uuid())
+  organizationId  String
+  transferNumber  String
+  transferDate    DateTime        @db.Date
+  fromAccountType FundAccountType
+  fromAccountId   String
+  toAccountType   FundAccountType
+  toAccountId     String
+  amount          Decimal         @db.Decimal(18, 2)
+  transferCharges Decimal         @default(0) @db.Decimal(18, 2)
+  paymentModeId   String?
+  referenceNumber String?
+  narration       String?
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization            Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  paymentMode             PaymentMode?       @relation(fields: [paymentModeId], references: [id])
+  pettyCashRequestsFunded PettyCashRequest[]
+
+  @@unique([organizationId, transferNumber])
+  @@index([fromAccountType, fromAccountId])
+  @@index([toAccountType, toAccountId])
+  @@map("bank_transfers")
+}
+
+model ChequeBook {
+  id             String    @id @default(uuid())
+  organizationId String
+  bankAccountId  String
+  bookNumber     String
+  startNumber    String
+  endNumber      String
+  totalLeaves    Int
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bankAccount  BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Restrict)
+  cheques      Cheque[]
+
+  @@unique([bankAccountId, bookNumber])
+  @@map("cheque_books")
+}
+
+enum ChequeDirection {
+  ISSUED
+  RECEIVED
+}
+
+enum ChequeStatus {
+  AVAILABLE
+  ISSUED
+  RECEIVED
+  DEPOSITED
+  PRESENTED
+  CLEARED
+  RETURNED
+  BOUNCED
+  CANCELLED
+  STOP_PAYMENT
+  EXPIRED
+}
+
+// Full physical-instrument lifecycle tracker — status transitions
+// (AVAILABLE -> ISSUED/RECEIVED -> DEPOSITED -> CLEARED/BOUNCED/...)
+// directly drive the linked BankAccount.currentBalance in the service
+// layer; no separate clearance voucher/ledger involved anymore.
+model Cheque {
+  id                         String              @id @default(uuid())
+  organizationId             String
+  bankAccountId              String
+  chequeBookId               String?
+  direction                  ChequeDirection
+  chequeNumber               String
+  chequeDate                 DateTime            @db.Date
+  isPostDated                Boolean             @default(false)
+  partyType                  FinancialPartyType?
+  partyId                    String?
+  payeeOrPayerName           String?
+  amount                     Decimal             @db.Decimal(18, 2)
+  status                     ChequeStatus        @default(AVAILABLE)
+  depositedIntoBankAccountId String?
+  depositDate                DateTime?           @db.Date
+  clearanceDate              DateTime?           @db.Date
+  bounceReason               String?
+  stopPaymentReason          String?
+  cancellationReason         String?
+  deletedAt                  DateTime?
+  createdById                String?
+  updatedById                String?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+
+  organization             Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  bankAccount              BankAccount      @relation("ChequeBankAccount", fields: [bankAccountId], references: [id], onDelete: Restrict)
+  chequeBook               ChequeBook?      @relation(fields: [chequeBookId], references: [id])
+  depositedIntoBankAccount BankAccount?     @relation("ChequeDepositedIntoBankAccount", fields: [depositedIntoBankAccountId], references: [id])
+  receiptAsCustomerCheque  Receipt?         @relation("ReceiptCheque")
+  supplierPaymentAsCheque  SupplierPayment? @relation("SupplierPaymentCheque")
+
+  @@unique([bankAccountId, chequeNumber, direction])
+  @@index([status])
+  @@index([partyType, partyId])
+  @@index([chequeDate])
+  @@map("cheques")
+}
+
+enum PettyCashRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISBURSED
+  CLOSED
+}
+
+// The one approval in this phase that must happen BEFORE any Voucher
+// exists — the cash hasn't been designated to a specific expense yet.
+model PettyCashRequest {
+  id                     String                 @id @default(uuid())
+  organizationId         String
+  cashAccountId          String
+  requestedById          String
+  amount                 Decimal                @db.Decimal(18, 2)
+  purpose                String
+  status                 PettyCashRequestStatus @default(PENDING)
+  approvedById           String?
+  approvedAt             DateTime?
+  rejectedById           String?
+  rejectedAt             DateTime?
+  rejectionReason        String?
+  disbursementTransferId String?
+  deletedAt              DateTime?
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  cashAccount          CashAccount   @relation(fields: [cashAccountId], references: [id], onDelete: Restrict)
+  disbursementTransfer BankTransfer? @relation(fields: [disbursementTransferId], references: [id])
+
+  @@index([organizationId, status])
+  @@map("petty_cash_requests")
+}
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  TEMPORARY
+  DAILY_WAGE
+}
+
+model Employee {
+  id                String         @id @default(uuid())
+  employeeCode      String         @unique
+  name              String
+  designationId     String?
+  userId            String?        @unique
+  employmentType    EmploymentType @default(PERMANENT)
+  dateOfJoining     DateTime?
+  dateOfExit        DateTime?
+  panNumber         String?
+  bankAccountNumber String?
+  bankIfsc          String?
+  phone             String?
+  isActive          Boolean        @default(true)
+  deletedAt         DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  designation Designation? @relation(fields: [designationId], references: [id])
+  user        User?        @relation(fields: [userId], references: [id])
+
+  salaryStructures SalaryStructure[]
+  advances         EmployeeAdvance[]
+  payrollLines     PayrollRunLine[]
+
+  @@map("employees")
+}
+
+// Shared PENDING/APPROVED/REJECTED business-approval gate on every
+// Driver/Employee document below — the decision to hand over money, kept
+// distinct from the Voucher's own accounting approval (design doc §11).
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DriverAdvanceType {
+  SALARY_ADVANCE
+  TRIP_ADVANCE
+  EMERGENCY_ADVANCE
+  FUEL_ADVANCE
+  TOLL_ADVANCE
+  REPAIR_ADVANCE
+  MEDICAL_ADVANCE
+  ADVANCE_AGAINST_SALARY
+  ADVANCE_AGAINST_TRIP
+  OTHER
+}
+
+model DriverAdvance {
+  id              String            @id @default(uuid())
+  advanceNumber   String            @unique
+  driverId        String
+  tripId          String?
+  vehicleId       String?
+  advanceType     DriverAdvanceType
+  purpose         String?
+  amount          Decimal           @db.Decimal(12, 2)
+  requestedById   String?
+  approvedById    String?
+  approvalStatus  ApprovalStatus    @default(PENDING)
+  paymentModeId   String?
+  fundAccountType FundAccountType?
+  fundAccountId   String?
+  isSettled       Boolean           @default(false)
+  settlementId    String?
+  organizationId  String?
+  isActive        Boolean           @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  driver      Driver            @relation(fields: [driverId], references: [id])
+  trip        Trip?             @relation(fields: [tripId], references: [id])
+  vehicle     Vehicle?          @relation(fields: [vehicleId], references: [id])
+  paymentMode PaymentMode?      @relation(fields: [paymentModeId], references: [id])
+  settlement  DriverSettlement? @relation("DriverSettlementAdvances", fields: [settlementId], references: [id])
+
+  // A FUEL_ADVANCE can be drawn down by one or more diesel purchases —
+  // remaining balance = amount - sum(fuelEntries.totalAmount).
+  fuelEntries FuelEntry[]
+
+  @@index([driverId])
+  @@index([tripId])
+  @@index([settlementId])
+  @@map("driver_advances")
+}
+
+enum DriverExpenseCategory {
+  FUEL
+  REPAIR
+  TYRE
+  BATTERY
+  PARKING
+  TOLL
+  FOOD
+  ACCOMMODATION
+  MEDICAL
+  PHONE
+  MISCELLANEOUS
+}
+
+// Deliberately NOT a fork of TripExpense (Phase 4 — Fleet Management),
+// which is a payee-less trip-cost bucket already feeding
+// trip-financial.service.ts's profitability reports. Reimbursement is a
+// payment-to-driver transaction needing approval and a fund account,
+// which TripExpense was never built to carry (design doc §6.3).
+model DriverExpenseReimbursement {
+  id                  String                @id @default(uuid())
+  reimbursementNumber String                @unique
+  driverId            String
+  tripId              String?
+  vehicleId           String?
+  category            DriverExpenseCategory
+  amount              Decimal               @db.Decimal(12, 2)
+  expenseDate         DateTime              @default(now())
+  description         String?
+  receiptDocument     String?
+  approvedById        String?
+  approvalStatus      ApprovalStatus        @default(PENDING)
+  isSettled           Boolean               @default(false)
+  settlementId        String?
+  organizationId      String?
+  isActive            Boolean               @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  driver     Driver            @relation(fields: [driverId], references: [id])
+  trip       Trip?             @relation(fields: [tripId], references: [id])
+  vehicle    Vehicle?          @relation(fields: [vehicleId], references: [id])
+  settlement DriverSettlement? @relation("DriverSettlementReimbursements", fields: [settlementId], references: [id])
+
+  @@index([driverId])
+  @@index([tripId])
+  @@index([settlementId])
+  @@map("driver_expense_reimbursements")
+}
+
+enum DriverEarningCategory {
+  ALLOWANCE
+  INCENTIVE
+}
+
+enum DriverEarningType {
+  TRIP_BATA
+  DAILY_BATA
+  NIGHT_BATA
+  LOADING_ALLOWANCE
+  UNLOADING_ALLOWANCE
+  WAITING_CHARGES
+  OUTSTATION_ALLOWANCE
+  FOOD_ALLOWANCE
+  SPECIAL_ALLOWANCE
+  TRIP_INCENTIVE
+  MONTHLY_INCENTIVE
+  FUEL_SAVING_INCENTIVE
+  ON_TIME_DELIVERY_INCENTIVE
+  PERFORMANCE_BONUS
+  TARGET_INCENTIVE
+  FESTIVAL_BONUS
+  REFERRAL_BONUS
+  CUSTOM
+}
+
+enum EarningCalculationType {
+  FIXED_PER_TRIP
+  PER_KM
+  PER_DAY
+  PERCENT_OF_FREIGHT
+}
+
+// A thin rate card, not a rules engine — resolved once at generation time;
+// changing a rule later never rewrites an already-posted DriverEarning
+// (design doc §22 Best Practices).
+model DriverEarningRule {
+  id              String                 @id @default(uuid())
+  organizationId  String?
+  earningCategory DriverEarningCategory
+  earningType     DriverEarningType
+  calculationType EarningCalculationType
+  value           Decimal                @db.Decimal(12, 2)
+  vehicleTypeId   String?
+  routeId         String?
+  isActive        Boolean                @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  vehicleType VehicleType?    @relation(fields: [vehicleTypeId], references: [id])
+  route       TransportRoute? @relation(fields: [routeId], references: [id])
+  earnings    DriverEarning[]
+
+  @@map("driver_earning_rules")
+}
+
+model DriverEarning {
+  id              String                @id @default(uuid())
+  earningNumber   String                @unique
+  driverId        String
+  tripId          String?
+  earningCategory DriverEarningCategory
+  earningType     DriverEarningType
+  name            String?
+  amount          Decimal               @db.Decimal(12, 2)
+  ruleId          String?
+  approvedById    String?
+  approvalStatus  ApprovalStatus        @default(APPROVED)
+  isSettled       Boolean               @default(false)
+  settlementId    String?
+  organizationId  String?
+  isActive        Boolean               @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  driver     Driver             @relation(fields: [driverId], references: [id])
+  trip       Trip?              @relation(fields: [tripId], references: [id])
+  rule       DriverEarningRule? @relation(fields: [ruleId], references: [id])
+  settlement DriverSettlement?  @relation("DriverSettlementEarnings", fields: [settlementId], references: [id])
+
+  @@index([driverId])
+  @@index([tripId])
+  @@index([settlementId])
+  @@map("driver_earnings")
+}
+
+enum DriverPenaltyType {
+  FUEL_RECOVERY
+  DAMAGE_RECOVERY
+  ACCIDENT_RECOVERY
+  LATE_DELIVERY_PENALTY
+  TRAFFIC_FINE
+  ADVANCE_RECOVERY
+  LOAN_RECOVERY
+  UNIFORM_RECOVERY
+  OTHER
+}
+
+// Always names a contraLedgerId — recoveries offset the expense they
+// relate to (Fuel Recovery credits Fuel Expense), never dumped into
+// undifferentiated income (design doc §8 Recovery Rules).
+model DriverPenalty {
+  id             String            @id @default(uuid())
+  penaltyNumber  String            @unique
+  driverId       String
+  tripId         String?
+  penaltyType    DriverPenaltyType
+  amount         Decimal           @db.Decimal(12, 2)
+  reason         String
+  approvedById   String?
+  approvalStatus ApprovalStatus    @default(PENDING)
+  isSettled      Boolean           @default(false)
+  settlementId   String?
+  organizationId String?
+  isActive       Boolean           @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  driver     Driver            @relation(fields: [driverId], references: [id])
+  trip       Trip?             @relation(fields: [tripId], references: [id])
+  settlement DriverSettlement? @relation("DriverSettlementPenalties", fields: [settlementId], references: [id])
+
+  @@index([driverId])
+  @@index([tripId])
+  @@index([settlementId])
+  @@map("driver_penalties")
+}
+
+// Architecture optimization pass — DriverLoan and EmployeeLoan (+ their
+// Installment tables) were structurally identical (same fields, same
+// LoanStatus/LoanInstallmentStatus enums, already sharing one EMI
+// calculation utility — see utils/loanSchedule.util.ts) except for which
+// party borrowed. Merged into one PartyLoan/PartyLoanInstallment pair
+// with a borrowerType discriminator. VehicleLoan was deliberately NOT
+// folded in here — it has real structural differences (multi-tranche
+// disbursement, a full principal/interest/late-fee amortization
+// breakdown, lender metadata) that a forced merge would either lose or
+// bloat this table with fields meaningful to only one borrower type, so
+// it stays its own purpose-built schema (see VehicleLoan below).
+enum LoanBorrowerType {
+  DRIVER
+  EMPLOYEE
+}
+
+enum PartyLoanType {
+  PERSONAL
+  EMERGENCY
+  VEHICLE // only meaningful when borrowerType=DRIVER
+  FESTIVAL
+  MEDICAL
+}
+
+enum LoanStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  CLOSED
+  REJECTED
+  WRITTEN_OFF
+}
+
+enum LoanInstallmentStatus {
+  PENDING
+  RECOVERED
+  WAIVED
+}
+
+// Outstanding principal is never a stored column — always
+// principalAmount − SUM(emiAmount WHERE status=RECOVERED), computed live
+// (design doc §6.7). Money the company lends OUT (an asset), the opposite
+// direction of the existing liability-side LOANS account group seeded for
+// Vehicle Loan — so this posts straight to the borrower's own control
+// ledger, not a new account group (design doc §6.12 classification note).
+// borrowerId/borrowerLedgerId/disbursementVoucherId are plain scoping
+// columns (no hard FK) — the Phase 13+ convention — since which table
+// they point at depends on borrowerType.
+model PartyLoan {
+  id              String           @id @default(uuid())
+  loanNumber      String           @unique
+  borrowerType    LoanBorrowerType
+  borrowerId      String
+  loanType        PartyLoanType
+  principalAmount Decimal          @db.Decimal(12, 2)
+  tenureMonths    Int
+  emiAmount       Decimal          @db.Decimal(12, 2)
+  interestRate    Decimal          @default(0) @db.Decimal(5, 2)
+  approvedById    String?
+  status          LoanStatus       @default(PENDING_APPROVAL)
+  organizationId  String?
+  isActive        Boolean          @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  installments PartyLoanInstallment[]
+
+  @@index([borrowerType, borrowerId])
+  @@map("party_loans")
+}
+
+// recoveredReferenceType/Id is a polymorphic pointer — a Driver loan's
+// installment is recovered via a DriverSettlement netting;
+// an Employee loan's via a PayrollRunLine deduction. Never both, and
+// never a hard FK to either (same reasoning as PartyLoan above).
+model PartyLoanInstallment {
+  id                     String                @id @default(uuid())
+  loanId                 String
+  installmentNo          Int
+  dueDate                DateTime
+  emiAmount              Decimal               @db.Decimal(12, 2)
+  status                 LoanInstallmentStatus @default(PENDING)
+  recoveredReferenceType String?
+  recoveredReferenceId   String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  loan PartyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+  @@index([recoveredReferenceType, recoveredReferenceId])
+  @@map("party_loan_installments")
+}
+
+enum DriverSettlementType {
+  PARTIAL
+  FINAL
+  EXIT
+  YEAR_END
+}
+
+enum DriverSettlementStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  PAID
+}
+
+enum SettlementLineSourceType {
+  ADVANCE
+  ALLOWANCE
+  INCENTIVE
+  REIMBURSEMENT
+  PENALTY
+  LOAN_INSTALLMENT
+  SALARY
+}
+
+enum LineDirection {
+  DEBIT
+  CREDIT
+}
+
+// A period (or explicit trip-batch) sweep, not an allocation against a
+// single bill — there's no discrete "driver bill," only a continuous
+// stream of ledger-affecting documents (design doc §12).
+model DriverSettlement {
+  id               String                 @id @default(uuid())
+  settlementNumber String                 @unique
+  driverId         String
+  settlementType   DriverSettlementType   @default(PARTIAL)
+  periodStart      DateTime
+  periodEnd        DateTime
+  status           DriverSettlementStatus @default(DRAFT)
+  grossEarnings    Decimal                @default(0) @db.Decimal(12, 2)
+  totalDeductions  Decimal                @default(0) @db.Decimal(12, 2)
+  netPayable       Decimal                @default(0) @db.Decimal(12, 2)
+  approvedById     String?
+  organizationId   String?
+  isActive         Boolean                @default(true)
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  driver         Driver                       @relation(fields: [driverId], references: [id])
+  lines          DriverSettlementLine[]
+  advances       DriverAdvance[]              @relation("DriverSettlementAdvances")
+  reimbursements DriverExpenseReimbursement[] @relation("DriverSettlementReimbursements")
+  earnings       DriverEarning[]              @relation("DriverSettlementEarnings")
+  penalties      DriverPenalty[]              @relation("DriverSettlementPenalties")
+
+  @@index([driverId])
+  @@map("driver_settlements")
+}
+
+// A polymorphic breakdown line — full traceability, and this same line
+// set rendered chronologically is the Driver Statement (design doc §12,
+// §19). sourceId is a plain uuid (not a physical FK), the same app-level
+// polymorphic-reference pattern as VoucherLine.partyId/CostCenter.refId.
+model DriverSettlementLine {
+  id           String                   @id @default(uuid())
+  settlementId String
+  sourceType   SettlementLineSourceType
+  sourceId     String?
+  description  String
+  amount       Decimal                  @db.Decimal(12, 2)
+  direction    LineDirection
+  createdAt    DateTime                 @default(now())
+
+  settlement DriverSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@map("driver_settlement_lines")
+}
+
+enum SalaryComponentType {
+  BASIC
+  HRA
+  DA
+  SPECIAL_ALLOWANCE
+  TRAVEL_ALLOWANCE
+  MEDICAL_ALLOWANCE
+  PF
+  ESI
+  PROFESSIONAL_TAX
+  TDS
+  OTHER_DEDUCTION
+  BONUS
+  ARREARS
+  LEAVE_DEDUCTION
+  ATTENDANCE_DEDUCTION
+  OVERTIME
+  RECOVERY
+  MANUAL_ADJUSTMENT
+  CUSTOM
+}
+
+enum SalaryCalculationType {
+  FIXED_AMOUNT
+  PERCENT_OF_BASIC
+  PERCENT_OF_GROSS
+}
+
+// Versioned (effectiveFrom/To) — a raise never overwrites history. Exactly
+// one active structure per employee at a time (design doc §8).
+model SalaryStructure {
+  id            String    @id @default(uuid())
+  employeeId    String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  employee   Employee                   @relation(fields: [employeeId], references: [id])
+  components SalaryStructureComponent[]
+
+  @@index([employeeId])
+  @@map("salary_structures")
+}
+
+model SalaryStructureComponent {
+  id                String                @id @default(uuid())
+  salaryStructureId String
+  componentType     SalaryComponentType
+  name              String?
+  calculationType   SalaryCalculationType @default(FIXED_AMOUNT)
+  value             Decimal               @db.Decimal(12, 2)
+  isEarning         Boolean
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  salaryStructure SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+
+  @@index([salaryStructureId])
+  @@map("salary_structure_components")
+}
+
+enum EmployeeAdvanceType {
+  SALARY_ADVANCE
+  EMERGENCY_ADVANCE
+  MEDICAL_ADVANCE
+  ADVANCE_AGAINST_SALARY
+  OTHER
+}
+
+model EmployeeAdvance {
+  id               String              @id @default(uuid())
+  advanceNumber    String              @unique
+  employeeId       String
+  advanceType      EmployeeAdvanceType
+  purpose          String?
+  amount           Decimal             @db.Decimal(12, 2)
+  requestedById    String?
+  approvedById     String?
+  approvalStatus   ApprovalStatus      @default(PENDING)
+  paymentModeId    String?
+  fundAccountType  FundAccountType?
+  fundAccountId    String?
+  isSettled        Boolean             @default(false)
+  payrollRunLineId String?
+  organizationId   String?
+  isActive         Boolean             @default(true)
+  deletedAt        DateTime?
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  employee       Employee        @relation(fields: [employeeId], references: [id])
+  paymentMode    PaymentMode?    @relation(fields: [paymentModeId], references: [id])
+  payrollRunLine PayrollRunLine? @relation(fields: [payrollRunLineId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_advances")
+}
+
+// Money the company lends OUT to its own staff (an asset) — same
+// classification note as DriverLoan above.
+// EmployeeLoan / EmployeeLoanInstallment removed — merged into
+// PartyLoan / PartyLoanInstallment above (borrowerType=EMPLOYEE).
+
+enum PayrollPeriodType {
+  MONTHLY
+  WEEKLY
+  DAILY_WAGE
+  CONTRACT
+}
+
+enum PayrollRunType {
+  REGULAR
+  FINAL_SETTLEMENT
+  EXIT
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  CALCULATED
+  VERIFIED
+  APPROVED
+  PROCESSED
+  PAID
+  CANCELLED
+}
+
+// DRAFT → CALCULATED → VERIFIED → APPROVED → PROCESSED → PAID, CANCELLED
+// reachable from any pre-PAID state. Only APPROVED posts the recognition
+// Journal Voucher; only PAID posts each line's Payment Voucher (design
+// doc §13). runType=EXIT/FINAL_SETTLEMENT reuses this same table rather
+// than forking a parallel "Payroll Settlement" document.
+model PayrollRun {
+  id             String            @id @default(uuid())
+  runNumber      String            @unique
+  periodType     PayrollPeriodType
+  periodStart    DateTime
+  periodEnd      DateTime
+  runType        PayrollRunType    @default(REGULAR)
+  status         PayrollRunStatus  @default(DRAFT)
+  approvedById   String?
+  processedById  String?
+  organizationId String?
+  isActive       Boolean           @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  lines PayrollRunLine[]
+
+  @@map("payroll_runs")
+}
+
+model PayrollRunLine {
+  id              String           @id @default(uuid())
+  payrollRunId    String
+  employeeId      String
+  grossEarnings   Decimal          @default(0) @db.Decimal(12, 2)
+  totalDeductions Decimal          @default(0) @db.Decimal(12, 2)
+  netPay          Decimal          @default(0) @db.Decimal(12, 2)
+  fundAccountType FundAccountType?
+  fundAccountId   String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  payrollRun        PayrollRun                @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee          Employee                  @relation(fields: [employeeId], references: [id])
+  components        PayrollRunLineComponent[]
+  advancesRecovered EmployeeAdvance[]
+
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@map("payroll_run_lines")
+}
+
+// Snapshots every earning/deduction at run time, so editing SalaryStructure
+// later never rewrites a past payslip (design doc §18 Audit Strategy).
+model PayrollRunLineComponent {
+  id               String              @id @default(uuid())
+  payrollRunLineId String
+  componentType    SalaryComponentType
+  name             String?
+  amount           Decimal             @db.Decimal(12, 2)
+  isEarning        Boolean
+  createdAt        DateTime            @default(now())
+
+  payrollRunLine PayrollRunLine @relation(fields: [payrollRunLineId], references: [id], onDelete: Cascade)
+
+  @@index([payrollRunLineId])
+  @@map("payroll_run_line_components")
+}
+
+// ===========================================================
+// PHASE 12 — VEHICLE ASSETS, VEHICLE LOANS & EXPENSE MANAGEMENT
+// ===========================================================
+// docs/phase6-vehicle-assets-loans-expenses.md. Vehicle (Phase 4 — Fleet
+// Management) is a pure operational/compliance record with zero financial
+// fields; VehicleExpense/FuelEntry/MaintenanceRecord all pre-date the
+// Voucher Engine, the same disconnected shape Phase 10 found in Invoice
+// and Phase 11 found in TripExpense. Unlike those, this phase found real
+// plumbing already laid for it: a VEHICLE_LOAN system ledger and an
+// INTEREST_EXPENSE ledger (Phase 7, unused), an empty FIXED_ASSETS
+// account group (Phase 7), and six NumberSeriesDocumentType values —
+// EXPENSE_VOUCHER, LOAN_VOUCHER, INTEREST_VOUCHER, DEPRECIATION_VOUCHER,
+// ASSET_PURCHASE_VOUCHER, ASSET_SALE_VOUCHER — seeded in Phase 8 with a
+// comment stating they were "left for an admin to configure... when
+// actually needed." This phase is that "when." VehicleExpense is
+// extended additively (not forked, unlike TripExpense) since nothing in
+// the report layer depends on its current shape. No balance is ever
+// stored here — asset book value, loan outstanding, and FastTag balance
+// are always computed from VoucherLines/schedules, or cached with
+// transactional recompute exactly like Invoice.outstandingAmount.
+
+enum AssetType {
+  VEHICLE
+  LAND
+  BUILDING
+  FURNITURE
+  COMPUTER
+  MACHINERY
+  OFFICE_EQUIPMENT
+  WAREHOUSE_EQUIPMENT
+  OTHER
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  WRITTEN_DOWN_VALUE
+  CUSTOM
+}
+
+enum FixedAssetStatus {
+  ACTIVE
+  UNDER_TRANSFER
+  DISPOSED
+  WRITTEN_OFF
+}
+
+// One pooled Ledger per category under FIXED_ASSETS — NOT one per
+// physical asset. FixedAsset (the Asset Register) is the subsidiary
+// detail; the Ledger is the GL control account. An asset's own
+// "statement" is its depreciation/movement history, not a running party
+// balance, so it does not get its own control ledger the way a
+// Customer/Supplier/Driver/Employee/VehicleLoan does (design doc §2).
+model AssetCategory {
+  id                      String             @id @default(uuid())
+  code                    String             @unique
+  name                    String
+  assetType               AssetType
+  usefulLifeMonths        Int
+  depreciationMethod      DepreciationMethod @default(STRAIGHT_LINE)
+  depreciationRatePercent Decimal?           @db.Decimal(5, 2)
+  residualValuePercent    Decimal            @default(5) @db.Decimal(5, 2)
+  isSystemCategory        Boolean            @default(false)
+  isActive                Boolean            @default(true)
+  deletedAt               DateTime?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  assets FixedAsset[]
+
+  @@map("asset_categories")
+}
+
+// The Fixed Asset Register. vehicleId links a vehicle-type asset back to
+// the existing Vehicle master; null for non-vehicle assets (Land,
+// Building, Furniture, Computer, ...). currentValue is a cache,
+// recomputed transactionally after every depreciation run / disposal —
+// never a second source of truth (design doc §7.2).
+model FixedAsset {
+  id                  String             @id @default(uuid())
+  assetCode           String             @unique
+  assetName           String
+  categoryId          String
+  vehicleId           String?            @unique
+  supplierId          String?
+  purchaseDate        DateTime
+  capitalizationDate  DateTime
+  purchaseValue       Decimal            @db.Decimal(14, 2)
+  residualValue       Decimal            @db.Decimal(14, 2)
+  usefulLifeMonths    Int
+  depreciationMethod  DepreciationMethod
+  currentValue        Decimal            @db.Decimal(14, 2)
+  departmentId        String?
+  locationText        String?
+  responsiblePersonId String?
+  status              FixedAssetStatus   @default(ACTIVE)
+  approvalStatus      ApprovalStatus     @default(PENDING)
+  approvedById        String?
+  organizationId      String?
+  isActive            Boolean            @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  category   AssetCategory @relation(fields: [categoryId], references: [id])
+  vehicle    Vehicle?      @relation(fields: [vehicleId], references: [id])
+  supplier   Supplier?     @relation(fields: [supplierId], references: [id])
+  department Department?   @relation(fields: [departmentId], references: [id])
+
+  depreciationLines DepreciationRunLine[]
+  transfers         AssetTransfer[]
+  disposal          AssetDisposal?
+  vehicleLoans      VehicleLoan[]
+
+  @@index([categoryId])
+  @@map("fixed_assets")
+}
+
+enum LenderType {
+  BANK
+  NBFC
+  PRIVATE_FINANCE
+  INTERNAL
+}
+
+enum VehicleLoanStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  CLOSED
+  FORECLOSED
+  REJECTED
+}
+
+enum VehicleLoanInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+// Money the company BORROWED (a liability) — the opposite direction of
+// DriverLoan/EmployeeLoan (Phase 11), which is money the company LENT
+// OUT. Auto-provisions one control Ledger per loan under LOANS,
+// superseding the pooled VEHICLE_LOAN system ledger seeded in Phase 7 —
+// the same story as every per-party ledger since Phase 10 (design doc
+// §3, §6.12-equivalent).
+model VehicleLoan {
+  id                  String            @id @default(uuid())
+  loanNumber          String            @unique
+  vehicleId           String
+  fixedAssetId        String?
+  lenderType          LenderType
+  lenderName          String
+  loanAccountNumber   String?
+  principalAmount     Decimal           @db.Decimal(14, 2)
+  processingFee       Decimal           @default(0) @db.Decimal(12, 2)
+  interestRatePercent Decimal           @db.Decimal(5, 2)
+  disbursementDate    DateTime
+  emiStartDate        DateTime
+  emiAmount           Decimal           @db.Decimal(12, 2)
+  tenureMonths        Int
+  status              VehicleLoanStatus @default(PENDING_APPROVAL)
+  approvedById        String?
+  organizationId      String?
+  isActive            Boolean           @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  vehicle    Vehicle     @relation(fields: [vehicleId], references: [id])
+  fixedAsset FixedAsset? @relation(fields: [fixedAssetId], references: [id])
+
+  disbursements VehicleLoanDisbursement[]
+  installments  VehicleLoanInstallment[]
+
+  @@index([vehicleId])
+  @@map("vehicle_loans")
+}
+
+// Supports "Multiple Loan Disbursements" as tranches against one loan.
+model VehicleLoanDisbursement {
+  id               String   @id @default(uuid())
+  loanId           String
+  disbursementDate DateTime
+  amount           Decimal  @db.Decimal(14, 2)
+  createdById      String?
+  updatedById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  loan VehicleLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+  @@map("vehicle_loan_disbursements")
+}
+
+// A real amortization schedule with a reducing-balance principal/
+// interest split — unlike DriverLoan/EmployeeLoan (Phase 11), which are
+// flat-principal with interestRate always 0 today. Outstanding principal
+// is never a stored running balance — always principal −
+// SUM(paid installments' principalComponent), computed live.
+model VehicleLoanInstallment {
+  id                 String                       @id @default(uuid())
+  loanId             String
+  installmentNo      Int
+  dueDate            DateTime
+  emiAmount          Decimal                      @db.Decimal(12, 2)
+  principalComponent Decimal                      @db.Decimal(12, 2)
+  interestComponent  Decimal                      @db.Decimal(12, 2)
+  lateFeeAmount      Decimal                      @default(0) @db.Decimal(12, 2)
+  status             VehicleLoanInstallmentStatus @default(PENDING)
+  paidDate           DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  loan VehicleLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+  @@map("vehicle_loan_installments")
+}
+
+enum DepreciationRunStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+}
+
+enum DepreciationPeriodType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+// One consolidated Voucher per run regardless of how many assets it
+// covers — the same "aggregate many lines into one Journal by ledger
+// pair" batching PayrollRun.approve() established in Phase 11.
+model DepreciationRun {
+  id             String                 @id @default(uuid())
+  runNumber      String                 @unique
+  periodType     DepreciationPeriodType
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         DepreciationRunStatus  @default(DRAFT)
+  approvedById   String?
+  organizationId String?
+  isActive       Boolean                @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  lines DepreciationRunLine[]
+
+  @@map("depreciation_runs")
+}
+
+// One row per asset per run — frozen history (openingValue/
+// depreciationAmount/closingValue/method) so a past run stays reproducible
+// even if the category's method changes later, the same snapshot
+// discipline PayrollRunLineComponent gives payslips in Phase 11.
+model DepreciationRunLine {
+  id                 String             @id @default(uuid())
+  runId              String
+  assetId            String
+  openingValue       Decimal            @db.Decimal(14, 2)
+  depreciationAmount Decimal            @db.Decimal(12, 2)
+  closingValue       Decimal            @db.Decimal(14, 2)
+  method             DepreciationMethod
+  createdAt          DateTime           @default(now())
+
+  run   DepreciationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  asset FixedAsset      @relation(fields: [assetId], references: [id])
+
+  @@index([runId])
+  @@index([assetId])
+  @@map("depreciation_run_lines")
+}
+
+enum ComplianceType {
+  INSURANCE
+  PERMIT
+  FITNESS
+  ROAD_TAX
+  POLLUTION
+}
+
+enum ComplianceStatus {
+  ACTIVE
+  EXPIRED
+  RENEWED
+}
+
+// One table, a complianceType discriminator, covering five near-identical
+// shapes (Insurance/Permit/Fitness/Road Tax/Pollution) — the same
+// consolidation reasoning as DriverEarning merging Allowance+Incentive in
+// Phase 11. Writes Vehicle.insuranceExpiryDate etc. (existing Fleet
+// fields) on renewal so the Fleet module's own expiry-alert UI keeps
+// working unmodified — this phase updates that field, it does not
+// replace it.
+model VehicleComplianceRecord {
+  id                 String           @id @default(uuid())
+  vehicleId          String
+  complianceType     ComplianceType
+  documentNumber     String
+  issuerName         String?
+  issueDate          DateTime
+  expiryDate         DateTime
+  premiumOrFeeAmount Decimal?         @db.Decimal(12, 2)
+  documentUrl        String?
+  renewedFromId      String?          @unique
+  status             ComplianceStatus @default(ACTIVE)
+  isActive           Boolean          @default(true)
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  vehicle     Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  renewedFrom VehicleComplianceRecord? @relation("ComplianceRenewal", fields: [renewedFromId], references: [id])
+  renewedTo   VehicleComplianceRecord? @relation("ComplianceRenewal")
+
+  claims VehicleInsuranceClaim[]
+
+  @@index([vehicleId])
+  @@index([complianceType])
+  @@map("vehicle_compliance_records")
+}
+
+enum InsuranceClaimStatus {
+  FILED
+  APPROVED
+  SETTLED
+  REJECTED
+}
+
+// The one genuinely insurance-specific child — claims don't apply to
+// permit/fitness/road tax/pollution records.
+model VehicleInsuranceClaim {
+  id                 String               @id @default(uuid())
+  complianceRecordId String
+  claimNumber        String               @unique
+  claimDate          DateTime
+  claimAmount        Decimal              @db.Decimal(12, 2)
+  settledAmount      Decimal?             @db.Decimal(12, 2)
+  settlementDate     DateTime?
+  status             InsuranceClaimStatus @default(FILED)
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  complianceRecord VehicleComplianceRecord @relation(fields: [complianceRecordId], references: [id])
+  disposal         AssetDisposal?
+
+  @@index([complianceRecordId])
+  @@map("vehicle_insurance_claims")
+}
+
+enum FastTagTransactionType {
+  RECHARGE
+  USAGE
+  REFUND
+  ADJUSTMENT
+}
+
+// Lifecycle of a single FastTag transaction row, independent of its
+// RECHARGE/USAGE/REFUND/ADJUSTMENT type. IMPORTED is the landing state for
+// rows created by the provider-statement import/reconciliation flow before
+// a human confirms them; manually entered rows go straight to VERIFIED.
+enum FastTagTransactionStatus {
+  IMPORTED
+  PENDING
+  VERIFIED
+  ALLOCATED
+  RECONCILED
+  CANCELLED
+  ADJUSTED
+}
+
+enum FastTagPaymentSource {
+  FASTAG_WALLET
+  BANK
+  OTHER
+}
+
+// A single shared prepaid wallet for the whole fleet (BlackBuck-style —
+// one recharge tops up one balance; every vehicle's FASTag card draws
+// down from that same balance rather than each vehicle having its own).
+// The app enforces there is only ever one non-deleted row via
+// fastTagRepository.getOrCreateWallet() — there is no per-vehicle account
+// anymore. currentBalance is a cache (design doc §22 risk: treat as an
+// estimate for dashboard purposes only until a real NHAI-statement
+// reconciliation step exists — never authoritative for financial
+// statements).
+model FastTagAccount {
+  id             String    @id @default(uuid())
+  fastagNumber   String?
+  currentBalance Decimal   @default(0) @db.Decimal(12, 2)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  transactions FastTagTransaction[]
+
+  @@map("fasttag_accounts")
+}
+
+// vehicleId identifies which truck a USAGE/REFUND transaction belongs to
+// (required for USAGE, since every toll swipe is on a specific vehicle's
+// tag; optional for RECHARGE/ADJUSTMENT, which are wallet-level events not
+// tied to any one vehicle). fundAccountType/fundAccountId record which
+// Bank/Cash account a RECHARGE actually debited — needed so edit/delete
+// can reverse that debit correctly instead of only touching the wallet's
+// own currentBalance cache.
+model FastTagTransaction {
+  id                   String                   @id @default(uuid())
+  accountId            String
+  vehicleId            String?
+  type                 FastTagTransactionType
+  amount               Decimal                  @db.Decimal(12, 2)
+  tripId               String?
+  transactionDate      DateTime                 @default(now())
+  tollPlaza            String?
+  location             String?
+  transactionReference String?
+  paymentSource        FastTagPaymentSource     @default(FASTAG_WALLET)
+  status               FastTagTransactionStatus @default(VERIFIED)
+  remarks              String?
+  attachment           String?
+  fundAccountType      String?
+  fundAccountId        String?
+  createdById          String?
+  updatedById          String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  account FastTagAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  vehicle Vehicle?       @relation(fields: [vehicleId], references: [id])
+  trip    Trip?          @relation(fields: [tripId], references: [id])
+
+  financialEntries FinancialEntry[]
+
+  @@index([accountId])
+  @@index([vehicleId])
+  @@index([status])
+  @@index([transactionReference])
+  @@map("fasttag_transactions")
+}
+
+enum VehicleTyreStatus {
+  INSTALLED
+  REMOVED
+  SCRAPPED
+}
+
+enum TyreMovementType {
+  INSTALL
+  ROTATE
+  REMOVE
+  SCRAP
+}
+
+// The physical tyre unit — Tyre (Fleet phase) is just a brand/spec
+// catalog with no installation concept at all; this is genuinely new
+// ground, not an extension.
+model VehicleTyre {
+  id                String            @id @default(uuid())
+  tyreId            String
+  vehicleId         String?
+  serialNumber      String?
+  position          String?
+  installedDate     DateTime?
+  installedOdometer Int?
+  removedDate       DateTime?
+  removedOdometer   Int?
+  status            VehicleTyreStatus @default(INSTALLED)
+  cost              Decimal?          @db.Decimal(12, 2)
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  tyre    Tyre     @relation(fields: [tyreId], references: [id])
+  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
+
+  movements TyreMovement[]
+
+  @@index([vehicleId])
+  @@map("vehicle_tyres")
+}
+
+// fromVehicleId/toVehicleId are plain scalars, not physical FKs — an
+// informational history log, the same treatment CostCenter.refId gives
+// polymorphic references (design doc §7.9).
+model TyreMovement {
+  id              String           @id @default(uuid())
+  vehicleTyreId   String
+  movementType    TyreMovementType
+  fromVehicleId   String?
+  toVehicleId     String?
+  fromPosition    String?
+  toPosition      String?
+  odometerReading Int?
+  movementDate    DateTime         @default(now())
+  notes           String?
+  createdById     String?
+  createdAt       DateTime         @default(now())
+
+  vehicleTyre VehicleTyre @relation(fields: [vehicleTyreId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleTyreId])
+  @@map("tyre_movements")
+}
+
+enum VehicleBatteryStatus {
+  INSTALLED
+  REPLACED
+  DISPOSED
+}
+
+model VehicleBattery {
+  id                 String               @id @default(uuid())
+  vehicleId          String
+  brand              String
+  serialNumber       String?
+  installedDate      DateTime
+  installedOdometer  Int?
+  warrantyMonths     Int?
+  warrantyExpiryDate DateTime?
+  replacedDate       DateTime?
+  status             VehicleBatteryStatus @default(INSTALLED)
+  cost               Decimal?             @db.Decimal(12, 2)
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId])
+  @@map("vehicle_batteries")
+}
+
+enum AssetTransferType {
+  DEPARTMENT
+  CUSTODY
+  LOCATION
+}
+
+// A custody/department move — no value change, no Voucher, purely a
+// history record (design doc §2, §9).
+model AssetTransfer {
+  id                      String            @id @default(uuid())
+  assetId                 String
+  transferType            AssetTransferType
+  fromDepartmentId        String?
+  toDepartmentId          String?
+  fromResponsiblePersonId String?
+  toResponsiblePersonId   String?
+  transferDate            DateTime
+  reason                  String?
+  approvalStatus          ApprovalStatus    @default(PENDING)
+  approvedById            String?
+  createdById             String?
+  updatedById             String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  asset          FixedAsset  @relation(fields: [assetId], references: [id])
+  fromDepartment Department? @relation("AssetTransferFromDepartment", fields: [fromDepartmentId], references: [id])
+  toDepartment   Department? @relation("AssetTransferToDepartment", fields: [toDepartmentId], references: [id])
+
+  @@index([assetId])
+  @@map("asset_transfers")
+}
+
+enum AssetDisposalType {
+  SALE
+  SCRAP
+  WRITE_OFF
+  THEFT
+  ACCIDENT_TOTAL_LOSS
+  DONATION
+}
+
+// Terminal — a disposed asset takes no further depreciation, expense, or
+// transfer. netBookValueAtDisposal is a frozen snapshot, immune to later
+// depreciation-run changes (design doc §9, §19). disposalType=SALE posts
+// through the new ASSET_SALE Voucher Type; every other type posts a plain
+// JOURNAL (design doc §11).
+model AssetDisposal {
+  id                     String            @id @default(uuid())
+  assetId                String            @unique
+  disposalType           AssetDisposalType
+  disposalDate           DateTime
+  saleValue              Decimal?          @db.Decimal(14, 2)
+  netBookValueAtDisposal Decimal           @db.Decimal(14, 2)
+  gainLossAmount         Decimal           @db.Decimal(14, 2)
+  buyerDetails           String?
+  insuranceClaimId       String?           @unique
+  exchangeGroupId        String?
+  approvalStatus         ApprovalStatus    @default(PENDING)
+  approvedById           String?
+  organizationId         String?
+  createdById            String?
+  updatedById            String?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+
+  asset          FixedAsset             @relation(fields: [assetId], references: [id])
+  insuranceClaim VehicleInsuranceClaim? @relation(fields: [insuranceClaimId], references: [id])
+
+  @@map("asset_disposals")
+}
+
+// ===========================================================
+// PHASE 13 — GST, TAXATION, FINANCIAL REPORTING & FINANCIAL CLOSING
+// ===========================================================
+// docs Phase 7. No new "balance" table anywhere in this block — Trial
+// Balance, General Ledger, Day Book, Cash Book, Bank Book, P&L, Balance
+// Sheet, Cash Flow, Fund Flow, every profitability/outstanding/expense
+// report and the MIS Dashboard are pure read-side services computed live
+// from Ledger/Voucher/VoucherLine (Phase 7/8's own GL), exactly like every
+// Phase 6 "currentValue" cache — never a second source of truth. The
+// models below exist only where the GL genuinely lacks a home for
+// structured metadata a statutory return or a budget needs (HSN code,
+// place-of-supply classification, TDS section, a forward-looking budgeted
+// figure) — every one of them still posts its real money movement through
+// the unchanged Voucher Engine; none of them stores a balance of its own.
+// CashFlowCategoryMapping (Phase 9) was seeded as "foundation only, no
+// report reads this table yet" — the Cash Flow Statement this phase adds
+// is the first consumer.
+
+// GST home state/registration — first 2 digits of a GSTIN already encode
+// the state code, so a party's state (Customer/Supplier/Ledger.gstNumber)
+// is derived at report time, never duplicated onto another table.
+enum ReportFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+}
+
+// Foundation only (design brief: "Email Reports (Future)") — CRUD for the
+// schedule definition itself; no cron/executor/email-sender exists yet,
+// that belongs to Phase 8's automation/notification module.
+model ReportScheduleDefinition {
+  id              String          @id @default(uuid())
+  name            String
+  reportKey       String
+  category        String
+  frequency       ReportFrequency
+  format          ReportFormat    @default(PDF)
+  recipientEmails String?
+  isActive        Boolean         @default(true)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  @@map("report_schedule_definitions")
+}
+
+// ===========================================================
+// PHASE 14 — ENTERPRISE INTEGRATION, AUTOMATION, AUDIT, SECURITY
+// & FINAL OPTIMIZATION (docs Phase 8 — the final phase)
+// ===========================================================
+// This phase does not redesign any prior module — it connects,
+// automates, secures, monitors and finalizes them, exactly the way
+// Phase 13 (docs Phase 7) is the first real consumer of Phase 9's
+// CashFlowCategoryMapping foundation. organizationId below is a plain
+// indexed scoping column (no FK) — the Phase 13 convention, since
+// Organization's own relation list was never extended for those
+// models either. createdById/updatedById/triggeredById/etc. are
+// likewise plain actor columns, matching every prior phase.
+
+enum AutomationTriggerType {
+  SCHEDULE
+  EVENT
+}
+
+enum AutomationActionType {
+  SEND_NOTIFICATION
+  RUN_REPORT_SCHEDULE
+  RUN_BACKUP
+  ARCHIVE_LOGS
+  OUTSTANDING_REMINDER
+  ESCALATE_APPROVALS
+  COMPUTE_KPI_SNAPSHOTS
+  DUPLICATE_VOUCHER_SCAN
+}
+
+enum AutomationRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum AutomationRunTrigger {
+  SCHEDULE
+  MANUAL
+  EVENT
+}
+
+// The Automation Rule Engine + Scheduler combined into one coherent,
+// testable system (design brief lists them as two modules; a
+// schedule-triggered rule IS a scheduled job, so one engine drives
+// both rather than duplicating a cron table and a rule table).
+model AutomationRule {
+  id             String                @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  triggerType    AutomationTriggerType
+  cronExpression String?
+  eventCode      String?
+  actionType     AutomationActionType
+  actionConfig   String? // JSON-encoded, action-specific (e.g. { "olderThanDays": 90 })
+  isActive       Boolean               @default(true)
+  lastRunAt      DateTime?
+  lastRunStatus  AutomationRunStatus?
+  nextRunAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+
+  runLogs AutomationRunLog[]
+
+  @@index([organizationId, isActive])
+  @@map("automation_rules")
+}
+
+model AutomationRunLog {
+  id               String               @id @default(uuid())
+  automationRuleId String
+  triggeredBy      AutomationRunTrigger
+  status           AutomationRunStatus  @default(RUNNING)
+  startedAt        DateTime             @default(now())
+  completedAt      DateTime?
+  resultSummary    String?
+  errorMessage     String?
+
+  automationRule AutomationRule @relation(fields: [automationRuleId], references: [id], onDelete: Cascade)
+
+  @@index([automationRuleId, startedAt])
+  @@map("automation_run_logs")
+}
+
+// -----------------------------------------------------------
+// Notification Center
+// -----------------------------------------------------------
+enum NotificationCategory {
+  APPROVAL
+  REMINDER
+  SYSTEM
+  REPORT
+  SECURITY
+  WORKFLOW
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+model Notification {
+  id                String               @id @default(uuid())
+  organizationId    String
+  userId            String?
+  roleId            String? // broadcast to every user holding this Role, when userId is null
+  category          NotificationCategory
+  priority          NotificationPriority @default(NORMAL)
+  channel           NotificationChannel  @default(IN_APP)
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  isRead            Boolean              @default(false)
+  readAt            DateTime?
+  deliveryStatus    String? // SENT / FAILED / QUEUED — only meaningful for channel EMAIL
+  createdAt         DateTime             @default(now())
+
+  @@index([organizationId, userId, isRead])
+  @@index([organizationId, roleId, isRead])
+  @@map("notifications")
+}
+
+model NotificationTemplate {
+  id           String              @id @default(uuid())
+  code         String              @unique
+  channel      NotificationChannel
+  subject      String?
+  bodyTemplate String
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@map("notification_templates")
+}
+
+// -----------------------------------------------------------
+// Approval Engine extensions — temporary substitution and the
+// escalation trail. The core level/role/amount engine from Phase 7
+// (docs) ApprovalRule/VoucherApproval is untouched; escalation
+// routing fields are added additively to ApprovalRule itself, below.
+// -----------------------------------------------------------
+enum ApprovalMode {
+  SEQUENTIAL
+  PARALLEL
+}
+
+model ApprovalDelegation {
+  id             String   @id @default(uuid())
+  organizationId String
+  fromUserId     String
+  toUserId       String
+  fromDate       DateTime
+  toDate         DateTime
+  reason         String?
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, fromUserId, isActive])
+  @@map("approval_delegations")
+}
+
+// ApprovalEscalationLog removed in the Phase 14 architecture optimization
+// pass — it was a structural duplicate of an AuditLog row (entityType,
+// entityId, an actor-role transition, a reason, a timestamp).
+// approval-escalation.service.ts now writes action='ESCALATED' AuditLog
+// entries instead.
+
+// -----------------------------------------------------------
+// Enterprise Audit Center — API Audit. Voucher/Ledger/Approval/
+// Login/Config/Export/User-Activity audit all already exist across
+// AuditLog, VoucherAuditEntry and ActivityLog (Phase 0-13); this is
+// the one genuinely new capture surface this phase adds.
+// -----------------------------------------------------------
+model ApiRequestLog {
+  id         String   @id @default(uuid())
+  method     String
+  path       String
+  statusCode Int
+  durationMs Int
+  userId     String?
+  apiKeyId   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("api_request_logs")
+}
+
+// -----------------------------------------------------------
+// Exception & Error Management
+// -----------------------------------------------------------
+enum ExceptionErrorType {
+  DUPLICATE
+  NEGATIVE_BALANCE
+  MISSING_APPROVAL
+  VOUCHER_FAILURE
+  POSTING_FAILURE
+  VALIDATION_FAILURE
+  UNEXPECTED
+}
+
+enum ExceptionStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model SystemException {
+  id               String             @id @default(uuid())
+  organizationId   String?
+  module           String
+  errorType        ExceptionErrorType
+  message          String
+  stackTrace       String?
+  contextJson      String?
+  status           ExceptionStatus    @default(OPEN)
+  acknowledgedById String?
+  acknowledgedAt   DateTime?
+  resolvedById     String?
+  resolvedAt       DateTime?
+  resolution       String?
+  createdAt        DateTime           @default(now())
+
+  @@index([status, createdAt])
+  @@index([module])
+  @@map("system_exceptions")
+}
+
+// -----------------------------------------------------------
+// Business Rule Engine — a configuration registry + evaluator
+// (backend/src/utils/businessRuleEngine.util.ts). Existing inline
+// validations in prior-phase services (credit limit checks, GST
+// slab checks, etc.) are left exactly as they are; this registry is
+// additive and is wired into the new Duplicate Voucher Detection
+// scan (DUPLICATE_DETECTION) and is available for future rule types
+// without another migration, since conditionJson/actionJson are
+// schemaless by design.
+// -----------------------------------------------------------
+enum BusinessRuleType {
+  CREDIT_LIMIT
+  PAYMENT
+  LOAN
+  PAYROLL
+  EXPENSE
+  GST
+  APPROVAL
+  DUPLICATE_DETECTION
+}
+
+model BusinessRule {
+  id             String           @id @default(uuid())
+  organizationId String
+  ruleType       BusinessRuleType
+  name           String
+  description    String?
+  conditionJson  String
+  actionJson     String?
+  priority       Int              @default(1)
+  isActive       Boolean          @default(true)
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  @@index([organizationId, ruleType, isActive])
+  @@map("business_rules")
+}
+
+// -----------------------------------------------------------
+// Import Framework — reuses each target entity's own existing
+// create() service method per row (Ledger/Supplier/Employee/Driver/
+// OpeningBalanceEntry), so bulk-imported rows go through the exact
+// same validation every manually-created row does. This model is
+// only the batch's own tracking/audit record.
+// -----------------------------------------------------------
+enum ImportEntityType {
+  SUPPLIER
+  EMPLOYEE
+  DRIVER
+  FUEL_ENTRY
+  FASTTAG_TRANSACTION
+}
+
+enum ImportBatchStatus {
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+model ImportBatch {
+  id              String            @id @default(uuid())
+  organizationId  String
+  entityType      ImportEntityType
+  fileName        String
+  status          ImportBatchStatus @default(PROCESSING)
+  totalRows       Int               @default(0)
+  successRows     Int               @default(0)
+  failedRows      Int               @default(0)
+  errorReportJson String?
+  importedById    String?
+  startedAt       DateTime          @default(now())
+  completedAt     DateTime?
+
+  @@index([organizationId, entityType])
+  @@map("import_batches")
+}
+
+// -----------------------------------------------------------
+// Backup & Recovery — "Restore Validation" only (design brief item),
+// deliberately not "Restore Execution": actually overwriting a live
+// production database is a destructive action this ERP's automation
+// must never perform unattended.
+// -----------------------------------------------------------
+enum BackupType {
+  FULL
+  INCREMENTAL
+}
+
+enum BackupStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum BackupTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+model BackupRecord {
+  id            String        @id @default(uuid())
+  type          BackupType    @default(FULL)
+  status        BackupStatus  @default(RUNNING)
+  triggeredBy   BackupTrigger @default(MANUAL)
+  fileName      String?
+  filePath      String?
+  sizeBytes     BigInt?
+  startedAt     DateTime      @default(now())
+  completedAt   DateTime?
+  verifiedAt    DateTime?
+  errorMessage  String?
+  triggeredById String?
+
+  @@index([status, startedAt])
+  @@map("backup_records")
+}
+
+// -----------------------------------------------------------
+// Data Archiving — scoped to log/trail data only (Audit/Activity/
+// VoucherAuditEntry/ApiRequestLog/WebhookDelivery are safe to prune);
+// Voucher archiving reuses the VoucherStatus.ARCHIVED value Phase 2
+// already defined — this scans and transitions old CANCELLED/POSTED
+// Vouchers past retention to that existing status, never altering
+// financial figures.
+// -----------------------------------------------------------
+enum ArchiveScope {
+  AUDIT_LOG
+  API_REQUEST_LOG
+  WEBHOOK_DELIVERY
+}
+
+enum ArchiveRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model ArchiveRun {
+  id              String           @id @default(uuid())
+  scope           ArchiveScope
+  cutoffDate      DateTime
+  recordsArchived Int              @default(0)
+  status          ArchiveRunStatus @default(RUNNING)
+  errorMessage    String?
+  triggeredById   String?
+  startedAt       DateTime         @default(now())
+  completedAt     DateTime?
+
+  @@index([scope, startedAt])
+  @@map("archive_runs")
+}
+
+// -----------------------------------------------------------
+// System Configuration — the generic key/value settings store no
+// prior phase had (AccountingPreference from Phase 7 (docs Phase 1)
+// stays exactly as-is for accounting-specific behavior; this is for
+// everything Phase 8 itself introduces: security, notification,
+// workflow, backup and API settings).
+// -----------------------------------------------------------
+enum SystemSettingCategory {
+  GENERAL
+  ACCOUNTING
+  NOTIFICATION
+  WORKFLOW
+  BACKUP
+  SECURITY
+  API
+  // Phase 14 optimization pass — IntegrationConnector's 11 connector
+  // types were a full model+service+UI tab for something that only ever
+  // stored a JSON config blob + an optional reachability check. Folded
+  // here as a settings category instead (key = connector type/name,
+  // value = JSON config) — same information, one fewer module.
+  INTEGRATION
+}
+
+model SystemSetting {
+  id             String                @id @default(uuid())
+  organizationId String
+  category       SystemSettingCategory
+  key            String
+  value          String
+  description    String?
+  updatedById    String?
+  updatedAt      DateTime              @updatedAt
+  createdAt      DateTime              @default(now())
+
+  @@unique([organizationId, category, key])
+  @@map("system_settings")
+}
+
+// -----------------------------------------------------------
+// Integration Gateway — folded into SystemSetting (category
+// INTEGRATION) during the Phase 14 optimization pass. A dedicated
+// model + service + UI tab was overkill for rows that only ever store
+// a JSON config blob; SystemSetting's existing key/value shape covers
+// it (key = connector type/name, value = JSON config).
+// -----------------------------------------------------------
+// REST API Governance
+// -----------------------------------------------------------
+model ApiKey {
+  id                 String    @id @default(uuid())
+  organizationId     String
+  name               String
+  keyPrefix          String
+  keyHash            String
+  scopes             String // comma-separated permission-like scopes
+  rateLimitPerMinute Int       @default(60)
+  isActive           Boolean   @default(true)
+  expiresAt          DateTime?
+  lastUsedAt         DateTime?
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  revokedAt          DateTime?
+
+  @@index([organizationId, isActive])
+  @@map("api_keys")
+}
+
+// -----------------------------------------------------------
+// Webhook Foundation — outgoing events only (design brief lists
+// Incoming Events too, but nothing in this ERP yet needs to receive
+// a webhook; the inbound side is a receiver endpoint with no
+// subscriber, so it's left for the integration that first needs it).
+// -----------------------------------------------------------
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model WebhookSubscription {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  url            String
+  secret         String
+  eventTypes     String // comma-separated event codes
+  isActive       Boolean  @default(true)
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  deliveries WebhookDelivery[]
+
+  @@index([organizationId, isActive])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String                @id @default(uuid())
+  subscriptionId String
+  eventType      String
+  payloadJson    String
+  signature      String
+  status         WebhookDeliveryStatus @default(PENDING)
+  attempts       Int                   @default(0)
+  lastAttemptAt  DateTime?
+  responseStatus Int?
+  responseBody   String?
+  createdAt      DateTime              @default(now())
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId, status])
+  @@map("webhook_deliveries")
+}
+
+// -----------------------------------------------------------
+// AI Foundation — "No AI implementation required" per the design
+// brief; method STATISTICAL is a real, deterministic computation
+// (moving-average / linear-regression over existing Ledger movement,
+// the same primitives Phase 13's MIS Dashboard uses) so the feature
+// genuinely works today, with ML/LLM left as swap-in future methods
+// against the same result shape.
+// -----------------------------------------------------------
+enum AiInsightType {
+  CASH_FLOW_PREDICTION
+  EXPENSE_FORECAST
+  OUTSTANDING_PREDICTION
+  DUPLICATE_VOUCHER_FLAG
+}
+
+enum AiInsightMethod {
+  STATISTICAL
+  ML
+  LLM
+}
+
+model AiInsight {
+  id             String          @id @default(uuid())
+  organizationId String
+  type           AiInsightType
+  method         AiInsightMethod @default(STATISTICAL)
+  periodLabel    String?
+  resultJson     String
+  confidence     Float?
+  generatedAt    DateTime        @default(now())
+
+  @@index([organizationId, type, generatedAt])
+  @@map("ai_insights")
+}
+
+// -----------------------------------------------------------
+// Business Intelligence Foundation — KPI Engine. KpiDefinition is
+// seeded reference metadata; KpiSnapshot is populated by the
+// COMPUTE_KPI_SNAPSHOTS automation action, reading the same
+// Phase 13 (docs Phase 7) report primitives read-only.
+// -----------------------------------------------------------
+model KpiDefinition {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  category           String
+  formulaDescription String
+  unit               String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  snapshots KpiSnapshot[]
+
+  @@map("kpi_definitions")
+}
+
+model KpiSnapshot {
+  id              String   @id @default(uuid())
+  kpiDefinitionId String
+  organizationId  String
+  periodDate      DateTime
+  value           Decimal  @db.Decimal(18, 2)
+  dimensionJson   String?
+  createdAt       DateTime @default(now())
+
+  kpiDefinition KpiDefinition @relation(fields: [kpiDefinitionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, kpiDefinitionId, periodDate])
+  @@map("kpi_snapshots")
+}
+
+// -----------------------------------------------------------
+// Phase 15 — Business Financial Entry (Simplified Accounting UX).
+//
+// Every prior phase built a real double-entry engine (AccountGroup/
+// Ledger/VoucherType/Voucher/VoucherLine) and a set of specialized
+// business flows on top of it (Receipt, SupplierPayment, DriverAdvance,
+// EmployeeAdvance, BankTransfer, VehicleExpense...). None of that is
+// replaced here. FinancialEntry is a single new business-facing front
+// door — "where did money come from / where is it now / what for /
+// how much is allocated" — that either delegates to one of those
+// existing flows (when the source/destination combination matches one
+// exactly, so the specialized receivable/payable/advance bookkeeping
+// those flows already maintain keeps working unmodified) or, when none
+// applies, posts a plain Voucher itself through the same voucherService
+// every other module uses (see financial-entry.service.ts). Either way
+// this table is the one list a non-accountant reads; Voucher/Ledger
+// stay real underneath but are never surfaced through this API.
+// -----------------------------------------------------------
+
+enum FinancialEntryType {
+  MONEY_RECEIVED
+  MONEY_PAID
+  MONEY_TRANSFER
+  EXPENSE
+  ADVANCE_RECEIVED
+  ADVANCE_GIVEN
+  REFUND_RECEIVED
+  REFUND_PAID
+  LOAN_RECEIVED
+  LOAN_REPAYMENT
+  SALARY_SETTLEMENT
+  ADJUSTMENT
+}
+
+// Shared by FinancialEntry.sourceType/destinationType — one enum for
+// "which real-world master this money touches," the same reasoning
+// LedgerPartyType already uses for both sides of a VoucherLine.
+// VEHICLE/TRIP/EXPENSE carry no ledger of their own — they resolve to a
+// purpose-based expense ledger plus (best-effort) cost-center
+// attribution, never a party ledger — see resolveFinancialLedger() in
+// financialLedger.util.ts.
+enum FinancialPartyType {
+  CUSTOMER
+  SUPPLIER
+  DRIVER
+  EMPLOYEE
+  BANK
+  CASH
+  LOAN_PROVIDER
+  VEHICLE
+  TRIP
+  EXPENSE
+  OTHER
+}
+
+enum FinancialEntryStatus {
+  DRAFT
+  COMPLETED
+  // PARTIALLY_ALLOCATED/FULLY_ALLOCATED are no longer written by the
+  // application (the manual allocation feature was removed) — left in the
+  // enum rather than dropped, since Postgres has no simple "drop enum
+  // value" and no row ever used them outside of that removed feature.
+  PARTIALLY_ALLOCATED
+  FULLY_ALLOCATED
+  CANCELLED
+  REVERSED
+}
+
+enum FinancialEntryPurpose {
+  TRIP_ADVANCE
+  TRIP_PAYMENT
+  SUPPLIER_PAYMENT
+  DRIVER_ADVANCE
+  SALARY
+  FUEL
+  REPAIR
+  INSURANCE
+  LOAN_EMI
+  CUSTOMER_REFUND
+  SUPPLIER_REFUND
+  OFFICE_EXPENSE
+  // Additive — lets an EXPENSE entry against a Vehicle also log a real
+  // FastTagTransaction (fastTagLink below), the same way FUEL logs a
+  // FuelEntry, instead of falling back to the pooled misc-expense ledger.
+  TOLL
+  OTHER
+}
+
+model FinancialEntry {
+  id                   String                @id @default(uuid())
+  organizationId       String
+  entryNumber          String
+  entryType            FinancialEntryType
+  entryDate            DateTime              @db.Date
+  sourceType           FinancialPartyType
+  sourceId             String?
+  sourceLabel          String
+  destinationType      FinancialPartyType
+  destinationId        String?
+  destinationLabel     String
+  amount               Decimal               @db.Decimal(18, 2)
+  paymentModeId        String?
+  referenceNumber      String?
+  remarks              String?
+  purpose              FinancialEntryPurpose @default(OTHER)
+  purposeNotes         String?
+  status               FinancialEntryStatus  @default(DRAFT)
+  // Set only when create() delegated to an existing specialized flow —
+  // e.g. sourceDocumentType: "Receipt", sourceDocumentId: <receipt.id> —
+  // so the entry can still be traced back to the record actually holding
+  // the specialized state (isAdvance, invoice link, settlement link...).
+  // Null when the generic direct-voucher posting path was used instead.
+  sourceDocumentType   String?
+  sourceDocumentId     String?
+  // FIFO settlement breakdown for Customer/Supplier entries that get
+  // auto-split across multiple Invoices/SupplierBills/Trips instead of
+  // one lump Receipt/SupplierPayment — see fifoSettlement.util.ts. Each
+  // element is { targetType, targetId, targetLabel, amount,
+  // sourceDocumentType, sourceDocumentId, voucherId }. Deliberately a
+  // JSON array here rather than a new table — this is a read-only replay
+  // of what create()/cancel()/reverse() already did against real rows
+  // (Receipt/SupplierPayment/Voucher), not a second source of truth for
+  // any balance (design constraint: no duplicate allocation engines).
+  settlementPlan       Json?
+  // Optional Fleet-module linkage — set when this entry's Purpose is
+  // FUEL/TOLL and the extra fields needed to log a real FuelEntry /
+  // FastTagTransaction were supplied, so Fleet's own screens stay in
+  // sync instead of only a ledger posting existing (design intent: see
+  // "diesel and fast[tag]" follow-up request).
+  vehicleId            String?
+  tripId               String?
+  fuelStationId        String?
+  quantityLiters       Decimal?              @db.Decimal(10, 2)
+  ratePerLiter         Decimal?              @db.Decimal(10, 2)
+  odometerReading      Int?
+  fuelEntryId          String?
+  fastTagTransactionId String?
+  correctionOfId       String?               @unique
+  reversalOfId         String?               @unique
+  cancelledById        String?
+  cancelledAt          DateTime?
+  cancellationReason   String?
+  createdById          String?
+  updatedById          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  paymentMode        PaymentMode?        @relation(fields: [paymentModeId], references: [id])
+  correctionOf       FinancialEntry?     @relation("FinancialEntryCorrection", fields: [correctionOfId], references: [id])
+  correctedBy        FinancialEntry?     @relation("FinancialEntryCorrection")
+  reversalOf         FinancialEntry?     @relation("FinancialEntryReversal", fields: [reversalOfId], references: [id])
+  reversedBy         FinancialEntry?     @relation("FinancialEntryReversal")
+  vehicle            Vehicle?            @relation(fields: [vehicleId], references: [id])
+  trip               Trip?               @relation(fields: [tripId], references: [id])
+  fuelStation        FuelStation?        @relation(fields: [fuelStationId], references: [id])
+  fuelEntry          FuelEntry?          @relation(fields: [fuelEntryId], references: [id])
+  fastTagTransaction FastTagTransaction? @relation(fields: [fastTagTransactionId], references: [id])
+
+  @@unique([organizationId, entryNumber])
+  @@index([organizationId, entryType])
+  @@index([sourceType, sourceId])
+  @@index([destinationType, destinationId])
+  @@index([status])
+  @@map("financial_entries")
+}
