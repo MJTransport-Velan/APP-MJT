@@ -7,7 +7,6 @@ const tripWithRelations = Prisma.validator<Prisma.TripInclude>()({
   vehicle: true,
   driver: true,
   supplier: true,
-  route: true,
   fromLocation: true,
   toLocation: true,
   createdBy: true,
@@ -119,10 +118,6 @@ export const tripRepository = {
     return prisma.supplier.findFirst({ where: { id, deletedAt: null } });
   },
 
-  findRouteById(id: string) {
-    return prisma.transportRoute.findFirst({ where: { id, deletedAt: null } });
-  },
-
   /** Trips still attached to this intent (i.e. not cancelled/soft-deleted) — used to guard against creating a second trip for the same intent, and to find the auto-created placeholder to clean up if the intent is cancelled. */
   findOpenTripsByIntent(intentId: string) {
     return prisma.trip.findMany({ where: { intentId, deletedAt: null, status: { not: 'CANCELLED' } } });
@@ -137,6 +132,56 @@ export const tripRepository = {
         status: { notIn: RELEASED_TRIP_STATUSES },
         ...(excludeTripId ? { id: { not: excludeTripId } } : {}),
       },
+    });
+  },
+
+  /**
+   * The trip that overlapped this vehicle's calendar day at all — any trip
+   * whose window intersects [00:00:00.000, 23:59:59.999] on that UTC date.
+   * Fuel Entry / manual FASTag usage only collect a date (no time-of-day),
+   * so a point-in-time check would miss a trip that started later the same
+   * day (e.g. entryDate parses to UTC midnight, trip started at 5:46pm).
+   * Picks the most recently started trip if more than one overlapped.
+   */
+  findActiveTripForVehicleOnDate(vehicleId: string, date: Date) {
+    const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999));
+    return prisma.trip.findFirst({
+      where: {
+        vehicleId,
+        deletedAt: null,
+        actualStartDate: { not: null, lte: dayEnd },
+        OR: [{ actualEndDate: null }, { actualEndDate: { gte: dayStart } }],
+      },
+      orderBy: { actualStartDate: 'desc' },
+      select: {
+        id: true,
+        tripNumber: true,
+        vehicleId: true,
+        status: true,
+        driverId: true,
+        driver: { select: { id: true, name: true, code: true } },
+      },
+    });
+  },
+
+  /**
+   * The vehicle's current (still-occupying, non-terminal) trip if one
+   * exists, else its most recently started trip ever, else null. Used
+   * where a trip must always be attached to something (e.g. FASTag toll
+   * usage) rather than only matching a specific date.
+   */
+  async findCurrentOrLastTripForVehicle(vehicleId: string) {
+    const driverSelect = { driver: { select: { id: true, name: true, code: true } } };
+    const current = await prisma.trip.findFirst({
+      where: { vehicleId, deletedAt: null, status: { notIn: RELEASED_TRIP_STATUSES } },
+      include: driverSelect,
+    });
+    if (current) return current;
+    return prisma.trip.findFirst({
+      where: { vehicleId, deletedAt: null, actualStartDate: { not: null } },
+      orderBy: { actualStartDate: 'desc' },
+      include: driverSelect,
     });
   },
 
@@ -214,7 +259,6 @@ export const tripRepository = {
     intentId: string;
     fromLocationId: string;
     toLocationId: string;
-    routeId?: string;
     freightAmount?: number;
     loadWeight?: number;
     loadDescription?: string;
@@ -232,8 +276,9 @@ export const tripRepository = {
   update(
     id: string,
     data: Partial<{
-      routeId: string;
       freightAmount: number;
+      loadingCharges: number;
+      unloadingCharges: number;
       loadWeight: number;
       loadDescription: string;
       scheduledStartDate: Date;

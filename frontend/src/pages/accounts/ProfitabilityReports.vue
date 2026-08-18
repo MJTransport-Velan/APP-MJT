@@ -13,7 +13,6 @@
       <AppTab value="supplier">Supplier</AppTab>
       <AppTab value="vehicle">Vehicle</AppTab>
       <AppTab value="driver">Driver</AppTab>
-      <AppTab value="route">Route</AppTab>
     </AppTabs>
 
     <AppCard>
@@ -57,7 +56,7 @@ const from = ref(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().sl
 const to = ref(now.toISOString().slice(0, 10));
 const result = ref<ProfitabilityResult | null>(null);
 
-const labels: Record<string, string> = { customer: 'Customer', supplier: 'Supplier', vehicle: 'Vehicle', driver: 'Driver', route: 'Route' };
+const labels: Record<string, string> = { customer: 'Customer', supplier: 'Supplier', vehicle: 'Vehicle', driver: 'Driver' };
 function labelFor(tab: string) { return labels[tab] || tab; }
 
 async function fetchActive() {
@@ -67,7 +66,6 @@ async function fetchActive() {
     supplier: () => profitabilityReportApi.supplier(params),
     vehicle: () => profitabilityReportApi.vehicle(params),
     driver: () => profitabilityReportApi.driver(params),
-    route: () => profitabilityReportApi.route(params),
   };
   result.value = (await apiMap[activeTab.value]()).data.data;
 }

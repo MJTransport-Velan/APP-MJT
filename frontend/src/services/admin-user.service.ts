@@ -48,6 +48,9 @@ export const adminUserApi = {
   deactivate(id: string) {
     return api.patch<ApiResponse<AdminUser>>(`/administration/users/${id}/deactivate`);
   },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/administration/users/${id}`);
+  },
   resetPassword(id: string, newPassword: string) {
     return api.post<ApiResponse<null>>(`/administration/users/${id}/reset-password`, { newPassword });
   },

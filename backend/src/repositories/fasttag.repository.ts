@@ -29,20 +29,6 @@ export const fastTagRepository = {
     return prisma.vehicle.findFirst({ where: { id, deletedAt: null } });
   },
 
-  /** The trip that was actually running for this vehicle at a given moment — actualStartDate <= at <= (actualEndDate ?? now). Used to auto-attach an imported toll charge to "the respective trip". */
-  findActiveTripForVehicleAt(vehicleId: string, at: Date) {
-    return prisma.trip.findFirst({
-      where: {
-        vehicleId,
-        deletedAt: null,
-        actualStartDate: { not: null, lte: at },
-        OR: [{ actualEndDate: null }, { actualEndDate: { gte: at } }],
-      },
-      orderBy: { actualStartDate: 'desc' },
-      select: { id: true, tripNumber: true },
-    });
-  },
-
   findVehicleByRegistrationNumber(registrationNumber: string) {
     return prisma.vehicle.findFirst({ where: { registrationNumber, deletedAt: null } });
   },

@@ -7,6 +7,7 @@ import {
   createAssignmentSchema,
   assignmentIdParamSchema,
   completeAssignmentSchema,
+  updateAssignmentSchema,
 } from '../validators/vehicle-assignment.validator';
 
 const router = Router();
@@ -26,6 +27,18 @@ router.patch(
   authorize('vehicle.assign'),
   validate(assignmentIdParamSchema),
   vehicleAssignmentController.cancel
+);
+router.patch(
+  '/:id',
+  authorize('vehicle.assign'),
+  validate(updateAssignmentSchema),
+  vehicleAssignmentController.update
+);
+router.delete(
+  '/:id',
+  authorize('vehicle.assign'),
+  validate(assignmentIdParamSchema),
+  vehicleAssignmentController.remove
 );
 
 export default router;

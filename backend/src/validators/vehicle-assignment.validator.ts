@@ -36,4 +36,13 @@ export const completeAssignmentSchema = z.object({
   }),
 });
 
+export const updateAssignmentSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid assignment id') }),
+  body: z.object({
+    notes: z.string().optional(),
+  }),
+});
+
 export type CreateAssignmentInput = z.infer<typeof createAssignmentSchema>['body'];
+export type UpdateAssignmentInput = z.infer<typeof updateAssignmentSchema>['body'];

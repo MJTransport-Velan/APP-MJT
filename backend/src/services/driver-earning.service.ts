@@ -1,7 +1,9 @@
 import { Request } from 'express';
 import { DriverEarningWithRelations, driverEarningRepository } from '../repositories/driver-earning.repository';
+import { tripRepository } from '../repositories/trip.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
+import { vehicleExpenseInternalService } from './vehicle-expense.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateDriverEarningInput, CreateDriverEarningRuleInput, UpdateDriverEarningRuleInput } from '../validators/driver-earning.validator';
 
@@ -74,6 +76,28 @@ export const driverEarningService = {
       updatedById: actorId,
     });
 
+    // Only trip-linked earnings can be attributed to a vehicle — a general
+    // earning with no trip has no vehicle to mirror onto. Mirrored
+    // unconditionally on approval status, matching how Trip Financials'
+    // own driverCost already sums every non-deleted earning regardless of
+    // PENDING/APPROVED/REJECTED.
+    if (input.tripId) {
+      const trip = await tripRepository.findById(input.tripId);
+      if (trip?.vehicleId) {
+        await vehicleExpenseInternalService.logFromSource({
+          vehicleId: trip.vehicleId,
+          tripId: input.tripId,
+          category: 'DRIVER_SALARY',
+          amount,
+          expenseDate: earning.createdAt,
+          description: `Driver ${earning.earningCategory.toLowerCase()}: ${earning.name} (${driver.name})`,
+          referenceType: 'DriverEarning',
+          referenceId: earning.id,
+          actorId,
+        });
+      }
+    }
+
     await auditService.record({
       userId: actorId,
       action: 'CREATE',
@@ -112,6 +136,7 @@ export const driverEarningService = {
     if (existing.approvalStatus === 'APPROVED') throw new AppError('Cannot delete an earning that has already been approved', 409);
 
     await driverEarningRepository.softDelete(id, actorId);
+    await vehicleExpenseInternalService.removeFromSource({ referenceType: 'DriverEarning', referenceId: id, actorId });
     await auditService.record({ userId: actorId, action: 'DELETE', entityType: 'DriverEarning', entityId: id, description: `Deleted driver earning ${existing.earningNumber}` });
   },
 
@@ -127,7 +152,6 @@ export const driverEarningService = {
       calculationType: input.calculationType,
       value: input.value,
       vehicleTypeId: input.vehicleTypeId,
-      routeId: input.routeId,
       createdById: actorId,
       updatedById: actorId,
     });

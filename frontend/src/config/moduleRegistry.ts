@@ -73,7 +73,6 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Maintenance', icon: 'mdi-wrench-outline', to: '/fleet/maintenance' },
       { title: 'Spare Parts Usage', icon: 'mdi-cog-outline', to: '/fleet/spare-parts-usage' },
       { title: 'Vehicle Expenses', icon: 'mdi-cash-multiple', to: '/fleet/expenses' },
-      { title: 'Supplier Vehicles', icon: 'mdi-account-tie-outline', to: '/fleet/supplier-vehicles' },
       { title: 'Fleet Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/fleet/dashboard' },
     ],
   },
@@ -96,6 +95,7 @@ export const moduleRegistry: ModuleDef[] = [
       // on purpose. Everything below still works exactly as before; this
       // is what a non-accountant should reach for first.
       { title: 'Financial Entry', icon: 'mdi-cash-fast', to: '/accounts/financial-entry' },
+      { title: 'Capital Account', icon: 'mdi-account-cash-outline', to: '/accounts/capital-account' },
       { title: 'Accounts Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounts/dashboard' },
       // Transactions
       { title: 'Customer Invoices & Receipts', icon: 'mdi-receipt-text-outline', to: '/accounts/invoices' },
@@ -103,17 +103,19 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Credit Control', icon: 'mdi-shield-check-outline', to: '/accounts/credit-control' },
       { title: 'Collections', icon: 'mdi-phone-outline', to: '/accounts/collections' },
       { title: 'Trip Financials', icon: 'mdi-chart-line', to: '/accounts/trip-financials' },
+      { title: 'Balance Sheet', icon: 'mdi-book-open-page-variant-outline', to: '/accounts/balance-sheet' },
+      { title: 'Profit & Loss', icon: 'mdi-chart-bell-curve-cumulative', to: '/accounts/profit-loss' },
       // Driver & Payroll
       { title: 'Driver Advances & Allowances', icon: 'mdi-truck-fast-outline', to: '/accounts/driver-transactions' },
-      { title: 'Driver Loans', icon: 'mdi-hand-coin-outline', to: '/accounts/driver-loans' },
       { title: 'Driver Settlements', icon: 'mdi-file-document-check-outline', to: '/accounts/driver-settlements' },
+      { title: 'Driver Salary Structures', icon: 'mdi-account-cash-outline', to: '/accounts/driver-salary-structures' },
       { title: 'Salary Structures', icon: 'mdi-cash-sync', to: '/accounts/salary-structures' },
-      { title: 'Employee Advances & Loans', icon: 'mdi-account-cash-outline', to: '/accounts/employee-advances-loans' },
-      { title: 'Payroll Processing', icon: 'mdi-cash-multiple', to: '/accounts/payroll-runs' },
+      { title: 'Employee Advances', icon: 'mdi-account-cash-outline', to: '/accounts/employee-advances' },
       { title: 'Payroll Dashboard', icon: 'mdi-view-dashboard-outline', to: '/accounts/payroll-dashboard' },
       // Banking — everyday bank/cash position, no ledger jargon
       { title: 'Bank Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounting/banking/dashboard' },
       { title: 'Bank Accounts', icon: 'mdi-bank-outline', to: '/accounting/banking/bank-accounts' },
+      { title: 'Cash Accounts', icon: 'mdi-cash-multiple', to: '/accounting/banking/cash-accounts' },
       { title: 'Cheque Register', icon: 'mdi-checkbook', to: '/accounting/banking/cheques' },
       { title: 'Bank Transfers', icon: 'mdi-bank-transfer', to: '/accounting/banking/transfers' },
     ],
@@ -129,7 +131,6 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Vehicles', icon: 'mdi-truck', to: '/masters/vehicles' },
       { title: 'Drivers', icon: 'mdi-card-account-details-outline', to: '/masters/drivers' },
       { title: 'Suppliers', icon: 'mdi-account-tie-outline', to: '/masters/suppliers' },
-      { title: 'Routes', icon: 'mdi-map-marker-path', to: '/masters/routes' },
     ],
   },
   {

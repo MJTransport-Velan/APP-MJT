@@ -20,6 +20,7 @@ export type FinancialEntryPurpose =
   | 'TRIP_ADVANCE'
   | 'TRIP_PAYMENT'
   | 'SUPPLIER_PAYMENT'
+  | 'CLIENT_PAYMENT'
   | 'DRIVER_ADVANCE'
   | 'SALARY'
   | 'FUEL'
@@ -68,7 +69,6 @@ export interface FinancialEntry {
   fleet: {
     vehicleId: string | null;
     tripId: string | null;
-    fuelStationId: string | null;
     quantityLiters: number | null;
     ratePerLiter: number | null;
     odometerReading: number | null;
@@ -100,11 +100,15 @@ export interface CreateFinancialEntryInput {
   remarks?: string;
   purpose: FinancialEntryPurpose;
   purposeNotes?: string;
+  // Which calendar month a purpose=SALARY entry covers ("YYYY-MM"),
+  // distinct from entryDate (when it was actually paid). Falls back to
+  // entryDate's own month when omitted. Set by the Financial Entry
+  // "Salary Entry" toggle (Record Office Expense dialog).
+  salaryPeriod?: string;
   // Optional Fleet-module linkage — only used when purpose is FUEL (all
-  // four fuel fields) or TOLL (vehicleId only). Safe to omit.
+  // three fuel fields) or TOLL (vehicleId only). Safe to omit.
   vehicleId?: string;
   tripId?: string;
-  fuelStationId?: string;
   quantityLiters?: number;
   ratePerLiter?: number;
   odometerReading?: number;
@@ -117,6 +121,42 @@ export interface BankAndCashState {
   totalCashBalance: number;
 }
 
+export interface CustomerFinancialState {
+  customer: { id: string; name: string };
+  totalBilled: number;
+  totalReceived: number;
+  advance: number;
+  adjusted: number;
+  outstanding: number;
+  overdue: number;
+  refund: number;
+}
+
+export interface SupplierFinancialState {
+  supplier: { id: string; name: string };
+  totalPayable: number;
+  totalPaid: number;
+  advance: number;
+  adjusted: number;
+  outstanding: number;
+  overdue: number;
+  refund: number;
+}
+
+export interface DriverFinancialState {
+  driver: { id: string; name: string; code: string };
+  totalAdvance: number;
+  adjusted: number;
+  remaining: number;
+}
+
+export interface EmployeeFinancialState {
+  employee: { id: string; name: string; employeeCode: string };
+  totalAdvance: number;
+  adjusted: number;
+  remaining: number;
+}
+
 export interface FinancialDashboardSummary {
   moneyIn: number;
   moneyOut: number;
@@ -126,7 +166,6 @@ export interface FinancialDashboardSummary {
   supplierOutstanding: number;
   driverAdvances: number;
   employeeAdvances: number;
-  loanOutstanding: number;
   tripRevenue: number;
   tripCost: number;
   tripProfit: number;

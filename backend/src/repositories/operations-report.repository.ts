@@ -13,7 +13,6 @@ function tripWhere(filters: ReportFilters, extra: Prisma.TripWhereInput = {}): P
       filters.supplierId ? { supplierId: filters.supplierId } : {},
       filters.vehicleId ? { vehicleId: filters.vehicleId } : {},
       filters.driverId ? { driverId: filters.driverId } : {},
-      filters.routeId ? { routeId: filters.routeId } : {},
       dateRangeWhere('createdAt', filters),
     ],
   };
@@ -24,7 +23,6 @@ const tripInclude = {
   vehicle: true,
   driver: true,
   supplier: true,
-  route: true,
   fromLocation: true,
   toLocation: true,
 } satisfies Prisma.TripInclude;
@@ -37,7 +35,7 @@ function serializeTrip(trip: Prisma.TripGetPayload<{ include: typeof tripInclude
     vehicle: trip.vehicle?.registrationNumber || '-',
     driver: trip.driver?.name || '-',
     supplier: trip.supplier?.name || '-',
-    route: trip.route?.name || `${trip.fromLocation.name} -> ${trip.toLocation.name}`,
+    route: `${trip.fromLocation.name} -> ${trip.toLocation.name}`,
     freightAmount: trip.freightAmount,
     supplierRate: trip.supplierRate,
     scheduledStartDate: trip.scheduledStartDate,

@@ -106,6 +106,7 @@
           v-else
           v-model="(form[field.key] as string)"
           :label="field.label"
+          :maxlength="field.key === 'phone' ? 10 : undefined"
           :error-messages="errors[field.key]"
           class="mb-2"
         />

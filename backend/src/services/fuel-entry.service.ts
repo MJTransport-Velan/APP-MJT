@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import ExcelJS from 'exceljs';
 import { fuelEntryRepository, FuelEntryWithRelations } from '../repositories/fuel-entry.repository';
+import { tripRepository } from '../repositories/trip.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { vehicleExpenseInternalService } from './vehicle-expense.service';
@@ -22,12 +23,9 @@ function serialize(entry: FuelEntryWithRelations) {
     invoiceNumber: entry.invoiceNumber,
     referenceNumber: entry.referenceNumber,
     remarks: entry.remarks,
-    isAnomaly: entry.isAnomaly,
-    anomalyReasons: entry.anomalyReasons,
     entryDate: entry.entryDate,
     billDocument: entry.billDocument,
     vehicle: { id: entry.vehicle.id, registrationNumber: entry.vehicle.registrationNumber },
-    fuelStation: entry.fuelStation ? { id: entry.fuelStation.id, name: entry.fuelStation.name } : null,
     fuelCard: entry.fuelCard ? { id: entry.fuelCard.id, cardNumber: entry.fuelCard.cardNumber } : null,
     trip: entry.trip ? { id: entry.trip.id, tripNumber: entry.trip.tripNumber } : null,
     driver: entry.driver ? { id: entry.driver.id, name: entry.driver.name, code: entry.driver.code } : null,
@@ -37,58 +35,6 @@ function serialize(entry: FuelEntryWithRelations) {
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   };
-}
-
-const FREQUENT_ENTRY_WINDOW_HOURS = 6;
-const HIGH_QUANTITY_RATIO = 1.5;
-const LOW_MILEAGE_RATIO = 0.5;
-const LARGE_DISTANCE_JUMP_KM = 3000;
-
-/** Best-effort anomaly checks — none of these hard-block a save, they only flag the entry for review (except vehicle/trip/odometer integrity checks, which remain hard 400s in create()/update()). */
-async function detectAnomalies(params: {
-  vehicleId: string;
-  entryDate: Date;
-  quantityLiters: number;
-  mileageKmpl?: number;
-  distanceCovered?: number;
-  tripStatus?: string;
-  excludeId?: string;
-}): Promise<string[]> {
-  const reasons: string[] = [];
-
-  const duplicate = await fuelEntryRepository.findPossibleDuplicate(params.vehicleId, params.entryDate, params.quantityLiters, params.excludeId);
-  if (duplicate) reasons.push('Possible duplicate entry (same vehicle, date and quantity)');
-
-  const recent = await fuelEntryRepository.recentEntriesForVehicle(params.vehicleId, 5, params.excludeId);
-  if (recent.length >= 2) {
-    const avgQuantity = recent.reduce((sum, e) => sum + Number(e.quantityLiters), 0) / recent.length;
-    if (avgQuantity > 0 && params.quantityLiters > avgQuantity * HIGH_QUANTITY_RATIO) {
-      reasons.push('Fuel quantity unusually high compared to this vehicle\'s recent average');
-    }
-    const mileageSamples = recent.filter((e) => e.mileageKmpl != null).map((e) => Number(e.mileageKmpl));
-    if (params.mileageKmpl != null && mileageSamples.length >= 2) {
-      const avgMileage = mileageSamples.reduce((sum, v) => sum + v, 0) / mileageSamples.length;
-      if (avgMileage > 0 && params.mileageKmpl < avgMileage * LOW_MILEAGE_RATIO) {
-        reasons.push('Mileage unusually low compared to this vehicle\'s recent average');
-      }
-    }
-  }
-
-  if (params.distanceCovered != null && params.distanceCovered > LARGE_DISTANCE_JUMP_KM) {
-    reasons.push('Unusually large distance covered since the previous fuel entry — check odometer reading');
-  }
-
-  const since = new Date(params.entryDate.getTime() - FREQUENT_ENTRY_WINDOW_HOURS * 60 * 60 * 1000);
-  const frequentCount = await fuelEntryRepository.countEntriesSince(params.vehicleId, since, params.excludeId);
-  if (frequentCount > 0) {
-    reasons.push(`Another fuel entry for this vehicle exists within ${FREQUENT_ENTRY_WINDOW_HOURS} hours`);
-  }
-
-  if (params.tripStatus === 'COMPLETED' || params.tripStatus === 'CANCELLED') {
-    reasons.push('Fuel entered against a trip that is already completed or cancelled');
-  }
-
-  return reasons;
 }
 
 export const fuelEntryService = {
@@ -106,12 +52,10 @@ export const fuelEntryService = {
       skip,
       take,
       vehicleId: (query.vehicleId as string) || undefined,
-      fuelStationId: (query.fuelStationId as string) || undefined,
       tripId: (query.tripId as string) || undefined,
       driverId: (query.driverId as string) || undefined,
       fuelType: (query.fuelType as string) || undefined,
       billingMethod: (query.billingMethod as string) || undefined,
-      isAnomaly: query.isAnomaly === undefined ? undefined : query.isAnomaly === 'true',
       from: query.from ? new Date(query.from as string) : undefined,
       to,
     });
@@ -133,28 +77,6 @@ export const fuelEntryService = {
       throw new AppError('Vehicle not found', 404);
     }
 
-    let fuelStation: Awaited<ReturnType<typeof fuelEntryRepository.findFuelStationById>> = null;
-    if (input.fuelStationId) {
-      fuelStation = await fuelEntryRepository.findFuelStationById(input.fuelStationId);
-      if (!fuelStation) {
-        throw new AppError('Fuel station not found', 404);
-      }
-    }
-
-    let tripStatus: string | undefined;
-    if (input.tripId) {
-      const trip = await fuelEntryRepository.findTripById(input.tripId);
-      if (!trip) throw new AppError('Trip not found', 404);
-      if (trip.vehicleId !== input.vehicleId) {
-        throw new AppError('The selected vehicle is not assigned to this trip', 422);
-      }
-      tripStatus = trip.status;
-    }
-
-    if (input.driverId) {
-      const driver = await fuelEntryRepository.findDriverById(input.driverId);
-      if (!driver) throw new AppError('Driver not found', 404);
-    }
     if (input.supplierId) {
       const supplier = await fuelEntryRepository.findSupplierById(input.supplierId);
       if (!supplier) throw new AppError('Supplier not found', 404);
@@ -168,6 +90,28 @@ export const fuelEntryService = {
     if (Number.isNaN(entryDate.getTime())) {
       throw new AppError('Invalid fuel entry date', 400);
     }
+
+    // Trip isn't picked manually — it's derived from whichever trip this
+    // vehicle was actually running at the entry's date, unless the caller
+    // explicitly named one. Driver is never picked manually at all — it
+    // always comes from that trip's assigned driver.
+    let tripId = input.tripId;
+    let driverId: string | undefined;
+    if (tripId) {
+      const trip = await fuelEntryRepository.findTripById(tripId);
+      if (!trip) throw new AppError('Trip not found', 404);
+      if (trip.vehicleId !== input.vehicleId) {
+        throw new AppError('The selected vehicle is not assigned to this trip', 422);
+      }
+      driverId = trip.driverId ?? undefined;
+    } else {
+      const activeTrip = await tripRepository.findActiveTripForVehicleOnDate(input.vehicleId, entryDate);
+      if (activeTrip) {
+        tripId = activeTrip.id;
+        driverId = activeTrip.driverId ?? undefined;
+      }
+    }
+
     const totalAmount = Number((input.quantityLiters * input.ratePerLiter).toFixed(2));
 
     // Mileage calculation: derive distance/kmpl relative to the vehicle's
@@ -184,24 +128,14 @@ export const fuelEntryService = {
       mileageKmpl = Number((distanceCovered / input.quantityLiters).toFixed(2));
     }
 
-    const anomalyReasons = await detectAnomalies({
-      vehicleId: input.vehicleId,
-      entryDate,
-      quantityLiters: input.quantityLiters,
-      mileageKmpl,
-      distanceCovered,
-      tripStatus,
-    });
-
     const entry = await fuelEntryRepository.create({
       vehicleId: input.vehicleId,
       fuelCardId: input.fuelCardId,
-      fuelStationId: input.fuelStationId,
       fuelType: input.fuelType,
       billingMethod: input.billingMethod,
       location: input.location,
-      tripId: input.tripId,
-      driverId: input.driverId,
+      tripId,
+      driverId,
       supplierId: input.supplierId,
       paymentModeId: input.paymentModeId,
       advanceId: input.advanceId,
@@ -214,8 +148,6 @@ export const fuelEntryService = {
       invoiceNumber: input.invoiceNumber,
       referenceNumber: input.referenceNumber,
       remarks: input.remarks,
-      isAnomaly: anomalyReasons.length > 0,
-      anomalyReasons: anomalyReasons.length ? anomalyReasons.join('; ') : undefined,
       entryDate,
       createdById: actorId,
       updatedById: actorId,
@@ -231,10 +163,11 @@ export const fuelEntryService = {
 
     await vehicleExpenseInternalService.logFromSource({
       vehicleId: input.vehicleId,
+      tripId,
       category: 'FUEL',
       amount: totalAmount,
       expenseDate: entryDate,
-      description: fuelStation ? `Fuel: ${input.quantityLiters}L at ${fuelStation.name}` : `Fuel: ${input.quantityLiters}L`,
+      description: `Fuel: ${input.quantityLiters}L`,
       referenceType: 'FuelEntry',
       referenceId: entry.id,
       actorId,
@@ -249,17 +182,6 @@ export const fuelEntryService = {
       throw new AppError('Fuel entry not found', 404);
     }
 
-    if (input.tripId) {
-      const trip = await fuelEntryRepository.findTripById(input.tripId);
-      if (!trip) throw new AppError('Trip not found', 404);
-      if (trip.vehicleId !== existing.vehicleId) {
-        throw new AppError('The selected trip is not assigned to this fuel entry\'s vehicle', 422);
-      }
-    }
-    if (input.driverId) {
-      const driver = await fuelEntryRepository.findDriverById(input.driverId);
-      if (!driver) throw new AppError('Driver not found', 404);
-    }
     if (input.supplierId) {
       const supplier = await fuelEntryRepository.findSupplierById(input.supplierId);
       if (!supplier) throw new AppError('Supplier not found', 404);
@@ -270,22 +192,34 @@ export const fuelEntryService = {
     const totalAmount = Number((quantityLiters * ratePerLiter).toFixed(2));
     const entryDate = input.entryDate ? new Date(input.entryDate) : existing.entryDate;
 
-    const anomalyReasons = await detectAnomalies({
-      vehicleId: existing.vehicleId,
-      entryDate,
-      quantityLiters,
-      mileageKmpl: existing.mileageKmpl != null ? Number(existing.mileageKmpl) : undefined,
-      distanceCovered: existing.distanceCovered ?? undefined,
-      excludeId: id,
-    });
+    // Trip/driver are only touched when the caller explicitly names a trip,
+    // or changes the date (which may put the vehicle on a different trip —
+    // or no trip at all, in which case both clear back to null). Driver is
+    // never picked manually — it always follows whichever trip is resolved.
+    let tripId: string | undefined = input.tripId;
+    let driverId: string | undefined;
+    let tripTouched = false;
+    if (input.tripId) {
+      const trip = await fuelEntryRepository.findTripById(input.tripId);
+      if (!trip) throw new AppError('Trip not found', 404);
+      if (trip.vehicleId !== existing.vehicleId) {
+        throw new AppError('The selected trip is not assigned to this fuel entry\'s vehicle', 422);
+      }
+      driverId = trip.driverId ?? undefined;
+      tripTouched = true;
+    } else if (input.entryDate) {
+      const activeTrip = await tripRepository.findActiveTripForVehicleOnDate(existing.vehicleId, entryDate);
+      tripId = activeTrip?.id;
+      driverId = activeTrip?.driverId ?? undefined;
+      tripTouched = true;
+    }
 
     await fuelEntryRepository.update(id, {
-      fuelStationId: input.fuelStationId,
       fuelType: input.fuelType,
       billingMethod: input.billingMethod,
       location: input.location,
-      tripId: input.tripId,
-      driverId: input.driverId,
+      tripId: tripTouched ? (tripId ?? null) : undefined,
+      driverId: tripTouched ? (driverId ?? null) : undefined,
       supplierId: input.supplierId,
       paymentModeId: input.paymentModeId,
       advanceId: input.advanceId,
@@ -295,10 +229,18 @@ export const fuelEntryService = {
       invoiceNumber: input.invoiceNumber,
       referenceNumber: input.referenceNumber,
       remarks: input.remarks,
-      isAnomaly: anomalyReasons.length > 0,
-      anomalyReasons: anomalyReasons.length ? anomalyReasons.join('; ') : null,
       entryDate: input.entryDate ? entryDate : undefined,
       updatedById: actorId,
+    });
+
+    await vehicleExpenseInternalService.updateFromSource({
+      referenceType: 'FuelEntry',
+      referenceId: id,
+      tripId: tripTouched ? (tripId ?? null) : undefined,
+      amount: totalAmount,
+      expenseDate: input.entryDate ? entryDate : undefined,
+      description: `Fuel: ${quantityLiters}L`,
+      actorId,
     });
 
     await auditService.record({
@@ -319,6 +261,7 @@ export const fuelEntryService = {
     }
 
     await fuelEntryRepository.softDelete(id, actorId);
+    await vehicleExpenseInternalService.removeFromSource({ referenceType: 'FuelEntry', referenceId: id, actorId });
 
     await auditService.record({
       userId: actorId,
@@ -386,13 +329,13 @@ export const fuelEntryService = {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Fuel Entries');
     const columns = [
-      'vehicleRegistrationNumber', 'fuelStation', 'quantityLiters', 'ratePerLiter', 'odometerReading',
-      'entryDate', 'tripNumber', 'driverCode', 'fuelType', 'billingMethod', 'invoiceNumber', 'referenceNumber', 'remarks',
+      'vehicleRegistrationNumber', 'quantityLiters', 'ratePerLiter', 'odometerReading',
+      'entryDate', 'tripNumber', 'fuelType', 'billingMethod', 'invoiceNumber', 'referenceNumber', 'remarks',
     ];
     sheet.addRow(columns);
     sheet.getRow(1).font = { bold: true };
-    sheet.addRow(['TN38AZ1001', 'Highway Fuels - Chennai Bypass', 150, 94.5, 51200, '2026-08-10', '', '', 'DIESEL', 'FUEL_CARD', 'INV-1001', 'REF-1001', 'Example row — fuelStation, trip, driver and billingMethod are all optional']);
-    sheet.addRow(['TN38AZ1002', '', 40, 96, 30500, '2026-08-10', '', '', 'DIESEL', 'DIRECT_PAYMENT', '', '', 'Example row with no fuel station — direct cash payment at a roadside pump']);
+    sheet.addRow(['TN38AZ1001', 150, 94.5, 51200, '2026-08-10', '', 'DIESEL', 'FUEL_CARD', 'INV-1001', 'REF-1001', 'Example row — trip and billingMethod are optional; driver is auto-derived from the trip, never entered directly']);
+    sheet.addRow(['TN38AZ1002', 40, 96, 30500, '2026-08-10', '', 'DIESEL', 'DIRECT_PAYMENT', '', '', 'Example row — direct cash payment at a roadside pump']);
     sheet.columns.forEach((col) => { col.width = 22; });
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);

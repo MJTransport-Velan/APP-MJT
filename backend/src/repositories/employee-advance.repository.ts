@@ -44,11 +44,6 @@ export const employeeAdvanceRepository = {
     return prisma.employeeAdvance.findMany({ where: { employeeId, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null } });
   },
 
-  markSettled(ids: string[], payrollRunLineId: string) {
-    if (ids.length === 0) return Promise.resolve();
-    return prisma.employeeAdvance.updateMany({ where: { id: { in: ids } }, data: { isSettled: true, payrollRunLineId } });
-  },
-
   async nextAdvanceNumber() {
     const count = await prisma.employeeAdvance.count();
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');

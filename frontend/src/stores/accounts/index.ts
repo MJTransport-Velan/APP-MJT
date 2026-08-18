@@ -179,6 +179,10 @@ export const useSupplierPaymentStore = defineStore('acctsSupplierPayments', {
       const response = await supplierPaymentApi.update(id, payload);
       return response.data.data;
     },
+    async allocate(id: string, billId: string) {
+      const response = await supplierPaymentApi.allocate(id, billId);
+      return response.data.data;
+    },
     async remove(id: string) {
       await supplierPaymentApi.remove(id);
     },

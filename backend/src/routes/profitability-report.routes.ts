@@ -18,6 +18,5 @@ router.get('/customer', authorize('profitability_report.view'), validate(rangeRe
 router.get('/supplier', authorize('profitability_report.view'), validate(rangeReportQuerySchema), profitabilityReportController.supplier);
 router.get('/vehicle', authorize('profitability_report.view'), validate(rangeReportQuerySchema), profitabilityReportController.vehicle);
 router.get('/driver', authorize('profitability_report.view'), validate(rangeReportQuerySchema), profitabilityReportController.driver);
-router.get('/route', authorize('profitability_report.view'), validate(rangeReportQuerySchema), profitabilityReportController.route);
 
 export default router;

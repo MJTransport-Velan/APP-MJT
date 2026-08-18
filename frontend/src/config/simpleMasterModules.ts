@@ -66,33 +66,6 @@ export const simpleMasterModules: SimpleMasterConfig[] = [
     fields: [{ key: 'description', label: 'Description', type: 'textarea' }],
   },
   {
-    routeKey: 'fuel-stations',
-    label: 'Fuel Stations',
-    singularLabel: 'Fuel Station',
-    apiPath: '/masters/fuel-stations',
-    permissionPrefix: 'fuel_station',
-    nameFieldKey: 'name',
-    nameFieldLabel: 'Name',
-    fields: [
-      { key: 'location', label: 'Location', type: 'text' },
-      { key: 'contactPerson', label: 'Contact Person', type: 'text' },
-      { key: 'phone', label: 'Phone', type: 'text' },
-    ],
-  },
-  {
-    routeKey: 'banks',
-    label: 'Banks',
-    singularLabel: 'Bank',
-    apiPath: '/masters/banks',
-    permissionPrefix: 'bank',
-    nameFieldKey: 'name',
-    nameFieldLabel: 'Name',
-    fields: [
-      { key: 'branch', label: 'Branch', type: 'text' },
-      { key: 'ifscCode', label: 'IFSC Code', type: 'text' },
-    ],
-  },
-  {
     routeKey: 'payment-modes',
     label: 'Payment Modes',
     singularLabel: 'Payment Mode',

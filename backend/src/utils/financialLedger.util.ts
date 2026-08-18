@@ -14,6 +14,7 @@ export type FinancialEntryPurpose =
   | 'TRIP_ADVANCE'
   | 'TRIP_PAYMENT'
   | 'SUPPLIER_PAYMENT'
+  | 'CLIENT_PAYMENT'
   | 'DRIVER_ADVANCE'
   | 'SALARY'
   | 'FUEL'

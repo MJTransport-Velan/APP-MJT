@@ -42,6 +42,26 @@
         </AppCardText>
       </AppCard>
       <p v-if="store.items.length === 0" class="text-caption text-medium-emphasis">No salary structure has been set up for this employee yet.</p>
+
+      <AppCard class="mt-4">
+        <AppCardTitle class="text-subtitle-1">Salary Payment History</AppCardTitle>
+        <AppCardText>
+          <p class="text-caption text-medium-emphasis mb-3">
+            Marked paid automatically from Financial Entry — pick this employee as the destination with purpose "Salary".
+          </p>
+          <AppTable density="compact">
+            <thead><tr><th>Month</th><th class="text-right">Amount</th><th>Paid On</th></tr></thead>
+            <tbody>
+              <tr v-for="p in paymentStore.items" :key="p.id">
+                <td>{{ monthLabel(p.year, p.month) }}</td>
+                <td class="text-right">{{ formatCurrency(p.amount) }}</td>
+                <td>{{ new Date(p.paidDate).toLocaleDateString() }}</td>
+              </tr>
+            </tbody>
+          </AppTable>
+          <p v-if="paymentStore.items.length === 0" class="text-caption text-medium-emphasis pa-2">No salary payments recorded for this employee yet.</p>
+        </AppCardText>
+      </AppCard>
     </template>
 
     <AppDialog v-model="createDialog" max-width="640" persistent>
@@ -70,7 +90,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
-import { useSalaryStructureStore } from '@/stores/accounts/driverPayroll';
+import { useSalaryStructureStore, useEmployeeSalaryPaymentStore } from '@/stores/accounts/driverPayroll';
 import { employeeApi } from '@/services/masters';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
@@ -78,7 +98,13 @@ import { AppCard, AppCardTitle, AppCardText, AppCardActions, AppSelect, AppTextF
 import type { SalaryStructure } from '@/types/phase5.types';
 
 const store = useSalaryStructureStore();
+const paymentStore = useEmployeeSalaryPaymentStore();
 const { success, error } = useSnackbar();
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function monthLabel(year: number, month: number) {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
 
 const employeeId = ref('');
 const employeeOptions = ref<{ id: string; name: string }[]>([]);
@@ -92,7 +118,7 @@ function deductionsOf(s: SalaryStructure) { return s.components.filter((c) => !c
 
 async function fetchForEmployee() {
   if (!employeeId.value) return;
-  await store.fetchForEmployee(employeeId.value);
+  await Promise.all([store.fetchForEmployee(employeeId.value), paymentStore.fetchForEmployee(employeeId.value)]);
 }
 
 const createDialog = ref(false);

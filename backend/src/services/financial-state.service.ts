@@ -135,7 +135,7 @@ export const financialStateService = {
       select: { category: true, amount: true },
     });
 
-    const buckets = { fastTag: 0, diesel: 0, repairs: 0, insurance: 0, tyres: 0, battery: 0, other: 0 };
+    const buckets = { fastTag: 0, diesel: 0, repairs: 0, insurance: 0, tyres: 0, battery: 0, driverSalary: 0, other: 0 };
     const REPAIR_CATEGORIES = ['REPAIR', 'SERVICE', 'BREAKDOWN', 'MAINTENANCE'];
     for (const e of expenses) {
       const amount = Number(e.amount);
@@ -145,11 +145,19 @@ export const financialStateService = {
       else if (e.category === 'INSURANCE') buckets.insurance += amount;
       else if (e.category === 'TYRE') buckets.tyres += amount;
       else if (e.category === 'BATTERY') buckets.battery += amount;
+      else if (e.category === 'DRIVER_SALARY') buckets.driverSalary += amount;
       else buckets.other += amount;
     }
 
     const totalOperatingCost = round2(
-      buckets.fastTag + buckets.diesel + buckets.repairs + buckets.insurance + buckets.tyres + buckets.battery + buckets.other
+      buckets.fastTag +
+        buckets.diesel +
+        buckets.repairs +
+        buckets.insurance +
+        buckets.tyres +
+        buckets.battery +
+        buckets.driverSalary +
+        buckets.other
     );
 
     return {
@@ -160,6 +168,7 @@ export const financialStateService = {
       insurance: round2(buckets.insurance),
       tyres: round2(buckets.tyres),
       battery: round2(buckets.battery),
+      driverSalary: round2(buckets.driverSalary),
       other: round2(buckets.other),
       totalOperatingCost,
     };
@@ -209,7 +218,7 @@ export const financialStateService = {
     const to = query.to ? new Date(`${query.to}T23:59:59.999Z`) : undefined;
     const dateFilter = from || to ? { entryDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {};
 
-    const [moneyIn, moneyOut, custOutstanding, suppOutstanding, driverAdvances, employeeAdvances, loanOutstanding, fundState] = await Promise.all([
+    const [moneyIn, moneyOut, custOutstanding, suppOutstanding, driverAdvances, employeeAdvances, fundState] = await Promise.all([
       prisma.financialEntry.aggregate({
         where: { ...dateFilter, entryType: { in: ['MONEY_RECEIVED', 'ADVANCE_RECEIVED', 'REFUND_RECEIVED', 'LOAN_RECEIVED'] }, status: { notIn: ['CANCELLED'] }, deletedAt: null },
         _sum: { amount: true },
@@ -222,7 +231,6 @@ export const financialStateService = {
       prisma.supplierBill.aggregate({ where: { deletedAt: null, status: { not: 'CANCELLED' } }, _sum: { outstandingAmount: true } }),
       prisma.driverAdvance.aggregate({ where: { deletedAt: null, approvalStatus: 'APPROVED', isSettled: false }, _sum: { amount: true } }),
       prisma.employeeAdvance.aggregate({ where: { deletedAt: null, approvalStatus: 'APPROVED', isSettled: false }, _sum: { amount: true } }),
-      prisma.partyLoan.aggregate({ where: { deletedAt: null, status: 'ACTIVE' }, _sum: { principalAmount: true } }),
       financialStateService.bankAndCashState(undefined),
     ]);
 
@@ -249,7 +257,6 @@ export const financialStateService = {
       supplierOutstanding: round2(Number(suppOutstanding._sum.outstandingAmount ?? 0)),
       driverAdvances: round2(Number(driverAdvances._sum.amount ?? 0)),
       employeeAdvances: round2(Number(employeeAdvances._sum.amount ?? 0)),
-      loanOutstanding: round2(Number(loanOutstanding._sum.principalAmount ?? 0)),
       tripRevenue,
       tripCost,
       tripProfit: round2(tripRevenue - tripCost),

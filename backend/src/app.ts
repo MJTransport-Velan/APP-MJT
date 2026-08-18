@@ -8,6 +8,7 @@ import { env } from './config/env';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 import { apiRequestLogMiddleware } from './middlewares/apiRequestLog.middleware';
+import { uppercaseBody } from './middlewares/uppercaseBody.middleware';
 
 const app: Application = express();
 
@@ -20,6 +21,7 @@ app.use(
 );
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(uppercaseBody);
 app.use(morgan(env.nodeEnv === 'development' ? 'dev' : 'combined'));
 
 const limiter = rateLimit({

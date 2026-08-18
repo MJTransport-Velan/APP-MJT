@@ -97,7 +97,6 @@ const fuelConsumptionReport: ReportDefinition = {
   label: 'Fuel Consumption Report',
   columns: [
     { key: 'vehicle', label: 'Vehicle' },
-    { key: 'fuelStation', label: 'Station' },
     { key: 'quantityLiters', label: 'Quantity (L)' },
     { key: 'totalAmount', label: 'Amount' },
     { key: 'mileageKmpl', label: 'Mileage (km/l)' },
@@ -111,7 +110,7 @@ const fuelConsumptionReport: ReportDefinition = {
     const [rows, total] = await prisma.$transaction([
       prisma.fuelEntry.findMany({
         where,
-        include: { vehicle: true, fuelStation: true },
+        include: { vehicle: true },
         orderBy: { entryDate: 'desc' },
         skip,
         take,
@@ -121,7 +120,6 @@ const fuelConsumptionReport: ReportDefinition = {
     return {
       rows: rows.map((f) => ({
         vehicle: f.vehicle.registrationNumber,
-        fuelStation: f.fuelStation?.name ?? '-',
         quantityLiters: f.quantityLiters,
         totalAmount: f.totalAmount,
         mileageKmpl: f.mileageKmpl,
@@ -341,32 +339,6 @@ const fuelDriverWiseReport: ReportDefinition = {
   },
 };
 
-const fuelStationWiseReport: ReportDefinition = {
-  key: 'fuelStationWiseReport',
-  label: 'Fuel Station-wise Report',
-  columns: [
-    { key: 'fuelStation', label: 'Fuel Station' },
-    { key: 'totalLiters', label: 'Total Litres' },
-    { key: 'totalCost', label: 'Total Cost' },
-    { key: 'entryCount', label: 'Entries' },
-  ],
-  run: async (filters) => {
-    const where: Prisma.FuelEntryWhereInput = { deletedAt: null, AND: [dateRangeWhere('entryDate', filters)] };
-    const entries = await prisma.fuelEntry.findMany({ where, include: { fuelStation: true } });
-    const byStation = new Map<string, { name: string; liters: number; cost: number; count: number }>();
-    for (const e of entries) {
-      const stationKey = e.fuelStationId ?? 'none';
-      const existing = byStation.get(stationKey) || { name: e.fuelStation?.name ?? 'No Station (Direct/OTP)', liters: 0, cost: 0, count: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
-      existing.count += 1;
-      byStation.set(stationKey, existing);
-    }
-    const rows = Array.from(byStation.values()).map((v) => ({ fuelStation: v.name, totalLiters: Number(v.liters.toFixed(2)), totalCost: Number(v.cost.toFixed(2)), entryCount: v.count }));
-    return { rows, total: rows.length };
-  },
-};
-
 const fuelDateWiseReport: ReportDefinition = {
   key: 'fuelDateWiseReport',
   label: 'Date-wise Fuel Report',
@@ -419,41 +391,6 @@ const fuelMonthlySummaryReport: ReportDefinition = {
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([month, v]) => ({ month, totalLiters: Number(v.liters.toFixed(2)), totalCost: Number(v.cost.toFixed(2)), avgRate: Number((v.rateSum / v.count).toFixed(2)) }));
     return { rows, total: rows.length };
-  },
-};
-
-const fuelAnomalyReport: ReportDefinition = {
-  key: 'fuelAnomalyReport',
-  label: 'Fuel Anomaly Report',
-  columns: [
-    { key: 'vehicle', label: 'Vehicle' },
-    { key: 'entryDate', label: 'Date' },
-    { key: 'quantityLiters', label: 'Quantity (L)' },
-    { key: 'totalAmount', label: 'Amount' },
-    { key: 'mileageKmpl', label: 'Mileage (km/l)' },
-    { key: 'anomalyReasons', label: 'Reasons' },
-  ],
-  run: async (filters, skip, take) => {
-    const where: Prisma.FuelEntryWhereInput = {
-      deletedAt: null,
-      isAnomaly: true,
-      AND: [filters.vehicleId ? { vehicleId: filters.vehicleId } : {}, dateRangeWhere('entryDate', filters)],
-    };
-    const [rows, total] = await prisma.$transaction([
-      prisma.fuelEntry.findMany({ where, include: { vehicle: true }, orderBy: { entryDate: 'desc' }, skip, take }),
-      prisma.fuelEntry.count({ where }),
-    ]);
-    return {
-      rows: rows.map((e) => ({
-        vehicle: e.vehicle.registrationNumber,
-        entryDate: e.entryDate,
-        quantityLiters: e.quantityLiters,
-        totalAmount: e.totalAmount,
-        mileageKmpl: e.mileageKmpl,
-        anomalyReasons: e.anomalyReasons,
-      })),
-      total,
-    };
   },
 };
 
@@ -667,10 +604,8 @@ export const fleetReportRepository: Record<string, ReportDefinition> = {
   fuelVehicleWiseReport,
   fuelTripWiseReport,
   fuelDriverWiseReport,
-  fuelStationWiseReport,
   fuelDateWiseReport,
   fuelMonthlySummaryReport,
-  fuelAnomalyReport,
   fastTagUsageReport,
   fastTagRechargeReport,
   fastTagVehicleWiseReport,

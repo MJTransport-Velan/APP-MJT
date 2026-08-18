@@ -2,18 +2,18 @@ import api from '../api';
 import type { ApiResponse } from '@/types/api.types';
 import type {
   DriverAdvance,
-  DriverExpenseReimbursement,
   DriverEarning,
   DriverEarningRule,
   DriverPenalty,
-  DriverLoan,
   DriverSettlement,
   DriverSettlementPreview,
   DriverStatement,
   SalaryStructure,
+  DriverSalaryStructure,
   EmployeeAdvance,
-  EmployeeLoan,
-  PayrollRun,
+  EmployeeSalaryPayment,
+  DriverSalaryPayment,
+  SalaryQuote,
   PayrollDashboardSummary,
   PaginationMeta,
 } from '@/types/phase5.types';
@@ -36,24 +36,6 @@ export const driverAdvanceApi = {
   },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/driver/advances/${id}`);
-  },
-};
-
-export const driverReimbursementApi = {
-  list(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<DriverExpenseReimbursement[]> & { meta: PaginationMeta }>('/accounts/driver/reimbursements', { params });
-  },
-  request(payload: Record<string, unknown>) {
-    return api.post<ApiResponse<DriverExpenseReimbursement>>('/accounts/driver/reimbursements', payload);
-  },
-  approve(id: string) {
-    return api.patch<ApiResponse<DriverExpenseReimbursement>>(`/accounts/driver/reimbursements/${id}/approve`);
-  },
-  reject(id: string, reason?: string) {
-    return api.patch<ApiResponse<DriverExpenseReimbursement>>(`/accounts/driver/reimbursements/${id}/reject`, { reason });
-  },
-  remove(id: string) {
-    return api.delete<ApiResponse<null>>(`/accounts/driver/reimbursements/${id}`);
   },
 };
 
@@ -99,24 +81,6 @@ export const driverPenaltyApi = {
   },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/driver/penalties/${id}`);
-  },
-};
-
-export const driverLoanApi = {
-  list(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<DriverLoan[]> & { meta: PaginationMeta }>('/accounts/driver/loans', { params });
-  },
-  request(payload: Record<string, unknown>) {
-    return api.post<ApiResponse<DriverLoan>>('/accounts/driver/loans', payload);
-  },
-  approve(id: string) {
-    return api.patch<ApiResponse<DriverLoan>>(`/accounts/driver/loans/${id}/approve`);
-  },
-  reject(id: string, reason?: string) {
-    return api.patch<ApiResponse<DriverLoan>>(`/accounts/driver/loans/${id}/reject`, { reason });
-  },
-  remove(id: string) {
-    return api.delete<ApiResponse<null>>(`/accounts/driver/loans/${id}`);
   },
 };
 
@@ -168,6 +132,21 @@ export const salaryStructureApi = {
   },
 };
 
+export const driverSalaryStructureApi = {
+  listForDriver(driverId: string) {
+    return api.get<ApiResponse<DriverSalaryStructure[]>>(`/accounts/driver/salary-structures/driver/${driverId}`);
+  },
+  getActiveForDriver(driverId: string) {
+    return api.get<ApiResponse<DriverSalaryStructure | null>>(`/accounts/driver/salary-structures/driver/${driverId}/active`);
+  },
+  create(payload: Record<string, unknown>) {
+    return api.post<ApiResponse<DriverSalaryStructure>>('/accounts/driver/salary-structures', payload);
+  },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/accounts/driver/salary-structures/${id}`);
+  },
+};
+
 export const employeeAdvanceApi = {
   list(params: Record<string, unknown> = {}) {
     return api.get<ApiResponse<EmployeeAdvance[]> & { meta: PaginationMeta }>('/accounts/payroll/advances', { params });
@@ -186,54 +165,24 @@ export const employeeAdvanceApi = {
   },
 };
 
-export const employeeLoanApi = {
-  list(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<EmployeeLoan[]> & { meta: PaginationMeta }>('/accounts/payroll/loans', { params });
-  },
-  request(payload: Record<string, unknown>) {
-    return api.post<ApiResponse<EmployeeLoan>>('/accounts/payroll/loans', payload);
-  },
-  approve(id: string) {
-    return api.patch<ApiResponse<EmployeeLoan>>(`/accounts/payroll/loans/${id}/approve`);
-  },
-  reject(id: string, reason?: string) {
-    return api.patch<ApiResponse<EmployeeLoan>>(`/accounts/payroll/loans/${id}/reject`, { reason });
-  },
-  remove(id: string) {
-    return api.delete<ApiResponse<null>>(`/accounts/payroll/loans/${id}`);
+export const employeeSalaryPaymentApi = {
+  listForEmployee(employeeId: string) {
+    return api.get<ApiResponse<EmployeeSalaryPayment[]>>(`/accounts/payroll/salary-payments/employee/${employeeId}`);
   },
 };
 
-export const payrollRunApi = {
-  list(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<PayrollRun[]> & { meta: PaginationMeta }>('/accounts/payroll/runs', { params });
+export const driverSalaryPaymentApi = {
+  listForDriver(driverId: string) {
+    return api.get<ApiResponse<DriverSalaryPayment[]>>(`/accounts/driver/salary-payments/${driverId}`);
   },
-  getById(id: string) {
-    return api.get<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}`);
+};
+
+export const salaryPaymentQuoteApi = {
+  employeeQuote(employeeId: string, period: string) {
+    return api.get<ApiResponse<SalaryQuote>>(`/accounts/payroll/salary-quote/employee/${employeeId}`, { params: { period } });
   },
-  create(payload: Record<string, unknown>) {
-    return api.post<ApiResponse<PayrollRun>>('/accounts/payroll/runs', payload);
-  },
-  calculate(id: string, employeeIds?: string[]) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/calculate`, { employeeIds });
-  },
-  verify(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/verify`);
-  },
-  approve(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/approve`);
-  },
-  process(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/process`);
-  },
-  pay(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/pay`);
-  },
-  cancel(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/cancel`);
-  },
-  revert(id: string) {
-    return api.patch<ApiResponse<PayrollRun>>(`/accounts/payroll/runs/${id}/revert`);
+  driverQuote(driverId: string, period: string) {
+    return api.get<ApiResponse<SalaryQuote>>(`/accounts/payroll/salary-quote/driver/${driverId}`, { params: { period } });
   },
 };
 

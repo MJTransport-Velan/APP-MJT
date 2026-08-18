@@ -7,6 +7,7 @@ import {
   createSupplierPaymentSchema,
   updateSupplierPaymentSchema,
   supplierPaymentIdParamSchema,
+  allocateSupplierPaymentSchema,
 } from '../validators/supplier-payment.validator';
 
 const router = Router();
@@ -30,6 +31,12 @@ router.put(
   authorize('supplierPayment.edit'),
   validate(updateSupplierPaymentSchema),
   supplierPaymentController.update
+);
+router.patch(
+  '/:id/allocate',
+  authorize('supplierPayment.allocate'),
+  validate(allocateSupplierPaymentSchema),
+  supplierPaymentController.allocate
 );
 router.delete(
   '/:id',

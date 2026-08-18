@@ -8,17 +8,23 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  username     String   @unique
-  email        String?  @unique
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String?   @unique
   fullName     String
   password     String
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   refreshToken String?
   profilePhoto String?
   phone        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // Soft delete only — User has real relations (createdIntents/
+  // createdTrips/assignedTrips/auditLogs/tripNotes/employee below), so a
+  // hard delete would either fail on FK restrict or cascade-destroy
+  // unrelated business records. "Delete User" sets this + isActive=false
+  // + clears refreshToken (forces logout); the row and its history stay.
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Phase 14 (docs Phase 8) — additive Security Foundation fields.
   // Nullable/defaulted so every existing user row and every existing
@@ -344,38 +350,12 @@ model Location {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  routesFrom  TransportRoute[] @relation("RouteFrom")
-  routesTo    TransportRoute[] @relation("RouteTo")
-  intentsFrom Intent[]         @relation("IntentFromLocation")
-  intentsTo   Intent[]         @relation("IntentToLocation")
-  tripsFrom   Trip[]           @relation("TripFromLocation")
-  tripsTo     Trip[]           @relation("TripToLocation")
+  intentsFrom Intent[] @relation("IntentFromLocation")
+  intentsTo   Intent[] @relation("IntentToLocation")
+  tripsFrom   Trip[]   @relation("TripFromLocation")
+  tripsTo     Trip[]   @relation("TripToLocation")
 
   @@map("locations")
-}
-
-model TransportRoute {
-  id             String    @id @default(uuid())
-  name           String
-  code           String    @unique
-  fromLocationId String
-  toLocationId   String
-  distanceKm     Decimal?  @db.Decimal(10, 2)
-  isActive       Boolean   @default(true)
-  deletedAt      DateTime?
-  createdById    String?
-  updatedById    String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  fromLocation       Location            @relation("RouteFrom", fields: [fromLocationId], references: [id])
-  toLocation         Location            @relation("RouteTo", fields: [toLocationId], references: [id])
-  trips              Trip[]
-  driverEarningRules DriverEarningRule[]
-
-  @@index([fromLocationId])
-  @@index([toLocationId])
-  @@map("transport_routes")
 }
 
 model VehicleType {
@@ -445,15 +425,14 @@ model Vehicle {
   vehicleType VehicleType @relation(fields: [vehicleTypeId], references: [id])
   supplier    Supplier?   @relation(fields: [supplierId], references: [id])
 
-  assignments                 VehicleAssignment[]
-  fuelEntries                 FuelEntry[]
-  fuelCards                   FuelCard[]
-  maintenanceRecords          MaintenanceRecord[]
-  sparePartUsages             SparePartUsage[]
-  expenses                    VehicleExpense[]
-  trips                       Trip[]
-  driverAdvances              DriverAdvance[]
-  driverExpenseReimbursements DriverExpenseReimbursement[]
+  assignments        VehicleAssignment[]
+  fuelEntries        FuelEntry[]
+  fuelCards          FuelCard[]
+  maintenanceRecords MaintenanceRecord[]
+  sparePartUsages    SparePartUsage[]
+  expenses           VehicleExpense[]
+  trips              Trip[]
+  driverAdvances     DriverAdvance[]
 
   // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
   fixedAsset          FixedAsset?
@@ -490,11 +469,12 @@ model Driver {
   trips       Trip[]
 
   // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
-  advances              DriverAdvance[]
-  expenseReimbursements DriverExpenseReimbursement[]
-  earnings              DriverEarning[]
-  penalties             DriverPenalty[]
-  settlements           DriverSettlement[]
+  advances         DriverAdvance[]
+  earnings         DriverEarning[]
+  penalties        DriverPenalty[]
+  settlements      DriverSettlement[]
+  salaryStructures DriverSalaryStructure[]
+  salaryPayments   DriverSalaryPayment[]
 
   fuelEntries FuelEntry[]
 
@@ -564,42 +544,6 @@ model ExpenseCategory {
   updatedAt   DateTime  @updatedAt
 
   @@map("expense_categories")
-}
-
-model FuelStation {
-  id            String    @id @default(uuid())
-  name          String
-  code          String    @unique
-  location      String?
-  contactPerson String?
-  phone         String?
-  isActive      Boolean   @default(true)
-  deletedAt     DateTime?
-  createdById   String?
-  updatedById   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  fuelEntries      FuelEntry[]
-  financialEntries FinancialEntry[]
-
-  @@map("fuel_stations")
-}
-
-model Bank {
-  id          String    @id @default(uuid())
-  name        String
-  code        String    @unique
-  branch      String?
-  ifscCode    String?
-  isActive    Boolean   @default(true)
-  deletedAt   DateTime?
-  createdById String?
-  updatedById String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@map("banks")
 }
 
 // Extended additively in Phase 9 (Banking & Cash Management) with the
@@ -783,6 +727,9 @@ enum VehicleExpenseCategory {
   ACCESSORIES
   GREASE_LUBRICANTS
   BREAKDOWN
+  // Mirrors a trip-linked DriverEarning onto that trip's vehicle — see
+  // vehicleExpenseInternalService usage in driver-earning.service.ts.
+  DRIVER_SALARY
 }
 
 // Driver assigned to a vehicle. Only one ACTIVE assignment per vehicle is
@@ -848,15 +795,11 @@ enum FuelBillingMethod {
 
 // Mileage (kmpl) and distance are computed at entry time relative to the
 // vehicle's previous fuel entry odometer reading, then stored — avoids
-// recomputing the whole history on every read. isAnomaly/anomalyReasons are
-// likewise computed and cached at create/update time by fuel-entry.service's
-// anomaly checks (duplicate, unusual quantity, low mileage, odometer jump,
-// too-frequent entries) rather than recomputed on every list read.
+// recomputing the whole history on every read.
 model FuelEntry {
   id              String             @id @default(uuid())
   vehicleId       String
   fuelCardId      String?
-  fuelStationId   String?
   fuelType        FuelType           @default(DIESEL)
   billingMethod   FuelBillingMethod?
   location        String?
@@ -874,8 +817,6 @@ model FuelEntry {
   invoiceNumber   String?
   referenceNumber String?
   remarks         String?
-  isAnomaly       Boolean            @default(false)
-  anomalyReasons  String?
   entryDate       DateTime           @default(now())
   billDocument    String?
   deletedAt       DateTime?
@@ -886,7 +827,6 @@ model FuelEntry {
 
   vehicle     Vehicle        @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   fuelCard    FuelCard?      @relation(fields: [fuelCardId], references: [id])
-  fuelStation FuelStation?   @relation(fields: [fuelStationId], references: [id])
   trip        Trip?          @relation(fields: [tripId], references: [id])
   driver      Driver?        @relation(fields: [driverId], references: [id])
   supplier    Supplier?      @relation(fields: [supplierId], references: [id])
@@ -896,7 +836,6 @@ model FuelEntry {
   financialEntries FinancialEntry[]
 
   @@index([vehicleId])
-  @@index([fuelStationId])
   @@index([tripId])
   @@index([driverId])
   @@map("fuel_entries")
@@ -1152,10 +1091,15 @@ model Trip {
   vehicleId            String?
   driverId             String?
   supplierId           String?
-  routeId              String?
   fromLocationId       String
   toLocationId         String
   freightAmount        Decimal?          @db.Decimal(12, 2)
+  // Charges captured when marking the trip LOADING/UNLOADING — billed to the
+  // customer, so they're folded into freightAmount at that point too (see
+  // trip.service.ts updateStatus()). Kept here separately as well purely for
+  // traceability of how freightAmount arrived at its final value.
+  loadingCharges       Decimal?          @db.Decimal(12, 2)
+  unloadingCharges     Decimal?          @db.Decimal(12, 2)
   supplierRate         Decimal?          @db.Decimal(12, 2)
   // Copied from Intent.fleetType at creation — which team's queue this trip
   // belongs to, decided at intent approval rather than at asset allocation.
@@ -1186,22 +1130,21 @@ model Trip {
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
-  intent       Intent          @relation(fields: [intentId], references: [id])
-  vehicle      Vehicle?        @relation(fields: [vehicleId], references: [id])
-  driver       Driver?         @relation(fields: [driverId], references: [id])
-  supplier     Supplier?       @relation(fields: [supplierId], references: [id])
-  route        TransportRoute? @relation(fields: [routeId], references: [id])
-  fromLocation Location        @relation("TripFromLocation", fields: [fromLocationId], references: [id])
-  toLocation   Location        @relation("TripToLocation", fields: [toLocationId], references: [id])
-  invoice      Invoice?        @relation(fields: [invoiceId], references: [id])
-  createdBy    User?           @relation("TripCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  intent       Intent    @relation(fields: [intentId], references: [id])
+  vehicle      Vehicle?  @relation(fields: [vehicleId], references: [id])
+  driver       Driver?   @relation(fields: [driverId], references: [id])
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  fromLocation Location  @relation("TripFromLocation", fields: [fromLocationId], references: [id])
+  toLocation   Location  @relation("TripToLocation", fields: [toLocationId], references: [id])
+  invoice      Invoice?  @relation(fields: [invoiceId], references: [id])
+  createdBy    User?     @relation("TripCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   // Whichever OWN_FLEET_OPERATOR/MARKET_FLEET_OPERATOR user actually ran
   // assign()/allocate() on this trip — distinct from createdBy (set at
   // auto-creation on intent approval, usually the Operation Manager). Used to
   // scope the Trip List so an already-assigned trip only shows for the
   // operator who claimed it, while unassigned (APPROVED) trips stay visible
   // to the whole team as a shared queue.
-  assignedBy   User?           @relation("TripAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedBy   User?     @relation("TripAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
 
   statusHistory    TripStatusHistory[]
   expenses         TripExpense[]
@@ -1210,10 +1153,9 @@ model Trip {
   notes            TripNote[]
 
   // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
-  driverAdvances              DriverAdvance[]
-  driverExpenseReimbursements DriverExpenseReimbursement[]
-  driverEarnings              DriverEarning[]
-  driverPenalties             DriverPenalty[]
+  driverAdvances  DriverAdvance[]
+  driverEarnings  DriverEarning[]
+  driverPenalties DriverPenalty[]
 
   // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
   vehicleExpensesTagged VehicleExpense[]
@@ -2050,6 +1992,59 @@ model PettyCashRequest {
   @@map("petty_cash_requests")
 }
 
+// Money partners/proprietors personally put into (or draw out of) the
+// business — the "Capital Account" concept from the pre-removal Tally
+// books. Deliberately NOT a ledger/account-group: a CapitalPartner is a
+// simple named master (served by the generic masterCrudFactory, same as
+// Bank/ExpenseCategory), and CapitalTransaction is a one-shot fund
+// movement through the same adjustFundAccountBalance primitive every
+// other money movement in this app uses (Receipt/SupplierPayment/
+// DriverAdvance/...) — a partner's balance is simply
+// SUM(CONTRIBUTION) − SUM(WITHDRAWAL), computed live, never stored.
+model CapitalPartner {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  transactions CapitalTransaction[]
+
+  @@map("capital_partners")
+}
+
+enum CapitalTransactionType {
+  CONTRIBUTION
+  WITHDRAWAL
+}
+
+model CapitalTransaction {
+  id                String                 @id @default(uuid())
+  transactionNumber String                 @unique
+  partnerId         String
+  type              CapitalTransactionType
+  amount            Decimal                @db.Decimal(14, 2)
+  transactionDate   DateTime               @default(now())
+  fundAccountType   FundAccountType
+  fundAccountId     String
+  remarks           String?
+  organizationId    String?
+  isActive          Boolean                @default(true)
+  deletedAt         DateTime?
+  createdById       String?
+  updatedById       String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  partner CapitalPartner @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId])
+  @@map("capital_transactions")
+}
+
 enum EmploymentType {
   PERMANENT
   CONTRACT
@@ -2082,7 +2077,7 @@ model Employee {
 
   salaryStructures SalaryStructure[]
   advances         EmployeeAdvance[]
-  payrollLines     PayrollRunLine[]
+  salaryPayments   EmployeeSalaryPayment[]
 
   @@map("employees")
 }
@@ -2150,59 +2145,6 @@ model DriverAdvance {
   @@map("driver_advances")
 }
 
-enum DriverExpenseCategory {
-  FUEL
-  REPAIR
-  TYRE
-  BATTERY
-  PARKING
-  TOLL
-  FOOD
-  ACCOMMODATION
-  MEDICAL
-  PHONE
-  MISCELLANEOUS
-}
-
-// Deliberately NOT a fork of TripExpense (Phase 4 — Fleet Management),
-// which is a payee-less trip-cost bucket already feeding
-// trip-financial.service.ts's profitability reports. Reimbursement is a
-// payment-to-driver transaction needing approval and a fund account,
-// which TripExpense was never built to carry (design doc §6.3).
-model DriverExpenseReimbursement {
-  id                  String                @id @default(uuid())
-  reimbursementNumber String                @unique
-  driverId            String
-  tripId              String?
-  vehicleId           String?
-  category            DriverExpenseCategory
-  amount              Decimal               @db.Decimal(12, 2)
-  expenseDate         DateTime              @default(now())
-  description         String?
-  receiptDocument     String?
-  approvedById        String?
-  approvalStatus      ApprovalStatus        @default(PENDING)
-  isSettled           Boolean               @default(false)
-  settlementId        String?
-  organizationId      String?
-  isActive            Boolean               @default(true)
-  deletedAt           DateTime?
-  createdById         String?
-  updatedById         String?
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-
-  driver     Driver            @relation(fields: [driverId], references: [id])
-  trip       Trip?             @relation(fields: [tripId], references: [id])
-  vehicle    Vehicle?          @relation(fields: [vehicleId], references: [id])
-  settlement DriverSettlement? @relation("DriverSettlementReimbursements", fields: [settlementId], references: [id])
-
-  @@index([driverId])
-  @@index([tripId])
-  @@index([settlementId])
-  @@map("driver_expense_reimbursements")
-}
-
 enum DriverEarningCategory {
   ALLOWANCE
   INCENTIVE
@@ -2247,7 +2189,6 @@ model DriverEarningRule {
   calculationType EarningCalculationType
   value           Decimal                @db.Decimal(12, 2)
   vehicleTypeId   String?
-  routeId         String?
   isActive        Boolean                @default(true)
   deletedAt       DateTime?
   createdById     String?
@@ -2256,7 +2197,6 @@ model DriverEarningRule {
   updatedAt       DateTime               @updatedAt
 
   vehicleType VehicleType?    @relation(fields: [vehicleTypeId], references: [id])
-  route       TransportRoute? @relation(fields: [routeId], references: [id])
   earnings    DriverEarning[]
 
   @@map("driver_earning_rules")
@@ -2340,102 +2280,6 @@ model DriverPenalty {
   @@map("driver_penalties")
 }
 
-// Architecture optimization pass — DriverLoan and EmployeeLoan (+ their
-// Installment tables) were structurally identical (same fields, same
-// LoanStatus/LoanInstallmentStatus enums, already sharing one EMI
-// calculation utility — see utils/loanSchedule.util.ts) except for which
-// party borrowed. Merged into one PartyLoan/PartyLoanInstallment pair
-// with a borrowerType discriminator. VehicleLoan was deliberately NOT
-// folded in here — it has real structural differences (multi-tranche
-// disbursement, a full principal/interest/late-fee amortization
-// breakdown, lender metadata) that a forced merge would either lose or
-// bloat this table with fields meaningful to only one borrower type, so
-// it stays its own purpose-built schema (see VehicleLoan below).
-enum LoanBorrowerType {
-  DRIVER
-  EMPLOYEE
-}
-
-enum PartyLoanType {
-  PERSONAL
-  EMERGENCY
-  VEHICLE // only meaningful when borrowerType=DRIVER
-  FESTIVAL
-  MEDICAL
-}
-
-enum LoanStatus {
-  PENDING_APPROVAL
-  ACTIVE
-  CLOSED
-  REJECTED
-  WRITTEN_OFF
-}
-
-enum LoanInstallmentStatus {
-  PENDING
-  RECOVERED
-  WAIVED
-}
-
-// Outstanding principal is never a stored column — always
-// principalAmount − SUM(emiAmount WHERE status=RECOVERED), computed live
-// (design doc §6.7). Money the company lends OUT (an asset), the opposite
-// direction of the existing liability-side LOANS account group seeded for
-// Vehicle Loan — so this posts straight to the borrower's own control
-// ledger, not a new account group (design doc §6.12 classification note).
-// borrowerId/borrowerLedgerId/disbursementVoucherId are plain scoping
-// columns (no hard FK) — the Phase 13+ convention — since which table
-// they point at depends on borrowerType.
-model PartyLoan {
-  id              String           @id @default(uuid())
-  loanNumber      String           @unique
-  borrowerType    LoanBorrowerType
-  borrowerId      String
-  loanType        PartyLoanType
-  principalAmount Decimal          @db.Decimal(12, 2)
-  tenureMonths    Int
-  emiAmount       Decimal          @db.Decimal(12, 2)
-  interestRate    Decimal          @default(0) @db.Decimal(5, 2)
-  approvedById    String?
-  status          LoanStatus       @default(PENDING_APPROVAL)
-  organizationId  String?
-  isActive        Boolean          @default(true)
-  deletedAt       DateTime?
-  createdById     String?
-  updatedById     String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  installments PartyLoanInstallment[]
-
-  @@index([borrowerType, borrowerId])
-  @@map("party_loans")
-}
-
-// recoveredReferenceType/Id is a polymorphic pointer — a Driver loan's
-// installment is recovered via a DriverSettlement netting;
-// an Employee loan's via a PayrollRunLine deduction. Never both, and
-// never a hard FK to either (same reasoning as PartyLoan above).
-model PartyLoanInstallment {
-  id                     String                @id @default(uuid())
-  loanId                 String
-  installmentNo          Int
-  dueDate                DateTime
-  emiAmount              Decimal               @db.Decimal(12, 2)
-  status                 LoanInstallmentStatus @default(PENDING)
-  recoveredReferenceType String?
-  recoveredReferenceId   String?
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
-
-  loan PartyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
-
-  @@index([loanId])
-  @@index([recoveredReferenceType, recoveredReferenceId])
-  @@map("party_loan_installments")
-}
-
 enum DriverSettlementType {
   PARTIAL
   FINAL
@@ -2454,15 +2298,67 @@ enum SettlementLineSourceType {
   ADVANCE
   ALLOWANCE
   INCENTIVE
-  REIMBURSEMENT
   PENALTY
-  LOAN_INSTALLMENT
   SALARY
 }
 
 enum LineDirection {
   DEBIT
   CREDIT
+}
+
+enum DriverSalaryType {
+  FIXED
+  PERCENT_OF_FREIGHT
+}
+
+// A driver's base pay, distinct from the ad-hoc DriverEarning entries
+// (bata/incentives) — feeds the SALARY line in DriverSettlement.computeDraft().
+// Versioned like SalaryStructure: creating a new one deactivates the prior
+// rather than overwriting it, but (unlike SalaryStructure) settlement
+// calculation always reads whichever one is currently isActive, not a
+// point-in-time lookup — same simplification the Employee track already uses.
+model DriverSalaryStructure {
+  id            String           @id @default(uuid())
+  driverId      String
+  salaryType    DriverSalaryType
+  fixedAmount   Decimal?         @db.Decimal(12, 2)
+  percentValue  Decimal?         @db.Decimal(5, 2)
+  effectiveFrom DateTime
+  isActive      Boolean          @default(true)
+  deletedAt     DateTime?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@map("driver_salary_structures")
+}
+
+// Driver equivalent of EmployeeSalaryPayment — same "one row per driver per
+// month" paid-flag, written by financial-entry.service.ts's
+// delegateToDriverSalaryPayment. Deliberately independent of
+// DriverEarning/DriverSettlement (the trip-based bata/incentive/penalty
+// system) — this is only for a driver on a fixed/simple Driver Salary
+// Structure being paid a flat monthly amount.
+model DriverSalaryPayment {
+  id          String   @id @default(uuid())
+  driverId    String
+  year        Int
+  month       Int
+  amount      Decimal  @db.Decimal(12, 2)
+  paidDate    DateTime @db.Date
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, year, month])
+  @@index([driverId])
+  @@map("driver_salary_payments")
 }
 
 // A period (or explicit trip-batch) sweep, not an allocation against a
@@ -2488,12 +2384,11 @@ model DriverSettlement {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  driver         Driver                       @relation(fields: [driverId], references: [id])
-  lines          DriverSettlementLine[]
-  advances       DriverAdvance[]              @relation("DriverSettlementAdvances")
-  reimbursements DriverExpenseReimbursement[] @relation("DriverSettlementReimbursements")
-  earnings       DriverEarning[]              @relation("DriverSettlementEarnings")
-  penalties      DriverPenalty[]              @relation("DriverSettlementPenalties")
+  driver    Driver                 @relation(fields: [driverId], references: [id])
+  lines     DriverSettlementLine[]
+  advances  DriverAdvance[]        @relation("DriverSettlementAdvances")
+  earnings  DriverEarning[]        @relation("DriverSettlementEarnings")
+  penalties DriverPenalty[]        @relation("DriverSettlementPenalties")
 
   @@index([driverId])
   @@map("driver_settlements")
@@ -2585,6 +2480,28 @@ model SalaryStructureComponent {
   @@map("salary_structure_components")
 }
 
+// Replaces the old multi-step PayrollRun engine for regular employees — a
+// Financial Entry with purpose=SALARY against this employee marks their
+// current calendar month paid directly (financial-entry.service.ts
+// delegateToEmployeeSalaryPayment). One row per employee per month; the
+// unique constraint is what blocks a duplicate payment for the same month.
+model EmployeeSalaryPayment {
+  id          String   @id @default(uuid())
+  employeeId  String
+  year        Int
+  month       Int
+  amount      Decimal  @db.Decimal(12, 2)
+  paidDate    DateTime @db.Date
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, year, month])
+  @@index([employeeId])
+  @@map("employee_salary_payments")
+}
+
 enum EmployeeAdvanceType {
   SALARY_ADVANCE
   EMERGENCY_ADVANCE
@@ -2594,31 +2511,29 @@ enum EmployeeAdvanceType {
 }
 
 model EmployeeAdvance {
-  id               String              @id @default(uuid())
-  advanceNumber    String              @unique
-  employeeId       String
-  advanceType      EmployeeAdvanceType
-  purpose          String?
-  amount           Decimal             @db.Decimal(12, 2)
-  requestedById    String?
-  approvedById     String?
-  approvalStatus   ApprovalStatus      @default(PENDING)
-  paymentModeId    String?
-  fundAccountType  FundAccountType?
-  fundAccountId    String?
-  isSettled        Boolean             @default(false)
-  payrollRunLineId String?
-  organizationId   String?
-  isActive         Boolean             @default(true)
-  deletedAt        DateTime?
-  createdById      String?
-  updatedById      String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  id              String              @id @default(uuid())
+  advanceNumber   String              @unique
+  employeeId      String
+  advanceType     EmployeeAdvanceType
+  purpose         String?
+  amount          Decimal             @db.Decimal(12, 2)
+  requestedById   String?
+  approvedById    String?
+  approvalStatus  ApprovalStatus      @default(PENDING)
+  paymentModeId   String?
+  fundAccountType FundAccountType?
+  fundAccountId   String?
+  isSettled       Boolean             @default(false)
+  organizationId  String?
+  isActive        Boolean             @default(true)
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  employee       Employee        @relation(fields: [employeeId], references: [id])
-  paymentMode    PaymentMode?    @relation(fields: [paymentModeId], references: [id])
-  payrollRunLine PayrollRunLine? @relation(fields: [payrollRunLineId], references: [id])
+  employee    Employee     @relation(fields: [employeeId], references: [id])
+  paymentMode PaymentMode? @relation(fields: [paymentModeId], references: [id])
 
   @@index([employeeId])
   @@map("employee_advances")
@@ -2628,96 +2543,6 @@ model EmployeeAdvance {
 // classification note as DriverLoan above.
 // EmployeeLoan / EmployeeLoanInstallment removed — merged into
 // PartyLoan / PartyLoanInstallment above (borrowerType=EMPLOYEE).
-
-enum PayrollPeriodType {
-  MONTHLY
-  WEEKLY
-  DAILY_WAGE
-  CONTRACT
-}
-
-enum PayrollRunType {
-  REGULAR
-  FINAL_SETTLEMENT
-  EXIT
-}
-
-enum PayrollRunStatus {
-  DRAFT
-  CALCULATED
-  VERIFIED
-  APPROVED
-  PROCESSED
-  PAID
-  CANCELLED
-}
-
-// DRAFT → CALCULATED → VERIFIED → APPROVED → PROCESSED → PAID, CANCELLED
-// reachable from any pre-PAID state. Only APPROVED posts the recognition
-// Journal Voucher; only PAID posts each line's Payment Voucher (design
-// doc §13). runType=EXIT/FINAL_SETTLEMENT reuses this same table rather
-// than forking a parallel "Payroll Settlement" document.
-model PayrollRun {
-  id             String            @id @default(uuid())
-  runNumber      String            @unique
-  periodType     PayrollPeriodType
-  periodStart    DateTime
-  periodEnd      DateTime
-  runType        PayrollRunType    @default(REGULAR)
-  status         PayrollRunStatus  @default(DRAFT)
-  approvedById   String?
-  processedById  String?
-  organizationId String?
-  isActive       Boolean           @default(true)
-  deletedAt      DateTime?
-  createdById    String?
-  updatedById    String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-
-  lines PayrollRunLine[]
-
-  @@map("payroll_runs")
-}
-
-model PayrollRunLine {
-  id              String           @id @default(uuid())
-  payrollRunId    String
-  employeeId      String
-  grossEarnings   Decimal          @default(0) @db.Decimal(12, 2)
-  totalDeductions Decimal          @default(0) @db.Decimal(12, 2)
-  netPay          Decimal          @default(0) @db.Decimal(12, 2)
-  fundAccountType FundAccountType?
-  fundAccountId   String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-
-  payrollRun        PayrollRun                @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
-  employee          Employee                  @relation(fields: [employeeId], references: [id])
-  components        PayrollRunLineComponent[]
-  advancesRecovered EmployeeAdvance[]
-
-  @@index([payrollRunId])
-  @@index([employeeId])
-  @@map("payroll_run_lines")
-}
-
-// Snapshots every earning/deduction at run time, so editing SalaryStructure
-// later never rewrites a past payslip (design doc §18 Audit Strategy).
-model PayrollRunLineComponent {
-  id               String              @id @default(uuid())
-  payrollRunLineId String
-  componentType    SalaryComponentType
-  name             String?
-  amount           Decimal             @db.Decimal(12, 2)
-  isEarning        Boolean
-  createdAt        DateTime            @default(now())
-
-  payrollRunLine PayrollRunLine @relation(fields: [payrollRunLineId], references: [id], onDelete: Cascade)
-
-  @@index([payrollRunLineId])
-  @@map("payroll_run_line_components")
-}
 
 // ===========================================================
 // PHASE 12 — VEHICLE ASSETS, VEHICLE LOANS & EXPENSE MANAGEMENT
@@ -4056,6 +3881,7 @@ enum FinancialEntryPurpose {
   TRIP_ADVANCE
   TRIP_PAYMENT
   SUPPLIER_PAYMENT
+  CLIENT_PAYMENT
   DRIVER_ADVANCE
   SALARY
   FUEL
@@ -4115,7 +3941,6 @@ model FinancialEntry {
   // "diesel and fast[tag]" follow-up request).
   vehicleId            String?
   tripId               String?
-  fuelStationId        String?
   quantityLiters       Decimal?              @db.Decimal(10, 2)
   ratePerLiter         Decimal?              @db.Decimal(10, 2)
   odometerReading      Int?
@@ -4140,7 +3965,6 @@ model FinancialEntry {
   reversedBy         FinancialEntry?     @relation("FinancialEntryReversal")
   vehicle            Vehicle?            @relation(fields: [vehicleId], references: [id])
   trip               Trip?               @relation(fields: [tripId], references: [id])
-  fuelStation        FuelStation?        @relation(fields: [fuelStationId], references: [id])
   fuelEntry          FuelEntry?          @relation(fields: [fuelEntryId], references: [id])
   fastTagTransaction FastTagTransaction? @relation(fields: [fastTagTransactionId], references: [id])
 

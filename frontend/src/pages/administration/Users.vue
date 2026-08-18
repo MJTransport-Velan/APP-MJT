@@ -82,6 +82,15 @@
             size="small"
             @click="toggleActive(item)"
           />
+          <AppBtn
+            v-if="item.id !== authStore.user?.id"
+            icon="mdi-delete-outline"
+            variant="text"
+            size="small"
+            color="error"
+            title="Delete"
+            @click="openDeleteDialog(item)"
+          />
         </template>
       </AppDataTable>
     </AppCard>
@@ -108,7 +117,7 @@
                 <AppTextField v-model="form.email" label="Email" :error-messages="formErrors.email" />
               </div>
               <div class="col-12 col-sm-6">
-                <AppTextField v-model="form.phone" label="Phone" />
+                <AppTextField v-model="form.phone" label="Phone" maxlength="10" />
               </div>
               <div v-if="!isEditing" class="col-12 col-sm-6">
                 <AppTextField
@@ -164,15 +173,27 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <!-- Delete -->
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete User"
+      :message="`Delete ${deleteTarget?.fullName || 'this user'} (@${deleteTarget?.username})? They will lose access immediately. This cannot be undone from here.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { useAdminUserStore } from '@/stores/admin-user.store';
+import { useAuthStore } from '@/stores/auth.store';
 import { adminRoleApi } from '@/services/admin-role.service';
 import { adminTeamApi } from '@/services/admin-team.service';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import {
   AppBtn,
   AppCard,
@@ -189,6 +210,7 @@ import {
 import type { AdminUser } from '@/types/admin.types';
 
 const userStore = useAdminUserStore();
+const authStore = useAuthStore();
 const { success, error } = useSnackbar();
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
@@ -370,6 +392,31 @@ async function submitResetPassword() {
     error(extractErrorMessage(err, 'Failed to reset password'));
   } finally {
     resetting.value = false;
+  }
+}
+
+// --- Delete ---
+const deleteDialog = ref(false);
+const deleteTarget = ref<AdminUser | null>(null);
+const deleting = ref(false);
+
+function openDeleteDialog(user: AdminUser) {
+  deleteTarget.value = user;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await userStore.remove(deleteTarget.value.id);
+    success(`${deleteTarget.value.username} deleted`);
+    deleteDialog.value = false;
+    fetchUsers();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete user'));
+  } finally {
+    deleting.value = false;
   }
 }
 

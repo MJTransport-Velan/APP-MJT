@@ -6,6 +6,9 @@ import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { receiptService } from './receipt.service';
 import { supplierPaymentService } from './supplier-payment.service';
+import { vehicleAssignmentService } from './vehicle-assignment.service';
+import { driverSalaryStructureService } from './driver-salary-structure.service';
+import { vehicleExpenseInternalService } from './vehicle-expense.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { forcedVehicleOwnership, assertVehicleAccess } from '../utils/vehicleAccess';
 import { forcedCompanyScope } from '../utils/groupAccess';
@@ -66,6 +69,33 @@ function assertFleetTypeMatch(trip: TripWithRelations, allocationType: 'OWN_FLEE
   }
 }
 
+// Own-fleet trips only (vehicleId+driverId) — market trucks pay via
+// supplierRate/settlement, not a Driver salary structure, so callers must
+// check both before invoking this. Posted once at trip completion since a
+// COMPLETED trip can never be edited or re-completed (see
+// ALLOWED_TRANSITIONS: COMPLETED has no outgoing transitions), so there is
+// no later edit/delete path to keep this mirror in sync with.
+async function postDriverSalaryExpense(trip: TripWithRelations, completedAt: Date, actorId: string) {
+  const salary = await driverSalaryStructureService.computeForTrip(trip.driverId as string, {
+    freightAmount: trip.freightAmount ? Number(trip.freightAmount) : null,
+    actualStartDate: trip.actualStartDate,
+    actualEndDate: completedAt,
+  });
+  if (!salary || salary.amount <= 0) return;
+
+  await vehicleExpenseInternalService.logFromSource({
+    vehicleId: trip.vehicleId as string,
+    tripId: trip.id,
+    category: 'DRIVER_SALARY',
+    amount: salary.amount,
+    expenseDate: completedAt,
+    description: `Driver salary for trip ${trip.tripNumber}: ${salary.description}`,
+    referenceType: 'TripDriverSalary',
+    referenceId: trip.id,
+    actorId,
+  });
+}
+
 // OWN_FLEET_OPERATOR may only allocate own-fleet vehicles; MARKET_FLEET_OPERATOR
 // may only allocate market trucks. Everyone else (managers/admins) can do both.
 function assertAllocationTypeAccess(allocationType: 'OWN_FLEET' | 'MARKET_TRUCK', roles: string[]) {
@@ -100,6 +130,8 @@ function serialize(trip: TripWithRelations) {
     tripNumber: trip.tripNumber,
     status: trip.status,
     freightAmount: trip.freightAmount,
+    loadingCharges: trip.loadingCharges,
+    unloadingCharges: trip.unloadingCharges,
     supplierRate: trip.supplierRate,
     marketVehicleNumber: trip.marketVehicleNumber,
     marketDriverName: trip.marketDriverName,
@@ -133,7 +165,6 @@ function serialize(trip: TripWithRelations) {
       : null,
     driver: trip.driver ? { id: trip.driver.id, name: trip.driver.name, phone: trip.driver.phone } : null,
     supplier: trip.supplier ? { id: trip.supplier.id, name: trip.supplier.name } : null,
-    route: trip.route ? { id: trip.route.id, name: trip.route.name } : null,
     fromLocation: { id: trip.fromLocation.id, name: trip.fromLocation.name },
     toLocation: { id: trip.toLocation.id, name: trip.toLocation.name },
     createdBy: trip.createdBy ? { id: trip.createdBy.id, fullName: trip.createdBy.fullName } : null,
@@ -231,6 +262,34 @@ export const tripService = {
     return { total, ...counts };
   },
 
+  /**
+   * Which trip this vehicle was actually on for a given date, if any — lets
+   * Fuel Entry / FASTag forms show the trip (and its driver) they're about
+   * to auto-attach before the user submits, instead of it only resolving
+   * silently server-side. Day-range match (not point-in-time) since these
+   * forms only collect a date, not a time-of-day.
+   */
+  async activeTripForVehicle(vehicleId: string, at: Date) {
+    const trip = await tripRepository.findActiveTripForVehicleOnDate(vehicleId, at);
+    if (!trip) return null;
+    return {
+      id: trip.id,
+      tripNumber: trip.tripNumber,
+      driver: trip.driver ? { id: trip.driver.id, name: trip.driver.name, code: trip.driver.code } : null,
+    };
+  },
+
+  /** The vehicle's current trip, else its last trip — the same resolution FASTag toll usage always attaches to, exposed so the form can preview it before submit. */
+  async currentOrLastTripForVehicle(vehicleId: string) {
+    const trip = await tripRepository.findCurrentOrLastTripForVehicle(vehicleId);
+    if (!trip) return null;
+    return {
+      id: trip.id,
+      tripNumber: trip.tripNumber,
+      driver: trip.driver ? { id: trip.driver.id, name: trip.driver.name, code: trip.driver.code } : null,
+    };
+  },
+
   async timeline(id: string, roles: string[] = [], userId?: string) {
     const trip = await tripRepository.findById(id);
     if (!trip) {
@@ -272,11 +331,6 @@ export const tripService = {
       throw new AppError('This intent already has a trip', 409);
     }
 
-    if (input.routeId) {
-      const route = await tripRepository.findRouteById(input.routeId);
-      if (!route) throw new AppError('Route not found', 404);
-    }
-
     const tripNumber = await tripRepository.nextTripNumber();
 
     const trip = await tripRepository.create({
@@ -284,7 +338,6 @@ export const tripService = {
       intentId: input.intentId,
       fromLocationId: intent.fromLocationId,
       toLocationId: intent.toLocationId,
-      routeId: input.routeId,
       freightAmount: input.freightAmount ?? (intent.freightAmount ? Number(intent.freightAmount) : undefined),
       loadWeight: input.loadWeight,
       loadDescription: input.loadDescription,
@@ -330,13 +383,7 @@ export const tripService = {
       throw new AppError(`Cannot edit a trip with status ${existing.status}`, 400);
     }
 
-    if (input.routeId) {
-      const route = await tripRepository.findRouteById(input.routeId);
-      if (!route) throw new AppError('Route not found', 404);
-    }
-
     await tripRepository.update(id, {
-      routeId: input.routeId,
       freightAmount: input.freightAmount,
       loadWeight: input.loadWeight,
       loadDescription: input.loadDescription,
@@ -447,6 +494,7 @@ export const tripService = {
         updatedById: actorId,
       });
       await tripRepository.addStatusHistory(id, 'ASSIGNED', 'Own fleet vehicle and driver allocated', actorId);
+      await vehicleAssignmentService.syncForVehicleDriver(input.vehicleId, input.driverId, actorId);
 
       await auditService.record({
         userId: actorId,
@@ -543,7 +591,13 @@ export const tripService = {
     return tripService.getById(id);
   },
 
-  async updateStatus(id: string, status: TripStatus, notes: string | undefined, actorId: string) {
+  async updateStatus(
+    id: string,
+    status: TripStatus,
+    notes: string | undefined,
+    actorId: string,
+    additionalCharge?: number
+  ) {
     const existing = await tripRepository.findById(id);
     if (!existing) {
       throw new AppError('Trip not found', 404);
@@ -584,10 +638,27 @@ export const tripService = {
 
     const updateData: Parameters<typeof tripRepository.update>[1] = { status, updatedById: actorId };
     if (status === 'STARTED') updateData.actualStartDate = new Date();
-    if (status === 'COMPLETED') updateData.actualEndDate = new Date();
+    let completedAt: Date | undefined;
+    if (status === 'COMPLETED') {
+      completedAt = new Date();
+      updateData.actualEndDate = completedAt;
+    }
+
+    // Loading/unloading charges are billed straight to the customer — added
+    // onto freightAmount (picked up by invoice.service.ts's generate()),
+    // not logged as a company-side TripExpense/VehicleExpense cost.
+    let historyNotes = notes;
+    if ((status === 'LOADING' || status === 'UNLOADING') && additionalCharge) {
+      const chargeField = status === 'LOADING' ? 'loadingCharges' : 'unloadingCharges';
+      updateData[chargeField] = additionalCharge;
+      updateData.freightAmount = Number(existing.freightAmount || 0) + additionalCharge;
+      const chargeLabel = status === 'LOADING' ? 'Loading' : 'Unloading';
+      const chargeNote = `${chargeLabel} charges: ${additionalCharge} (added to freight)`;
+      historyNotes = notes ? `${notes} — ${chargeNote}` : chargeNote;
+    }
 
     await tripRepository.update(id, updateData);
-    await tripRepository.addStatusHistory(id, status, notes, actorId);
+    await tripRepository.addStatusHistory(id, status, historyNotes, actorId);
 
     if (existing.vehicleId) {
       if (status === 'STARTED') {
@@ -595,6 +666,10 @@ export const tripService = {
       } else if (status === 'COMPLETED' || status === 'CANCELLED') {
         await tripRepository.setVehicleStatus(existing.vehicleId, 'AVAILABLE', actorId);
       }
+    }
+
+    if (status === 'COMPLETED' && existing.vehicleId && existing.driverId) {
+      await postDriverSalaryExpense(existing, completedAt as Date, actorId);
     }
 
     await auditService.record({

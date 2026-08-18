@@ -15,8 +15,28 @@ function serialize(expense: TripExpenseWithTrip) {
     description: expense.description,
     billDocument: expense.billDocument,
     trip: { id: expense.trip.id, tripNumber: expense.trip.tripNumber },
+    source: 'manual' as const,
     createdAt: expense.createdAt,
     updatedAt: expense.updatedAt,
+  };
+}
+
+type LinkedExpenseRow = Awaited<ReturnType<typeof tripExpenseRepository.linkedExpenseRows>>[number];
+
+/** Same shape as a manual TripExpense row, so the frontend can render both in one list — tagged `source: 'linked'` (and which module it came from) so the UI knows not to offer edit/delete here. */
+function serializeLinked(row: LinkedExpenseRow) {
+  return {
+    id: `linked-${row.id}`,
+    category: row.category === 'FUEL' ? ('FUEL' as const) : ('TOLL' as const),
+    amount: row.amount,
+    expenseDate: row.expenseDate,
+    description: row.description,
+    billDocument: null,
+    trip: row.trip ? { id: row.trip.id, tripNumber: row.trip.tripNumber } : { id: row.tripId!, tripNumber: '' },
+    source: 'linked' as const,
+    sourceType: row.referenceType,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -25,9 +45,33 @@ export const tripExpenseService = {
     const { page, pageSize, skip, take } = parsePagination(query);
     const tripId = (query.tripId as string) || undefined;
     const category = (query.category as TripExpenseCategory) || undefined;
+    const linkedCategory = category === 'FUEL' || category === 'TOLL' ? category : undefined;
+    const includeLinked = !category || linkedCategory;
 
-    const { rows, total } = await tripExpenseRepository.findManyPaginated({ skip, take, tripId, category });
-    return { data: rows.map(serialize), meta: buildPaginationMeta(page, pageSize, total) };
+    // Manual (TripExpense) and linked (Fuel Entry/FASTag, mirrored into
+    // VehicleExpense) rows live in different tables, so a single DB query
+    // can't paginate the merged, date-sorted result. Both sources are
+    // already sorted desc by date, so pulling the top `skip+take` rows from
+    // each and merging is a valid k-way merge — it always contains the true
+    // top `skip+take` of the combined set, at any page depth, without
+    // capping the dataset at an arbitrary size.
+    const window = skip + take;
+    const [manual, linkedCount, linkedRows] = await Promise.all([
+      tripExpenseRepository.findManyPaginated({ skip: 0, take: window, tripId, category }),
+      includeLinked ? tripExpenseRepository.countLinkedExpenseRows({ tripId, category: linkedCategory }) : 0,
+      includeLinked
+        ? tripExpenseRepository.linkedExpenseRows({ tripId, category: linkedCategory, take: window })
+        : Promise.resolve([]),
+    ]);
+
+    const merged = [...manual.rows.map(serialize), ...linkedRows.map(serializeLinked)].sort(
+      (a, b) => new Date(b.expenseDate).getTime() - new Date(a.expenseDate).getTime()
+    );
+
+    const total = manual.total + linkedCount;
+    const paged = merged.slice(skip, skip + take);
+
+    return { data: paged, meta: buildPaginationMeta(page, pageSize, total) };
   },
 
   async getById(id: string) {

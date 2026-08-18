@@ -8,15 +8,12 @@ import type { ApiResponse } from '@/types/api.types';
 
 export const branchApi = createMasterApi('/masters/branches');
 export const locationApi = createMasterApi('/masters/locations');
-export const routeApi = createMasterApi('/masters/routes');
 export const vehicleTypeApi = createMasterApi('/masters/vehicle-types');
 export const vehicleApi = createMasterApi('/masters/vehicles');
 export const driverApi = createMasterApi('/masters/drivers');
 export const supplierApi = createMasterApi('/masters/suppliers');
 export const materialApi = createMasterApi('/masters/materials');
 export const expenseCategoryApi = createMasterApi('/masters/expense-categories');
-export const fuelStationApi = createMasterApi('/masters/fuel-stations');
-export const bankApi = createMasterApi('/masters/banks');
 export const paymentModeApi = createMasterApi('/masters/payment-modes');
 export const tyreApi = createMasterApi('/masters/tyres');
 export const serviceCategoryApi = createMasterApi('/masters/service-categories');

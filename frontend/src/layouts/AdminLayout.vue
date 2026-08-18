@@ -1,23 +1,23 @@
 <template>
   <div class="app-shell">
     <aside class="mj-sidebar" :class="{ 'mj-sidebar--rail': rail, 'mj-sidebar--closed': !drawer }">
-      <div class="mj-sidebar__scroll">
-        <div class="sidebar-header">
-          <div class="logo-circle-sm">MJ</div>
-          <div v-if="!rail" class="sidebar-title-block">
-            <span class="sidebar-title">MJ Transport</span>
-            <span class="sidebar-subtitle">Transport Management System</span>
-          </div>
-          <button
-            type="button"
-            class="sidebar-collapse-btn"
-            :title="rail ? 'Expand sidebar' : 'Collapse sidebar'"
-            @click="rail = !rail"
-          >
-            <AppIcon :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-double-left'" size="small" />
-          </button>
+      <div class="sidebar-header">
+        <div class="logo-circle-sm">MJ</div>
+        <div v-if="!rail" class="sidebar-title-block">
+          <span class="sidebar-title">MJ Transport</span>
+          <span class="sidebar-subtitle">Transport Management System</span>
         </div>
+        <button
+          type="button"
+          class="sidebar-collapse-btn"
+          :title="rail ? 'Expand sidebar' : 'Collapse sidebar'"
+          @click="rail = !rail"
+        >
+          <AppIcon :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-double-left'" size="small" />
+        </button>
+      </div>
 
+      <div class="mj-sidebar__scroll">
         <AppList nav density="comfortable" class="mj-sidebar__list">
           <AppListItem
             v-for="module in visibleModules"
@@ -82,6 +82,10 @@
         </button>
       </div>
     </aside>
+
+    <Transition name="app-menu-fade">
+      <div v-if="isMobile && drawer" class="mj-backdrop" @click="drawer = false"></div>
+    </Transition>
 
     <header class="mj-app-bar">
       <button type="button" class="mj-nav-icon" @click="drawer = !drawer">
@@ -163,7 +167,10 @@ import {
   AppBreadcrumbs,
 } from '@/components/ui';
 
-const drawer = ref(true);
+const mobileQuery = window.matchMedia?.('(max-width: 960px)');
+const isMobile = ref(mobileQuery?.matches ?? false);
+
+const drawer = ref(!isMobile.value);
 const rail = ref(false);
 const route = useRoute();
 const router = useRouter();
@@ -233,8 +240,27 @@ onMounted(() => {
   isDark.value = stored ? stored === 'dark' : !!prefersDark;
   applyTheme(isDark.value);
   window.addEventListener('keydown', onKeydown);
+  mobileQuery?.addEventListener('change', onMobileQueryChange);
 });
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown);
+  mobileQuery?.removeEventListener('change', onMobileQueryChange);
+});
+
+function onMobileQueryChange(event: MediaQueryListEvent) {
+  isMobile.value = event.matches;
+  drawer.value = !event.matches;
+  if (event.matches) rail.value = false;
+}
+
+// On phones/tablets the sidebar overlays the page rather than pushing it,
+// so it should get out of the way once the user has picked a destination.
+watch(
+  () => route.path,
+  () => {
+    if (isMobile.value) drawer.value = false;
+  }
+);
 
 const initials = computed(() => {
   const name = authStore.user?.fullName || authStore.user?.username || 'U';
@@ -260,9 +286,10 @@ const breadcrumbItems = computed(() => {
     .map((record) => ({ title: record.meta?.breadcrumb as string | undefined, to: record.path }))
     .filter((crumb): crumb is { title: string; to: string } => !!crumb.title);
 
-  // Adjacent hub/leaf pairs share the same meta.breadcrumb (e.g. the Fleet
-  // parent record and its '' hub child are both titled "Fleet") — collapse
-  // those into a single crumb, keeping the more specific resolved path.
+  // Adjacent hub/leaf pairs share the same meta.breadcrumb (e.g. the
+  // Operations parent record and its '' hub child are both titled
+  // "Operations") — collapse those into a single crumb, keeping the more
+  // specific resolved path.
   const deduped: { title: string; to: string }[] = [];
   for (const crumb of matchedCrumbs) {
     if (deduped.length && deduped[deduped.length - 1].title === crumb.title) {
@@ -320,7 +347,7 @@ async function onLogout() {
   z-index: 50;
 }
 .mj-sidebar--rail {
-  width: 76px;
+  width: 85px;
 }
 .mj-sidebar--closed {
   transform: translateX(-100%);
@@ -330,16 +357,14 @@ async function onLogout() {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
 }
 
 .mj-sidebar__list {
-  flex: 1 1 auto;
   padding: 4px 12px;
 }
 
 .sidebar-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -673,5 +698,58 @@ async function onLogout() {
   padding: 16px;
   background: var(--color-surface);
   border-top: 1px solid var(--color-divider);
+}
+
+.mj-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 45;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Mobile / tablet: sidebar becomes an off-canvas overlay instead of       */
+/* pushing the content, and the app bar always spans the full width.      */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 960px) {
+  .mj-sidebar {
+    z-index: 50;
+    box-shadow: var(--shadow-3);
+  }
+  .mj-sidebar--rail:not(.mj-sidebar--closed) {
+    width: 272px;
+  }
+  .sidebar-collapse-btn {
+    display: none;
+  }
+
+  .mj-app-bar,
+  .mj-sidebar--rail + .mj-app-bar,
+  .mj-sidebar--closed + .mj-app-bar {
+    left: 0;
+  }
+
+  .mj-main,
+  .mj-main--rail,
+  .mj-main--closed {
+    margin-left: 0;
+  }
+
+  .mj-app-bar__search {
+    max-width: none;
+    margin-left: 12px;
+  }
+  .mj-app-bar__search-kbd {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .mj-app-bar__title {
+    display: none;
+  }
+  .mj-main .container.fluid.pa-6 {
+    padding: 12px;
+  }
 }
 </style>

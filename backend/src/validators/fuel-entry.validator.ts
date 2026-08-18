@@ -10,12 +10,10 @@ export const listFuelEntriesSchema = z.object({
     page: z.string().optional(),
     pageSize: z.string().optional(),
     vehicleId: z.string().uuid().optional(),
-    fuelStationId: z.string().uuid().optional(),
     tripId: z.string().uuid().optional(),
     driverId: z.string().uuid().optional(),
     fuelType: fuelTypeEnum.optional(),
     billingMethod: billingMethodEnum.optional(),
-    isAnomaly: z.enum(['true', 'false']).optional(),
     from: z.string().optional(),
     to: z.string().optional(),
   }),
@@ -27,21 +25,19 @@ export const fuelEntryIdParamSchema = z.object({
   params: z.object({ id: z.string().uuid('Invalid fuel entry id') }),
 });
 
-// Fuel station is deliberately optional — not every fuel purchase (e.g. an
-// OTP/direct-payment roadside top-up) is billed through a registered
-// station.
+// Driver is deliberately not a client-settable field — it's always derived
+// from whichever trip the vehicle was on (explicit tripId, or auto-detected
+// from vehicleId + entryDate), never picked manually.
 export const createFuelEntrySchema = z.object({
   query: z.object({}).optional(),
   params: z.object({}).optional(),
   body: z.object({
     vehicleId: z.string().uuid('A valid vehicle is required'),
     fuelCardId: z.string().uuid().optional(),
-    fuelStationId: z.string().uuid().optional(),
     fuelType: fuelTypeEnum.optional(),
     billingMethod: billingMethodEnum.optional(),
     location: z.string().optional(),
     tripId: z.string().uuid().optional(),
-    driverId: z.string().uuid().optional(),
     supplierId: z.string().uuid().optional(),
     paymentModeId: z.string().uuid().optional(),
     advanceId: z.string().uuid().optional(),
@@ -59,12 +55,10 @@ export const updateFuelEntrySchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid fuel entry id') }),
   body: z.object({
-    fuelStationId: z.string().uuid().optional(),
     fuelType: fuelTypeEnum.optional(),
     billingMethod: billingMethodEnum.optional(),
     location: z.string().optional(),
     tripId: z.string().uuid().optional(),
-    driverId: z.string().uuid().optional(),
     supplierId: z.string().uuid().optional(),
     paymentModeId: z.string().uuid().optional(),
     advanceId: z.string().uuid().optional(),

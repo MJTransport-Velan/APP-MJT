@@ -36,6 +36,11 @@ export const adminUserController = {
     return sendSuccess(res, 200, { message: 'User deactivated', data: user });
   }),
 
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await adminUserService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'User deleted' });
+  }),
+
   resetPassword: asyncHandler(async (req: AuthRequest, res: Response) => {
     await adminUserService.resetPassword(req.params.id, req.body.newPassword, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Password reset successfully' });

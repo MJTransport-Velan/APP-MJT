@@ -105,6 +105,9 @@ export const supplierPaymentApi = {
   update(id: string, payload: Record<string, unknown>) {
     return api.put<ApiResponse<SupplierPayment>>(`/accounts/supplier-payments/${id}`, payload);
   },
+  allocate(id: string, billId: string) {
+    return api.patch<ApiResponse<SupplierPayment>>(`/accounts/supplier-payments/${id}/allocate`, { billId });
+  },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/supplier-payments/${id}`);
   },

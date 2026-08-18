@@ -8,6 +8,7 @@ import { driverService } from './driver.service';
 import { auditService } from './audit.service';
 import { fuelEntryService } from './fuel-entry.service';
 import { fastTagRepository } from '../repositories/fasttag.repository';
+import { tripRepository } from '../repositories/trip.repository';
 import { vehicleExpenseInternalService } from './vehicle-expense.service';
 
 interface RowError {
@@ -178,7 +179,6 @@ async function importDriverRow(row: Record<string, unknown>, actorId: string) {
 
 async function importFuelEntryRow(row: Record<string, unknown>, actorId: string) {
   const registrationNumber = String(row.vehicleRegistrationNumber ?? row.registrationNumber ?? '').trim();
-  const fuelStationName = String(row.fuelStation ?? row.fuelStationName ?? '').trim();
   const quantityLiters = Number(row.quantityLiters ?? row.litres ?? row.liters);
   const ratePerLiter = Number(row.ratePerLiter ?? row.rate);
   const odometerReading = Number(row.odometerReading ?? row.odometer);
@@ -189,40 +189,32 @@ async function importFuelEntryRow(row: Record<string, unknown>, actorId: string)
   const vehicle = await prisma.vehicle.findFirst({ where: { registrationNumber, deletedAt: null } });
   if (!vehicle) throw new Error(`Vehicle "${registrationNumber}" not found`);
 
-  // Fuel station is optional — not every purchase (OTP/direct-payment
-  // roadside top-ups) is billed through a registered station.
-  let fuelStationId: string | undefined;
-  if (fuelStationName) {
-    const fuelStation = await prisma.fuelStation.findFirst({
-      where: { deletedAt: null, OR: [{ name: fuelStationName }, { code: fuelStationName }] },
-    });
-    if (!fuelStation) throw new Error(`Fuel station "${fuelStationName}" not found`);
-    fuelStationId = fuelStation.id;
-  }
-
   let tripId: string | undefined;
   if (row.tripNumber) {
     const trip = await prisma.trip.findFirst({ where: { tripNumber: String(row.tripNumber).trim(), deletedAt: null } });
     if (!trip) throw new Error(`Trip "${row.tripNumber}" not found`);
     tripId = trip.id;
+  } else {
+    // No trip named in the statement — same "current or last trip for this
+    // vehicle" fallback the FASTag import (and FASTag's manual usage
+    // logging) uses, rather than the day-range match fuelEntryService.create()
+    // would otherwise fall back to on its own; a bulk statement import has
+    // no reliable "this row's exact trip" signal beyond the vehicle itself.
+    // Trip stays optional here (unlike FASTag USAGE) — left undefined if the
+    // vehicle has genuinely never had a trip.
+    const trip = await tripRepository.findCurrentOrLastTripForVehicle(vehicle.id);
+    tripId = trip?.id;
   }
 
-  let driverId: string | undefined;
-  if (row.driverCode) {
-    const driver = await prisma.driver.findFirst({ where: { code: String(row.driverCode).trim().toUpperCase(), deletedAt: null } });
-    if (!driver) throw new Error(`Driver "${row.driverCode}" not found`);
-    driverId = driver.id;
-  }
-
+  // Driver is never taken from the statement — fuelEntryService.create()
+  // always derives it from the resolved trip's assigned driver.
   await fuelEntryService.create(
     {
       vehicleId: vehicle.id,
-      fuelStationId,
       quantityLiters,
       ratePerLiter,
       odometerReading,
       tripId,
-      driverId,
       fuelType: row.fuelType ? (String(row.fuelType).toUpperCase() as never) : undefined,
       billingMethod: row.billingMethod ? (String(row.billingMethod).toUpperCase() as never) : undefined,
       invoiceNumber: row.invoiceNumber ? String(row.invoiceNumber).trim() : undefined,
@@ -284,8 +276,14 @@ async function importFastTagProviderRow(row: Record<string, unknown>, actorId: s
 
   let tripId: string | undefined;
   if (!isCredit) {
-    const activeTrip = await fastTagRepository.findActiveTripForVehicleAt(vehicle.id, transactionDate);
-    tripId = activeTrip?.id;
+    // Same "current or last trip for this vehicle" guarantee as FASTag's
+    // manual usage logging (fasttag.service.ts logUsage()) — a toll charge
+    // always belongs to a trip, so imported rows shouldn't silently end up
+    // untagged just because the transaction timestamp didn't land exactly
+    // inside a trip's start/end window.
+    const trip = await tripRepository.findCurrentOrLastTripForVehicle(vehicle.id);
+    if (!trip) throw new Error(`${vehicleRegistrationNumber} has no trips yet — a trip is required to import toll usage`);
+    tripId = trip.id;
   }
 
   const transaction = await prisma.fastTagTransaction.create({
@@ -313,6 +311,7 @@ async function importFastTagProviderRow(row: Record<string, unknown>, actorId: s
   if (!isCredit) {
     await vehicleExpenseInternalService.logFromSource({
       vehicleId: vehicle.id,
+      tripId,
       category: 'FASTTAG',
       amount,
       expenseDate: transactionDate,

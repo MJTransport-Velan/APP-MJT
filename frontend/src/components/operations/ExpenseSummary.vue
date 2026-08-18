@@ -1,11 +1,16 @@
 <template>
-  <div class="row">
-    <div v-for="card in cards" :key="card.label" class="col-6 col-sm-4 col-md-2">
-      <AppCard class="pa-3 text-center" variant="outlined">
-        <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
-        <div class="text-subtitle-1 font-weight-bold">{{ formatCurrency(card.value) }}</div>
-      </AppCard>
+  <div>
+    <div class="row">
+      <div v-for="card in cards" :key="card.label" class="col-6 col-sm-4 col-md-2">
+        <AppCard class="pa-3 text-center" variant="outlined">
+          <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
+          <div class="text-subtitle-1 font-weight-bold">{{ formatCurrency(card.value) }}</div>
+        </AppCard>
+      </div>
     </div>
+    <p v-if="hasLinkedRows" class="text-caption text-medium-emphasis mt-2 mb-0">
+      Rows marked "Auto" below are already recorded via Diesel/Fuel or FASTag for this trip — no need to log them again here.
+    </p>
   </div>
 </template>
 
@@ -26,6 +31,8 @@ const LABELS: Record<string, string> = {
   UNLOADING: 'Unloading',
   MISCELLANEOUS: 'Misc',
 };
+
+const hasLinkedRows = computed(() => props.expenses.some((e) => e.source === 'linked'));
 
 const cards = computed(() =>
   CATEGORIES.map((cat) => ({

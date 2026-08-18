@@ -29,7 +29,6 @@ export const masterCategories: MasterCategory[] = [
     icon: 'mdi-map-marker-outline',
     items: [
       { title: 'Locations', icon: 'mdi-map-marker-outline', to: '/masters/locations', description: 'Manage cities, states and pincodes' },
-      { title: 'Routes', icon: 'mdi-map-marker-path', to: '/masters/routes', description: 'Manage standard transport routes' },
     ],
   },
   {
@@ -55,7 +54,6 @@ export const masterCategories: MasterCategory[] = [
     title: 'Finance',
     icon: 'mdi-bank-outline',
     items: [
-      { title: 'Banks', icon: 'mdi-bank-outline', to: '/masters/banks', description: 'Bank master records' },
       { title: 'GST Masters', icon: 'mdi-receipt-text-outline', to: '/masters/gst-masters', description: 'GST rate configurations' },
       { title: 'Expense Categories', icon: 'mdi-cash-minus', to: '/masters/expense-categories', description: 'Categorize business expenses' },
       { title: 'Payment Modes', icon: 'mdi-credit-card-outline', to: '/masters/payment-modes', description: 'Manage accepted payment modes' },
@@ -73,7 +71,6 @@ export const masterCategories: MasterCategory[] = [
     icon: 'mdi-package-variant-closed',
     items: [
       { title: 'Materials', icon: 'mdi-package-variant-closed', to: '/masters/materials', description: 'Manage goods/material types' },
-      { title: 'Fuel Stations', icon: 'mdi-gas-station-outline', to: '/masters/fuel-stations', description: 'Fuel station master records' },
     ],
   },
   {

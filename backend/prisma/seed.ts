@@ -38,15 +38,12 @@ const ROLES = [
 const MASTER_MODULE_LABELS: Record<string, string> = {
   branch: 'Branches',
   location: 'Locations',
-  route: 'Transport Routes',
   vehicle_type: 'Vehicle Types',
   vehicle: 'Vehicles',
   driver: 'Drivers',
   supplier: 'Suppliers',
   material: 'Materials',
   expense_category: 'Expense Categories',
-  fuel_station: 'Fuel Stations',
-  bank: 'Banks',
   payment_mode: 'Payment Modes',
   tyre: 'Tyres',
   service_category: 'Service Categories',
@@ -124,10 +121,17 @@ const ACCOUNTS_PERMISSIONS = [
   { name: 'supplierPayment.view', description: 'View Supplier Payments' },
   { name: 'supplierPayment.create', description: 'Create Supplier Payments' },
   { name: 'supplierPayment.edit', description: 'Edit Supplier Payments' },
+  { name: 'supplierPayment.allocate', description: 'Allocate an Advance Supplier Payment to a Bill' },
   { name: 'collectionActivity.view', description: 'View Collection Activities' },
   { name: 'collectionActivity.create', description: 'Log Collection Activities (calls, reminders, promises to pay)' },
   { name: 'tripFinancial.view', description: 'View Trip Financials (Income/Expenses/P&L)' },
   { name: 'accounts.dashboard', description: 'View Accounts Dashboard' },
+  // Capital Account — partner contribution/withdrawal transactions (money
+  // movement); the CapitalPartner master itself is an Accounting
+  // Foundation simple-master permission (capital_partner.*), see below.
+  { name: 'capital_transaction.view', description: 'View Capital Account transactions (partner contributions/withdrawals)' },
+  { name: 'capital_transaction.create', description: 'Record a Capital Contribution or Withdrawal' },
+  { name: 'capital_transaction.delete', description: 'Delete a Capital Transaction' },
 ];
 
 // Phase 7 — Accounting Foundation. Reduced to just Organization (the legal
@@ -137,6 +141,7 @@ const ACCOUNTS_PERMISSIONS = [
 // favor of directly-stored BankAccount/CashAccount balances.
 const ACCOUNTING_FOUNDATION_SIMPLE_LABELS: Record<string, string> = {
   currency: 'Currencies',
+  capital_partner: 'Capital Partners',
 };
 const ACCOUNTING_FOUNDATION_SIMPLE_PREFIXES = Object.keys(ACCOUNTING_FOUNDATION_SIMPLE_LABELS);
 
@@ -214,10 +219,6 @@ const DRIVER_PAYROLL_PERMISSIONS = [
   { name: 'driverAdvance.create', description: 'Request a Driver Advance' },
   { name: 'driverAdvance.approve', description: 'Approve/Reject a Driver Advance' },
   { name: 'driverAdvance.delete', description: 'Delete a Driver Advance' },
-  { name: 'driverReimbursement.view', description: 'View Driver Expense Reimbursements' },
-  { name: 'driverReimbursement.create', description: 'Request a Driver Expense Reimbursement' },
-  { name: 'driverReimbursement.approve', description: 'Approve/Reject a Driver Expense Reimbursement' },
-  { name: 'driverReimbursement.delete', description: 'Delete a Driver Expense Reimbursement' },
   { name: 'driverEarning.view', description: 'View Driver Allowances/Incentives' },
   { name: 'driverEarning.create', description: 'Record a Driver Allowance/Incentive' },
   { name: 'driverEarning.approve', description: 'Approve/Reject a Driver Allowance/Incentive' },
@@ -230,15 +231,14 @@ const DRIVER_PAYROLL_PERMISSIONS = [
   { name: 'driverPenalty.create', description: 'Record a Driver Penalty/Recovery' },
   { name: 'driverPenalty.approve', description: 'Approve/Reject a Driver Penalty/Recovery' },
   { name: 'driverPenalty.delete', description: 'Delete a Driver Penalty/Recovery' },
-  { name: 'driverLoan.view', description: 'View Driver Loans' },
-  { name: 'driverLoan.create', description: 'Request a Driver Loan' },
-  { name: 'driverLoan.approve', description: 'Approve/Reject and Disburse a Driver Loan' },
-  { name: 'driverLoan.delete', description: 'Delete a Driver Loan' },
   { name: 'driverSettlement.view', description: 'View Driver Settlements' },
   { name: 'driverSettlement.create', description: 'Create/Calculate a Driver Settlement' },
   { name: 'driverSettlement.approve', description: 'Approve a Driver Settlement' },
   { name: 'driverSettlement.pay', description: 'Pay a Driver Settlement' },
   { name: 'driverStatement.view', description: 'View a Driver Ledger Statement' },
+  { name: 'driverSalaryStructure.view', description: 'View Driver Salary Structures' },
+  { name: 'driverSalaryStructure.create', description: 'Create a Driver Salary Structure' },
+  { name: 'driverSalaryStructure.delete', description: 'Delete a Driver Salary Structure' },
   { name: 'salaryStructure.view', description: 'View Salary Structures' },
   { name: 'salaryStructure.create', description: 'Create a Salary Structure' },
   { name: 'salaryStructure.delete', description: 'Delete a Salary Structure' },
@@ -246,16 +246,6 @@ const DRIVER_PAYROLL_PERMISSIONS = [
   { name: 'employeeAdvance.create', description: 'Request an Employee Advance' },
   { name: 'employeeAdvance.approve', description: 'Approve/Reject an Employee Advance' },
   { name: 'employeeAdvance.delete', description: 'Delete an Employee Advance' },
-  { name: 'employeeLoan.view', description: 'View Employee Loans' },
-  { name: 'employeeLoan.create', description: 'Request an Employee Loan' },
-  { name: 'employeeLoan.approve', description: 'Approve/Reject and Disburse an Employee Loan' },
-  { name: 'employeeLoan.delete', description: 'Delete an Employee Loan' },
-  { name: 'payrollRun.view', description: 'View Payroll Runs' },
-  { name: 'payrollRun.create', description: 'Create/Calculate/Cancel a Payroll Run' },
-  { name: 'payrollRun.verify', description: 'Verify a Calculated Payroll Run' },
-  { name: 'payrollRun.approve', description: 'Approve a Payroll Run (posts the salary Journal Voucher)' },
-  { name: 'payrollRun.process', description: 'Mark a Payroll Run as Processed' },
-  { name: 'payrollRun.pay', description: 'Disburse a Payroll Run' },
   { name: 'payrollDashboard.view', description: 'View the Payroll Dashboard' },
 ];
 
@@ -309,7 +299,7 @@ const VEHICLE_ASSET_PERMISSIONS = [
 // Voucher/Ledger double-entry engine they depended on; the reports below
 // read directly from Invoice/SupplierBill/Driver/Vehicle/Loan data instead.
 const FINANCIAL_REPORTING_PERMISSIONS = [
-  { name: 'profitability_report.view', description: 'View Customer/Supplier/Vehicle/Driver/Route/Branch Profitability' },
+  { name: 'profitability_report.view', description: 'View Customer/Supplier/Vehicle/Driver/Branch Profitability' },
   { name: 'outstanding_report.view', description: 'View Driver/Employee Outstanding Reports' },
   { name: 'loan_report.view', description: 'View the consolidated Driver/Employee/Vehicle Loan Report' },
   { name: 'expense_analysis.view', description: 'View category-wise Expense Analysis' },
@@ -318,6 +308,8 @@ const FINANCIAL_REPORTING_PERMISSIONS = [
   { name: 'report_schedule.create', description: 'Create a Report Schedule definition' },
   { name: 'report_schedule.edit', description: 'Edit a Report Schedule definition' },
   { name: 'report_schedule.delete', description: 'Delete a Report Schedule definition' },
+  { name: 'balance_sheet.view', description: 'View the Balance Sheet (Assets/Liabilities financial position report)' },
+  { name: 'profit_loss.view', description: 'View the Profit & Loss report' },
 ];
 
 // Phase 14 (docs Phase 8) — Enterprise Integration, Automation, Audit,
@@ -362,6 +354,7 @@ const FINANCIAL_ENTRY_PERMISSIONS = [
   { name: 'financialEntry.approve', description: 'Approve a Financial Entry' },
   { name: 'financialEntry.cancel', description: 'Cancel a Financial Entry' },
   { name: 'financialEntry.reverse', description: 'Reverse a posted Financial Entry' },
+  { name: 'financialEntry.delete', description: 'Delete a Draft, Cancelled or Reversed Financial Entry' },
   { name: 'financialState.view', description: 'View Customer/Supplier/Driver/Employee/Bank/Cash financial state and the Financial Dashboard' },
 ];
 
@@ -443,7 +436,6 @@ const PERMISSIONS = [
     { name: `${prefix}.edit`, description: `Edit ${FLEET_MODULE_LABELS[prefix]}` },
     { name: `${prefix}.delete`, description: `Delete ${FLEET_MODULE_LABELS[prefix]}` },
   ]),
-  { name: 'supplier_vehicle.view', description: 'View Supplier (Market) Vehicles' },
   ...OPERATIONS_PERMISSIONS,
   ...ACCOUNTS_PERMISSIONS,
   ...ACCOUNTING_FOUNDATION_PERMISSIONS,
@@ -559,10 +551,15 @@ async function main() {
   console.log('Assigning fleet-relevant Masters permissions to FLEET_MANAGER...');
   const fleetManagerRole = await prisma.role.findUnique({ where: { name: 'FLEET_MANAGER' } });
   if (fleetManagerRole) {
-    const fleetPrefixes = ['vehicle_type', 'vehicle', 'driver', 'tyre', 'trailer_type', 'fuel_station', 'supplier'];
-    const fleetPermissionNames = fleetPrefixes.flatMap((prefix) => [
-      `${prefix}.view`, `${prefix}.create`, `${prefix}.edit`,
-    ]);
+    const fleetPrefixes = ['vehicle_type', 'vehicle', 'driver', 'tyre', 'trailer_type', 'supplier'];
+    const fleetPermissionNames = [
+      ...fleetPrefixes.flatMap((prefix) => [`${prefix}.view`, `${prefix}.create`, `${prefix}.edit`]),
+      // Fleet Manager owns the vehicle master end-to-end (unlike the other
+      // fleet-adjacent masters here, which stay create/edit-only for this
+      // role) — they need to be able to remove a vehicle record, not just
+      // deactivate it.
+      'vehicle.delete',
+    ];
     const fleetPermissions = await prisma.permission.findMany({
       where: { name: { in: fleetPermissionNames } },
     });
@@ -579,7 +576,6 @@ async function main() {
   const phase4AdminPermissionNames = [
     'fleet.view', 'fleet.create', 'fleet.edit', 'fleet.delete',
     'vehicle.assign',
-    'supplier_vehicle.view',
     ...FLEET_MODULE_PREFIXES.flatMap((prefix) => [
       `${prefix}.view`, `${prefix}.create`, `${prefix}.edit`, `${prefix}.delete`,
     ]),
@@ -600,7 +596,6 @@ async function main() {
     const phase4FleetManagerPermissionNames = [
       'fleet.view',
       'vehicle.assign',
-      'supplier_vehicle.view',
       ...FLEET_MODULE_PREFIXES.flatMap((prefix) => [`${prefix}.view`, `${prefix}.create`, `${prefix}.edit`]),
     ];
     const phase4FleetManagerPermissions = await prisma.permission.findMany({
@@ -624,13 +619,12 @@ async function main() {
     'fuel_entry.view', 'fuel_entry.create',
     'maintenance.view', 'maintenance.create',
     'vehicle_expense.view', 'vehicle_expense.create',
-    'supplier_vehicle.view',
-    // Needed to populate the driver/route pickers on the Trips page
-    // (assignment dialog, load planning dialog) — without these, those
-    // lookups 403 and silently abort the page's initial data load. Same
-    // reasoning covers supplier.view: MARKET_FLEET_OPERATOR needs it to
-    // populate the Market Vendor dropdown when allocating a market truck.
-    'driver.view', 'route.view', 'supplier.view',
+    // Needed to populate the driver picker on the Trips page (assignment
+    // dialog) — without this, that lookup 403s and silently aborts the
+    // page's initial data load. Same reasoning covers supplier.view:
+    // MARKET_FLEET_OPERATOR needs it to populate the Market Vendor
+    // dropdown when allocating a market truck.
+    'driver.view', 'supplier.view',
   ];
   const operatorPermissions = await prisma.permission.findMany({ where: { name: { in: operatorPermissionNames } } });
   for (const role of [ownFleetRole, marketFleetRole]) {
@@ -773,9 +767,10 @@ async function main() {
       'receipt.view', 'receipt.create', 'receipt.edit', 'receipt.allocate',
       'supplierBill.view', 'supplierBill.create', 'supplierBill.edit',
       'supplierCreditNote.create', 'supplierDebitNote.create',
-      'supplierPayment.view', 'supplierPayment.create', 'supplierPayment.edit',
+      'supplierPayment.view', 'supplierPayment.create', 'supplierPayment.edit', 'supplierPayment.allocate',
       'collectionActivity.view', 'collectionActivity.create',
       'tripFinancial.view', 'accounts.dashboard',
+      'capital_transaction.view', 'capital_transaction.create',
     ];
     const executivePermissions = await prisma.permission.findMany({
       where: { name: { in: executivePermissionNames } },
@@ -824,6 +819,7 @@ async function main() {
     const executiveFoundationPermissionNames = [
       'organization.view',
       'currency.view',
+      'capital_partner.view', 'capital_partner.create',
     ];
     const executiveFoundationPermissions = await prisma.permission.findMany({
       where: { name: { in: executiveFoundationPermissionNames } },
@@ -905,47 +901,41 @@ async function main() {
       permissionNames: [
         'employee.view', 'employee.create', 'employee.edit',
         'driverAdvance.view', 'driverAdvance.approve',
-        'driverReimbursement.view', 'driverReimbursement.approve',
         'driverEarning.view', 'driverEarning.approve',
         'driverEarningRule.view', 'driverEarningRule.create', 'driverEarningRule.edit',
         'driverPenalty.view', 'driverPenalty.approve',
-        'driverLoan.view', 'driverLoan.approve',
         'driverSettlement.view', 'driverSettlement.approve',
         'driverStatement.view',
+        'driverSalaryStructure.view', 'driverSalaryStructure.create', 'driverSalaryStructure.delete',
         'salaryStructure.view',
         'employeeAdvance.view', 'employeeAdvance.approve',
-        'employeeLoan.view', 'employeeLoan.approve',
-        'payrollRun.view', 'payrollRun.verify', 'payrollRun.approve',
         'payrollDashboard.view',
       ],
     },
-    // HR Manager: the Employee/SalaryStructure side and payroll verification — not approval/disbursal.
+    // HR Manager: the Employee/SalaryStructure side — configures pay, doesn't disburse it.
     {
       role: hrManagerRole,
       permissionNames: [
         'employee.view', 'employee.create', 'employee.edit', 'employee.delete',
         'salaryStructure.view', 'salaryStructure.create', 'salaryStructure.delete',
         'employeeAdvance.view', 'employeeAdvance.create',
-        'employeeLoan.view', 'employeeLoan.create',
-        'payrollRun.view', 'payrollRun.create', 'payrollRun.verify',
         'payrollDashboard.view',
       ],
     },
-    // Payroll Executive: the day-to-day operator — files and disburses, never approves.
+    // Payroll Executive: the day-to-day operator — pays salary directly via
+    // Financial Entry (purpose=SALARY), no separate payroll-run permission needed.
     {
       role: payrollExecutiveRole,
       permissionNames: [
         'driverAdvance.view', 'driverAdvance.create',
-        'driverReimbursement.view', 'driverReimbursement.create',
         'driverEarning.view', 'driverEarning.create',
         'driverEarningRule.view',
         'driverPenalty.view', 'driverPenalty.create',
-        'driverLoan.view', 'driverLoan.create',
         'driverSettlement.view', 'driverSettlement.create', 'driverSettlement.pay',
         'driverStatement.view',
+        'driverSalaryStructure.view',
+        'salaryStructure.view',
         'employeeAdvance.view', 'employeeAdvance.create',
-        'employeeLoan.view', 'employeeLoan.create',
-        'payrollRun.view', 'payrollRun.create', 'payrollRun.process', 'payrollRun.pay',
         'payrollDashboard.view',
       ],
     },
@@ -956,16 +946,14 @@ async function main() {
       permissionNames: [
         'employee.view',
         'driverAdvance.view', 'driverAdvance.create',
-        'driverReimbursement.view', 'driverReimbursement.create',
         'driverEarning.view', 'driverEarning.create',
         'driverEarningRule.view',
         'driverPenalty.view', 'driverPenalty.create',
-        'driverLoan.view', 'driverLoan.create',
         'driverSettlement.view', 'driverSettlement.create', 'driverSettlement.pay',
         'driverStatement.view',
+        'driverSalaryStructure.view',
+        'salaryStructure.view',
         'employeeAdvance.view', 'employeeAdvance.create',
-        'employeeLoan.view', 'employeeLoan.create',
-        'payrollRun.view', 'payrollRun.create', 'payrollRun.process', 'payrollRun.pay',
         'payrollDashboard.view',
       ],
     },
@@ -1005,7 +993,7 @@ async function main() {
     // Accounts Executive: day-to-day recording, not approve/reverse.
     {
       role: accountsExecutiveRole,
-      permissionNames: ['financialEntry.view', 'financialEntry.create', 'financialEntry.edit', 'financialEntry.cancel', 'financialState.view'],
+      permissionNames: ['financialEntry.view', 'financialEntry.create', 'financialEntry.edit', 'financialEntry.cancel', 'financialEntry.delete', 'financialState.view'],
     },
     // Operation Manager: trip-context money movement (advances/settlements) — no reversal authority.
     { role: operationManagerRole, permissionNames: ['financialEntry.view', 'financialEntry.create', 'financialState.view'] },
@@ -1120,7 +1108,7 @@ async function main() {
 
   const broadReportViewPermissions = [
     'profitability_report.view', 'outstanding_report.view', 'loan_report.view',
-    'expense_analysis.view', 'mis_dashboard.view', 'report_schedule.view',
+    'expense_analysis.view', 'mis_dashboard.view', 'report_schedule.view', 'balance_sheet.view', 'profit_loss.view',
   ];
 
   const financialReportingRoleGrants: { role: { id: string } | null; permissionNames: string[] }[] = [
@@ -1153,7 +1141,7 @@ async function main() {
     // Management (existing generic MANAGER role): executive-summary reports only.
     {
       role: managerRole,
-      permissionNames: ['mis_dashboard.view', 'profitability_report.view'],
+      permissionNames: ['mis_dashboard.view', 'profitability_report.view', 'balance_sheet.view', 'profit_loss.view'],
     },
   ];
 

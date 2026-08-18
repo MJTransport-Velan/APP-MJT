@@ -71,6 +71,7 @@ export const supplierBillService = {
       search: (query.search as string) || undefined,
       supplierId: (query.supplierId as string) || undefined,
       status: (query.status as SupplierBillStatus) || undefined,
+      unpaidOnly: query.unpaidOnly === 'true',
       dateFrom: query.dateFrom ? new Date(query.dateFrom as string) : undefined,
       dateTo: query.dateTo ? new Date(query.dateTo as string) : undefined,
     });

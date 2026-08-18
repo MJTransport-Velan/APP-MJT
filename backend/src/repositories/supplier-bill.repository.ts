@@ -19,6 +19,7 @@ export const supplierBillRepository = {
     search?: string;
     supplierId?: string;
     status?: SupplierBillStatus;
+    unpaidOnly?: boolean;
     dateFrom?: Date;
     dateTo?: Date;
   }) {
@@ -27,7 +28,7 @@ export const supplierBillRepository = {
       AND: [
         params.search ? { billNumber: { contains: params.search, mode: 'insensitive' } } : {},
         params.supplierId ? { supplierId: params.supplierId } : {},
-        params.status ? { status: params.status } : {},
+        params.status ? { status: params.status } : params.unpaidOnly ? { status: { in: ['GENERATED', 'PARTIALLY_PAID'] } } : {},
         dateRangeWhere('billDate', { dateFrom: params.dateFrom, dateTo: params.dateTo }),
       ],
     };

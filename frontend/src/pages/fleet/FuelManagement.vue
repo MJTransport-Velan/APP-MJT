@@ -63,21 +63,15 @@
         >
           <template #item.vehicle="{ item }">{{ (item as any).vehicle.registrationNumber }}</template>
           <template #item.fuelType="{ item }"><AppChip size="small" variant="tonal">{{ (item as any).fuelType }}</AppChip></template>
-          <template #item.fuelStation="{ item }">{{ (item as any).fuelStation?.name || '-' }}</template>
           <template #item.billingMethod="{ item }">
             <AppChip v-if="(item as any).billingMethod" size="small" variant="outlined">{{ billingMethodLabel((item as any).billingMethod) }}</AppChip>
             <span v-else class="text-medium-emphasis">-</span>
           </template>
           <template #item.trip="{ item }">{{ (item as any).trip?.tripNumber || '-' }}</template>
+          <template #item.driver="{ item }">{{ (item as any).driver?.name || '-' }}</template>
           <template #item.entryDate="{ item }">{{ new Date((item as any).entryDate).toLocaleDateString() }}</template>
           <template #item.mileageKmpl="{ item }">
             <span v-if="(item as any).mileageKmpl">{{ (item as any).mileageKmpl }} km/l</span>
-            <span v-else class="text-medium-emphasis">-</span>
-          </template>
-          <template #item.isAnomaly="{ item }">
-            <AppChip v-if="(item as any).isAnomaly" size="small" color="warning" variant="flat" prepend-icon="mdi-alert-outline">
-              <span :title="(item as any).anomalyReasons || ''">Flagged</span>
-            </AppChip>
             <span v-else class="text-medium-emphasis">-</span>
           </template>
           <template #item.actions="{ item }">
@@ -157,6 +151,7 @@
 
     <!-- Fuel Entry Dialog -->
     <MasterFormDialog v-model="entryDialog" title="New Fuel Entry" :loading="submittingEntry" @submit="onSubmitEntry">
+      <AppTextField v-model="entryForm.entryDate" type="date" label="Entry Date" class="mb-2" />
       <AppSelect
         v-model="entryForm.vehicleId"
         :items="vehicleOptions"
@@ -173,15 +168,6 @@
         item-title="title"
         item-value="value"
         label="How was this billed?"
-        clearable
-        class="mb-2"
-      />
-      <AppSelect
-        v-model="entryForm.fuelStationId"
-        :items="fuelStationOptions"
-        item-title="name"
-        item-value="id"
-        label="Fuel Station (optional)"
         clearable
         class="mb-2"
       />
@@ -203,26 +189,24 @@
         </div>
       </div>
       <AppTextField v-model.number="entryForm.odometerReading" type="number" label="Odometer Reading" :error-messages="entryErrors.odometerReading" class="mb-2" />
-      <AppTextField v-model="entryForm.entryDate" type="date" label="Entry Date" class="mb-2" />
       <AppTextField v-model="entryForm.location" label="Location (optional)" class="mb-2" />
       <AppSelect
         v-model="entryForm.tripId"
         :items="tripOptions"
         item-title="tripNumber"
         item-value="id"
-        label="Trip (optional)"
+        label="Trip (auto-detected from vehicle & date if left blank)"
         clearable
         class="mb-2"
       />
-      <AppSelect
-        v-model="entryForm.driverId"
-        :items="driverOptions"
-        item-title="name"
-        item-value="id"
-        label="Driver (optional)"
-        clearable
-        class="mb-2"
-      />
+      <div class="text-caption text-medium-emphasis mb-2">
+        <span v-if="resolvingTrip">Checking for a trip on this vehicle/date…</span>
+        <span v-else-if="autoTrip">
+          Auto-detected trip {{ autoTrip.tripNumber }}<span v-if="autoTrip.driver"> — driver {{ autoTrip.driver.name }} will be filled in automatically.</span>
+        </span>
+        <span v-else-if="entryForm.vehicleId">No active trip found for this vehicle on this date — driver will stay blank unless you pick a trip above.</span>
+        <span v-else>Select a vehicle and date to auto-detect the trip and driver.</span>
+      </div>
       <div class="row row-dense">
         <div class="col-6">
           <AppTextField v-model="entryForm.invoiceNumber" label="Invoice No. (optional)" />
@@ -264,8 +248,9 @@
         <AppCardTitle class="text-h6">Import Fuel Entries</AppCardTitle>
         <AppCardText>
           <p class="text-caption text-medium-emphasis mb-2">
-            Excel (.xlsx) columns: vehicleRegistrationNumber, fuelStation (optional), quantityLiters, ratePerLiter,
-            odometerReading, entryDate, tripNumber, driverCode, fuelType, billingMethod, invoiceNumber, referenceNumber, remarks.
+            Excel (.xlsx) columns: vehicleRegistrationNumber, quantityLiters, ratePerLiter,
+            odometerReading, entryDate, tripNumber, fuelType, billingMethod, invoiceNumber, referenceNumber, remarks.
+            Driver is auto-derived from the trip, never taken from the file.
           </p>
           <AppBtn variant="text" size="small" prepend-icon="mdi-download-outline" class="mb-3 px-0" @click="downloadFuelSample">
             Download Sample Excel
@@ -300,10 +285,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useFuelEntryStore, useFuelCardStore } from '@/stores/fleet';
-import { useVehicleStore, useFuelStationStore, useDriverStore } from '@/stores/masters';
+import { useVehicleStore } from '@/stores/masters';
 import { useTripStore } from '@/stores/operations';
+import { tripApi } from '@/services/operations';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import { importApi } from '@/services/system/phase8';
@@ -321,8 +307,6 @@ import type { VehicleFuelSummary } from '@/types/fleet.types';
 const entryStore = useFuelEntryStore();
 const cardStore = useFuelCardStore();
 const vehicleStore = useVehicleStore();
-const fuelStationStore = useFuelStationStore();
-const driverStore = useDriverStore();
 const tripStore = useTripStore();
 const { success, error } = useSnackbar();
 
@@ -338,8 +322,6 @@ function billingMethodLabel(value: string) {
 }
 
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
-const fuelStationOptions = ref<{ id: string; name: string }[]>([]);
-const driverOptions = ref<{ id: string; name: string }[]>([]);
 const tripOptions = ref<{ id: string; tripNumber: string }[]>([]);
 
 // --- Fuel Entries ---
@@ -348,14 +330,13 @@ const entryPageSize = ref(10);
 const entryHeaders = [
   { title: 'Vehicle', key: 'vehicle', sortable: false },
   { title: 'Type', key: 'fuelType', sortable: false },
-  { title: 'Station', key: 'fuelStation', sortable: false },
   { title: 'Billing', key: 'billingMethod', sortable: false },
   { title: 'Trip', key: 'trip', sortable: false },
+  { title: 'Driver', key: 'driver', sortable: false },
   { title: 'Quantity (L)', key: 'quantityLiters', sortable: false },
   { title: 'Amount', key: 'totalAmount', sortable: false },
   { title: 'Mileage', key: 'mileageKmpl', sortable: false },
   { title: 'Date', key: 'entryDate', sortable: false },
-  { title: 'Anomaly', key: 'isAnomaly', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
 ];
 
@@ -404,7 +385,6 @@ const entryForm = reactive<{
   vehicleId: string;
   fuelType: string;
   billingMethod: string;
-  fuelStationId: string;
   fuelCardId: string;
   quantityLiters: number | undefined;
   ratePerLiter: number | undefined;
@@ -412,7 +392,6 @@ const entryForm = reactive<{
   entryDate: string;
   location: string;
   tripId: string;
-  driverId: string;
   invoiceNumber: string;
   referenceNumber: string;
   remarks: string;
@@ -420,7 +399,6 @@ const entryForm = reactive<{
   vehicleId: '',
   fuelType: 'DIESEL',
   billingMethod: '',
-  fuelStationId: '',
   fuelCardId: '',
   quantityLiters: undefined,
   ratePerLiter: undefined,
@@ -428,7 +406,6 @@ const entryForm = reactive<{
   entryDate: new Date().toISOString().substring(0, 10),
   location: '',
   tripId: '',
-  driverId: '',
   invoiceNumber: '',
   referenceNumber: '',
   remarks: '',
@@ -440,7 +417,6 @@ function openEntryDialog() {
     vehicleId: '',
     fuelType: 'DIESEL',
     billingMethod: '',
-    fuelStationId: '',
     fuelCardId: '',
     quantityLiters: undefined,
     ratePerLiter: undefined,
@@ -448,14 +424,43 @@ function openEntryDialog() {
     entryDate: new Date().toISOString().substring(0, 10),
     location: '',
     tripId: '',
-    driverId: '',
     invoiceNumber: '',
     referenceNumber: '',
     remarks: '',
   });
   Object.assign(entryErrors, { vehicleId: '', quantityLiters: '', ratePerLiter: '', odometerReading: '' });
+  autoTrip.value = null;
   entryDialog.value = true;
 }
+
+// --- Live trip/driver auto-detection as Vehicle/Date change ---
+const autoTrip = ref<{ id: string; tripNumber: string; driver: { id: string; name: string; code: string } | null } | null>(null);
+const resolvingTrip = ref(false);
+async function refreshAutoTrip() {
+  if (!entryForm.vehicleId || !entryForm.entryDate) {
+    autoTrip.value = null;
+    return;
+  }
+  resolvingTrip.value = true;
+  try {
+    const response = await tripApi.activeForVehicle(entryForm.vehicleId, entryForm.entryDate);
+    autoTrip.value = response.data.data;
+    entryForm.tripId = autoTrip.value?.id || '';
+    if (autoTrip.value && !tripOptions.value.some((t) => t.id === autoTrip.value!.id)) {
+      tripOptions.value = [...tripOptions.value, { id: autoTrip.value.id, tripNumber: autoTrip.value.tripNumber }];
+    }
+  } catch {
+    autoTrip.value = null;
+  } finally {
+    resolvingTrip.value = false;
+  }
+}
+watch(
+  () => [entryForm.vehicleId, entryForm.entryDate],
+  () => {
+    if (entryDialog.value) refreshAutoTrip();
+  }
+);
 
 function validateEntry(): boolean {
   entryErrors.vehicleId = entryForm.vehicleId ? '' : 'Vehicle is required';
@@ -473,7 +478,6 @@ async function onSubmitEntry() {
       vehicleId: entryForm.vehicleId,
       fuelType: entryForm.fuelType,
       billingMethod: entryForm.billingMethod || undefined,
-      fuelStationId: entryForm.fuelStationId || undefined,
       fuelCardId: entryForm.fuelCardId || undefined,
       quantityLiters: entryForm.quantityLiters,
       ratePerLiter: entryForm.ratePerLiter,
@@ -481,7 +485,6 @@ async function onSubmitEntry() {
       entryDate: entryForm.entryDate,
       location: entryForm.location || undefined,
       tripId: entryForm.tripId || undefined,
-      driverId: entryForm.driverId || undefined,
       invoiceNumber: entryForm.invoiceNumber || undefined,
       referenceNumber: entryForm.referenceNumber || undefined,
       remarks: entryForm.remarks || undefined,
@@ -652,19 +655,13 @@ async function onToggleCard(card: any) {
 }
 
 onMounted(async () => {
-  const [vehiclesRes, stationsRes, driversRes, tripsRes] = await Promise.all([
+  const [vehiclesRes, tripsRes] = await Promise.all([
     vehicleStore.fetchList({ pageSize: 200 }),
-    fuelStationStore.fetchList({ pageSize: 200 }),
-    driverStore.fetchList({ pageSize: 200 }),
     tripStore.fetchList({ pageSize: 100 }),
   ]);
   vehicleOptions.value = vehicleStore.items.map((v: any) => ({ id: v.id, registrationNumber: v.registrationNumber }));
-  fuelStationOptions.value = fuelStationStore.items.map((s: any) => ({ id: s.id, name: s.name }));
-  driverOptions.value = driverStore.items.map((d: any) => ({ id: d.id, name: d.name }));
   tripOptions.value = tripStore.items.map((t: any) => ({ id: t.id, tripNumber: t.tripNumber }));
   void vehiclesRes;
-  void stationsRes;
-  void driversRes;
   void tripsRes;
   fetchEntries();
   fetchCards();

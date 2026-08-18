@@ -1,5 +1,5 @@
 <template>
-  <AppCard class="pa-4">
+  <AppCard class="pa-4" :class="{ 'profit-card--clickable': clickable }" @click="clickable && emit('click')">
     <div class="d-flex align-center ga-3">
       <AppAvatar :color="color" size="44" rounded="lg">
         <AppIcon :icon="icon" color="white" />
@@ -24,13 +24,17 @@ const props = withDefaults(
     icon?: string;
     color?: string;
     colorByValue?: boolean;
+    clickable?: boolean;
   }>(),
   {
     icon: 'mdi-cash-multiple',
     color: 'primary',
     colorByValue: false,
+    clickable: false,
   }
 );
+
+const emit = defineEmits<{ click: [] }>();
 
 const formattedValue = computed(() => formatCurrency(props.value));
 const valueClass = computed(() => {
@@ -38,3 +42,14 @@ const valueClass = computed(() => {
   return props.value >= 0 ? 'text-success' : 'text-error';
 });
 </script>
+
+<style scoped>
+.profit-card--clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.profit-card--clickable:hover {
+  box-shadow: var(--elevation-2, 0 4px 12px rgba(0, 0, 0, 0.12));
+  transform: translateY(-1px);
+}
+</style>

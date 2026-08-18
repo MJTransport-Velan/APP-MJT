@@ -10,6 +10,16 @@ export function formatNumber(value: number): string {
   return new Intl.NumberFormat('en-IN').format(value);
 }
 
+/**
+ * YYYY-MM-DD from the given Date's LOCAL calendar day. Deliberately not
+ * `date.toISOString().slice(0, 10)` — that converts to UTC first, which
+ * silently shows "yesterday" for the first several hours of every day in
+ * any timezone east of UTC (e.g. IST, UTC+5:30).
+ */
+export function localDateStr(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export function formatRelativeTime(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime();
   const diffMinutes = Math.round(diffMs / 60000);

@@ -37,7 +37,7 @@
       <AppTextField v-model="form.gstNumber" label="GST Number" :error-messages="errors.gstNumber" class="mb-2" />
       <AppTextField v-model="form.panNumber" label="PAN Number" :error-messages="errors.panNumber" class="mb-2" />
       <AppTextField v-model="form.contactPerson" label="Contact Person" class="mb-2" />
-      <AppTextField v-model="form.phone" label="Phone" :error-messages="errors.phone" class="mb-2" />
+      <AppTextField v-model="form.phone" label="Phone" maxlength="10" :error-messages="errors.phone" class="mb-2" />
       <AppTextField v-model="form.email" label="Email" :error-messages="errors.email" class="mb-2" />
       <AppTextarea v-model="form.address" label="Address" rows="2" />
     </MasterFormDialog>

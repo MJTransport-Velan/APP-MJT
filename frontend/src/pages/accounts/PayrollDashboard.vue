@@ -8,32 +8,20 @@
 
     <template v-else-if="summary">
       <div class="row">
-        <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Pending Payroll Runs" :value="summary.pendingPayrollRuns" icon="mdi-file-clock-outline" color="warning" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-6 col-md-6">
           <ProfitCard label="Pending Advances" :value="summary.pendingAdvances" icon="mdi-cash-clock" color="warning" />
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-6 col-md-6">
           <ProfitCard label="Pending Settlements" :value="summary.pendingSettlements" icon="mdi-file-document-outline" color="warning" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Pending Loans" :value="summary.pendingLoans" icon="mdi-hand-coin-outline" color="warning" />
         </div>
       </div>
 
       <div class="row mt-1">
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-6 col-md-6">
           <ProfitCard label="Outstanding Driver Advances" :value="summary.outstandingDriverAdvances" icon="mdi-account-cash-outline" color="info" />
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
+        <div class="col-12 col-sm-6 col-md-6">
           <ProfitCard label="Outstanding Employee Advances" :value="summary.outstandingEmployeeAdvances" icon="mdi-account-cash-outline" color="info" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Outstanding Driver Loans" :value="summary.outstandingDriverLoans" icon="mdi-hand-coin-outline" color="info" />
-        </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Outstanding Employee Loans" :value="summary.outstandingEmployeeLoans" icon="mdi-hand-coin-outline" color="info" />
         </div>
       </div>
 

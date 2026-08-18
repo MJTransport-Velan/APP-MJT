@@ -186,6 +186,14 @@
             <PODUploader :documents="podStore.documents" :can-verify="false" @upload="onPodUpload" />
             <AppDivider class="my-3" />
           </template>
+          <template v-if="showChargeStep">
+            <AppTextField
+              v-model.number="chargeAmount"
+              type="number"
+              :label="`${statusLabel(nextStatus || '')} Charges (optional — added to freight, billed to customer)`"
+              class="mb-2"
+            />
+          </template>
           <AppTextarea v-model="statusNotes" label="Notes (optional)" rows="3" />
         </AppCardText>
         <AppCardActions>
@@ -238,6 +246,7 @@ import {
   AppCardText,
   AppCardActions,
   AppDialog,
+  AppTextField,
   AppTextarea,
   AppChip,
   AppDivider,
@@ -295,6 +304,11 @@ const nextStatus = computed(() => (trip.value ? ALLOWED_TRANSITIONS[trip.value.s
 // letting the user hit that generic error.
 const hasPodDocument = computed(() => podStore.documents.some((d) => d.type === 'POD'));
 const showPodStep = computed(() => nextStatus.value === 'COMPLETED' && !!trip.value?.podRequired);
+
+// Loading/unloading charges are billed straight to the customer (added onto
+// freightAmount server-side), so ask for them right at the moment the trip
+// is marked LOADING/UNLOADING rather than as a separate follow-up step.
+const showChargeStep = computed(() => nextStatus.value === 'LOADING' || nextStatus.value === 'UNLOADING');
 
 // Matches trip-financial.service.ts: client amount minus what we pay the supplier.
 const profit = computed(() => Number(trip.value?.freightAmount || 0) - Number(trip.value?.supplierRate || 0));
@@ -358,6 +372,7 @@ async function onAddNote() {
 // --- Update status ---
 const updateStatusDialog = ref(false);
 const statusNotes = ref('');
+const chargeAmount = ref<number | undefined>(undefined);
 const updatingStatus = ref(false);
 
 // Moving to ASSIGNED requires an actual vehicle/driver (enforced server-side
@@ -374,6 +389,7 @@ async function onMarkAsClick() {
     if (showPodStep.value) {
       await podStore.fetchList({ tripId, type: 'POD' });
     }
+    chargeAmount.value = undefined;
     updateStatusDialog.value = true;
   }
 }
@@ -393,11 +409,12 @@ async function submitUpdateStatus() {
   const targetStatus = nextStatus.value;
   updatingStatus.value = true;
   try {
-    trip.value = await tripStore.updateStatus(tripId, targetStatus, statusNotes.value || undefined);
+    trip.value = await tripStore.updateStatus(tripId, targetStatus, statusNotes.value || undefined, chargeAmount.value || undefined);
     await tripStore.fetchTimeline(tripId);
     success(`Trip marked as ${statusLabel(targetStatus)}`);
     updateStatusDialog.value = false;
     statusNotes.value = '';
+    chargeAmount.value = undefined;
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to update trip status'));
   } finally {

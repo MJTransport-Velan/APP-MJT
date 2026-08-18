@@ -12,7 +12,7 @@
 
     <HubCardGrid :items="filteredCards" item-key="title">
       <template #default="{ item }">
-        <HubCard v-bind="(item as any)" />
+        <HubCard v-bind="(item as any)" :background-images="ACCOUNTS_CARD_BACKGROUNDS" />
       </template>
     </HubCardGrid>
 
@@ -25,6 +25,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useAccountsDashboardStore } from '@/stores/accounts';
 import { HubCard, HubCardGrid, HubSearch, HubStatRow, HubFavoritesRecents } from '@/components/hub';
 import { formatCurrency } from '@/utils/format';
+import { ACCOUNTS_CARD_BACKGROUNDS } from '@/assets/acc-card-background';
 
 const dashboardStore = useAccountsDashboardStore();
 const search = ref('');
@@ -47,14 +48,15 @@ const statRow = computed(() => {
 // as Accounting → Banking) rather than a single flat list of ~40 pages.
 const cards = [
   { icon: 'mdi-cash-fast', title: 'Financial Entry', description: 'Record money received, paid, transferred or spent — pick source, destination and purpose, done', to: '/accounts/financial-entry' },
+  { icon: 'mdi-wallet-outline', title: 'Capital Account', description: 'Partner contributions and withdrawals, and each partner’s capital balance', to: '/accounts/capital-account' },
   { icon: 'mdi-view-dashboard-variant-outline', title: 'Accounts Dashboard', description: 'Receivables, payables and profit analytics', to: '/accounts/dashboard' },
   { icon: 'mdi-cash-plus', title: 'Receivables', description: 'Customer invoices, receipts, aging, credit control and collections', to: '/accounts/receivables' },
   { icon: 'mdi-cash-minus', title: 'Payables', description: 'Supplier bills and payments for market-vehicle hires', to: '/accounts/payables' },
-  { icon: 'mdi-account-cash-outline', title: 'Driver Accounts & Payroll', description: 'Driver advances, loans and settlements; salary structures and payroll runs', to: '/accounts/driver-payroll' },
+  { icon: 'mdi-account-cash-outline', title: 'Driver Accounts & Payroll', description: 'Driver advances and settlements; salary structures and payroll runs', to: '/accounts/driver-payroll' },
   { icon: 'mdi-truck-outline', title: 'Vehicle Assets & Compliance', description: 'Fixed assets, vehicle loans, depreciation, tyres, batteries and compliance renewals', to: '/accounts/vehicle-assets' },
-  { icon: 'mdi-file-percent-outline', title: 'GST & Taxation', description: 'GST rate masters for invoicing', to: '/accounts/gst-taxation' },
   { icon: 'mdi-finance', title: 'Financial Reporting & Closing', description: 'Profitability, outstanding/loan/expense reports, MIS dashboard and audit trail', to: '/accounts/financial-reporting' },
-  { icon: 'mdi-bank-outline', title: 'Accounting (Advanced)', description: 'Banking, cash management and the organization these books belong to', to: '/accounting' },
+  { icon: 'mdi-bank-outline', title: 'Banking & Cash', description: 'Bank/cash accounts, transfers, cheques and petty cash', to: '/accounting/banking' },
+  { icon: 'mdi-domain', title: 'Accounting (Advanced)', description: 'GST & taxation, currencies, cost categories and the organization these books belong to', to: '/accounting' },
 ];
 
 const filteredCards = computed(() => {

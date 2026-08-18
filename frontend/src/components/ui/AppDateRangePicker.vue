@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex ga-2">
+  <div class="d-flex flex-wrap ga-2">
     <AppTextField
       :model-value="from"
       type="date"

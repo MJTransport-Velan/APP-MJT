@@ -275,3 +275,15 @@ a {
 /* scrollbar polish */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-pill); }
+
+/* ---------------------------------------------------------------------- */
+/* Mobile safety net — most page/dialog layouts pair fields with          */
+/* .d-flex.ga-2 rows that rely on the viewport being wide enough for      */
+/* every child to fit; on a phone that silently clips instead of         */
+/* wrapping. Force wrapping below 600px so nothing gets cut off.          */
+/* ---------------------------------------------------------------------- */
+@media (max-width: 600px) {
+  .d-flex {
+    flex-wrap: wrap;
+  }
+}

@@ -6,6 +6,7 @@ import { organizationService } from './organization.service';
 import { resolveOrDefaultFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateDriverSettlementInput } from '../validators/driver-settlement.validator';
+import { driverSalaryStructureService } from './driver-salary-structure.service';
 
 function serialize(s: DriverSettlementWithRelations) {
   return {
@@ -26,26 +27,32 @@ function serialize(s: DriverSettlementWithRelations) {
 }
 
 /**
- * Every Advance/Earning/Reimbursement/Penalty already posts its own
- * Voucher against the Driver Ledger at approval time — the ledger is
- * always live, per §1's "no stored balance" discipline. Settlement's job
- * is therefore not to re-recognize those postings (no separate Journal
- * Voucher is needed, unlike a driver who also draws a formal salary,
- * which this implementation routes through Employee Payroll instead —
- * see design doc §14 on keeping the two tracks separate) — it is to sweep
- * the period's contributing documents into one net cash movement and
- * close them out as settled.
+ * Every Advance/Earning/Penalty already posts its own Voucher against the
+ * Driver Ledger at approval time — the ledger is always live, per §1's "no
+ * stored balance" discipline. Settlement's job is therefore not to
+ * re-recognize those postings (no separate Journal Voucher is needed,
+ * unlike a driver who also draws a formal salary, which this
+ * implementation routes through Employee Payroll instead — see design doc
+ * §14 on keeping the two tracks separate) — it is to sweep the period's
+ * contributing documents into one net cash movement and close them out as
+ * settled.
  */
 async function computeDraft(driverId: string, periodStart: Date, periodEnd: Date) {
-  const [advances, earnings, reimbursements, penalties, installments] = await Promise.all([
+  const [advances, earnings, penalties, salary] = await Promise.all([
     driverSettlementRepository.findUnsettledAdvances(driverId, periodStart, periodEnd),
     driverSettlementRepository.findUnsettledEarnings(driverId, periodStart, periodEnd),
-    driverSettlementRepository.findUnsettledReimbursements(driverId, periodStart, periodEnd),
     driverSettlementRepository.findUnsettledPenalties(driverId, periodStart, periodEnd),
-    driverSettlementRepository.findDueLoanInstallments(driverId, periodEnd),
+    driverSalaryStructureService.computeForPeriod(driverId, periodStart, periodEnd),
   ]);
 
-  const lines: { sourceType: 'ADVANCE' | 'ALLOWANCE' | 'INCENTIVE' | 'REIMBURSEMENT' | 'PENALTY' | 'LOAN_INSTALLMENT'; sourceId: string; description: string; amount: number; direction: 'DEBIT' | 'CREDIT' }[] = [];
+  const lines: { sourceType: 'ADVANCE' | 'ALLOWANCE' | 'INCENTIVE' | 'PENALTY' | 'SALARY'; sourceId?: string; description: string; amount: number; direction: 'DEBIT' | 'CREDIT' }[] = [];
+
+  // Base pay per the driver's active salary structure (Fixed or % of
+  // freight) — not tied to a persisted document, so it has no sourceId and
+  // is simply recomputed fresh every time this period is calculated.
+  if (salary && salary.amount > 0) {
+    lines.push({ sourceType: 'SALARY', description: salary.description, amount: salary.amount, direction: 'CREDIT' });
+  }
 
   for (const a of advances) lines.push({ sourceType: 'ADVANCE', sourceId: a.id, description: `Advance ${a.advanceNumber} (${a.advanceType})`, amount: Number(a.amount), direction: 'DEBIT' });
   for (const e of earnings)
@@ -56,15 +63,13 @@ async function computeDraft(driverId: string, periodStart: Date, periodEnd: Date
       amount: Number(e.amount),
       direction: 'CREDIT',
     });
-  for (const r of reimbursements) lines.push({ sourceType: 'REIMBURSEMENT', sourceId: r.id, description: `Reimbursement ${r.reimbursementNumber} (${r.category})`, amount: Number(r.amount), direction: 'CREDIT' });
   for (const p of penalties) lines.push({ sourceType: 'PENALTY', sourceId: p.id, description: `Penalty ${p.penaltyNumber} (${p.penaltyType})`, amount: Number(p.amount), direction: 'DEBIT' });
-  for (const i of installments) lines.push({ sourceType: 'LOAN_INSTALLMENT', sourceId: i.id, description: `Loan EMI #${i.installmentNo}`, amount: Number(i.emiAmount), direction: 'DEBIT' });
 
   const grossEarnings = lines.filter((l) => l.direction === 'CREDIT').reduce((sum, l) => sum + l.amount, 0);
   const totalDeductions = lines.filter((l) => l.direction === 'DEBIT').reduce((sum, l) => sum + l.amount, 0);
   const netPayable = Math.round((grossEarnings - totalDeductions) * 100) / 100;
 
-  return { lines, grossEarnings, totalDeductions, netPayable, advances, earnings, reimbursements, penalties, installments };
+  return { lines, grossEarnings, totalDeductions, netPayable, advances, earnings, penalties };
 }
 
 export const driverSettlementService = {
@@ -171,9 +176,7 @@ export const driverSettlementService = {
     await Promise.all([
       driverSettlementRepository.markAdvancesSettled(draft.advances.map((a) => a.id), id),
       driverSettlementRepository.markEarningsSettled(draft.earnings.map((e) => e.id), id),
-      driverSettlementRepository.markReimbursementsSettled(draft.reimbursements.map((r) => r.id), id),
       driverSettlementRepository.markPenaltiesSettled(draft.penalties.map((p) => p.id), id),
-      driverSettlementRepository.markInstallmentsRecovered(draft.installments.map((i) => i.id), id),
     ]);
 
     await driverSettlementRepository.update(id, {

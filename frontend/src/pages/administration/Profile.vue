@@ -41,7 +41,7 @@
                 <AppTextField v-model="profileForm.email" label="Email" />
               </div>
               <div class="col-12 col-sm-6">
-                <AppTextField v-model="profileForm.phone" label="Phone" />
+                <AppTextField v-model="profileForm.phone" label="Phone" maxlength="10" />
               </div>
               <div class="col-12 col-sm-6">
                 <AppTextField :model-value="authStore.user?.username" label="Username" disabled />

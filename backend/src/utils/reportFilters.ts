@@ -9,7 +9,6 @@ export interface ReportFilters {
   supplierId?: string;
   vehicleId?: string;
   driverId?: string;
-  routeId?: string;
   tripStatus?: string;
   vehicleTypeId?: string;
   paymentStatus?: string;
@@ -36,7 +35,6 @@ export function parseReportFilters(query: Request['query']): ReportFilters {
     supplierId: (query.supplierId as string) || undefined,
     vehicleId: (query.vehicleId as string) || undefined,
     driverId: (query.driverId as string) || undefined,
-    routeId: (query.routeId as string) || undefined,
     tripStatus: (query.tripStatus as string) || undefined,
     vehicleTypeId: (query.vehicleTypeId as string) || undefined,
     paymentStatus: (query.paymentStatus as string) || undefined,

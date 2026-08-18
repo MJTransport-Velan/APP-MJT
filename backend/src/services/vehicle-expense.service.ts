@@ -203,6 +203,7 @@ export const vehicleExpenseService = {
 export const vehicleExpenseInternalService = {
   async logFromSource(params: {
     vehicleId: string;
+    tripId?: string;
     category: VehicleExpenseCategory;
     amount: number;
     expenseDate: Date;
@@ -213,6 +214,7 @@ export const vehicleExpenseInternalService = {
   }) {
     await vehicleExpenseRepository.create({
       vehicleId: params.vehicleId,
+      tripId: params.tripId,
       category: params.category,
       amount: params.amount,
       totalAmount: params.amount,
@@ -230,6 +232,7 @@ export const vehicleExpenseInternalService = {
     referenceType: string;
     referenceId: string;
     vehicleId?: string;
+    tripId?: string | null;
     amount?: number;
     expenseDate?: Date;
     description?: string;
@@ -239,6 +242,7 @@ export const vehicleExpenseInternalService = {
     if (!existing) return;
     await vehicleExpenseRepository.update(existing.id, {
       vehicleId: params.vehicleId,
+      tripId: params.tripId,
       amount: params.amount,
       totalAmount: params.amount,
       expenseDate: params.expenseDate,

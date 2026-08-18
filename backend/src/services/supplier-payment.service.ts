@@ -163,6 +163,38 @@ export const supplierPaymentService = {
     return supplierPaymentService.getById(id);
   },
 
+  /** Links a previously unallocated advance payment to a specific bill — mirrors receiptService.allocate(). */
+  async allocate(id: string, billId: string, actorId: string) {
+    const existing = await supplierPaymentRepository.findById(id);
+    if (!existing) {
+      throw new AppError('Supplier payment not found', 404);
+    }
+    if (!existing.isAdvance) {
+      throw new AppError('Only advance payments can be allocated', 400);
+    }
+
+    const bill = await supplierBillRepository.findByIdBasic(billId);
+    if (!bill) throw new AppError('Supplier Bill not found', 404);
+    if (bill.supplierId !== existing.supplierId) {
+      throw new AppError('Bill does not belong to the same supplier as the payment', 400);
+    }
+    if (bill.status === 'CANCELLED') throw new AppError('Cannot allocate to a cancelled bill', 400);
+    if (bill.status === 'PAID') throw new AppError('This bill is already fully paid', 409);
+
+    await supplierPaymentRepository.allocate(id, billId, actorId);
+    await supplierBillService.recalc(billId);
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'SupplierPayment',
+      entityId: id,
+      description: `Allocated advance payment ${existing.paymentNumber} to bill ${bill.billNumber}`,
+    });
+
+    return supplierPaymentService.getById(id);
+  },
+
   async remove(id: string, actorId: string) {
     const existing = await supplierPaymentRepository.findById(id);
     if (!existing) {

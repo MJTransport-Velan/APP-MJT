@@ -24,9 +24,6 @@ export const profitabilityReportApi = {
   driver(params: Record<string, unknown> = {}) {
     return api.get<ApiResponse<ProfitabilityResult>>('/accounts/profitability-reports/driver', { params });
   },
-  route(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<ProfitabilityResult>>('/accounts/profitability-reports/route', { params });
-  },
 };
 
 export const outstandingReportApi = {

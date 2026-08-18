@@ -57,15 +57,17 @@ const props = withDefaults(
     to: string;
     openLabel?: string;
     favoritable?: boolean;
+    backgroundImages?: string[];
   }>(),
   { favoritable: true }
 );
 
 // Deterministic pick so a given card always shows the same background across renders/reloads.
 const backgroundImage = computed(() => {
+  const palette = props.backgroundImages?.length ? props.backgroundImages : CARD_BACKGROUNDS;
   let hash = 0;
   for (let i = 0; i < props.title.length; i++) hash = (hash * 31 + props.title.charCodeAt(i)) >>> 0;
-  return CARD_BACKGROUNDS[hash % CARD_BACKGROUNDS.length];
+  return palette[hash % palette.length];
 });
 </script>
 

@@ -86,12 +86,9 @@ export interface FuelEntry {
   invoiceNumber: string | null;
   referenceNumber: string | null;
   remarks: string | null;
-  isAnomaly: boolean;
-  anomalyReasons: string | null;
   entryDate: string;
   billDocument: string | null;
   vehicle: { id: string; registrationNumber: string };
-  fuelStation: { id: string; name: string } | null;
   fuelCard: { id: string; cardNumber: string } | null;
   trip: { id: string; tripNumber: string } | null;
   driver: { id: string; name: string; code: string } | null;
@@ -174,18 +171,6 @@ export interface VehicleExpense {
   gstMaster: { id: string; name: string; ratePercent: number } | null;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface SupplierVehicle {
-  id: string;
-  registrationNumber: string;
-  status: VehicleStatus;
-  isActive: boolean;
-  manufacturer: string | null;
-  model: string | null;
-  vehicleType: { id: string; name: string } | null;
-  supplier: { id: string; name: string } | null;
-  activeAssignment: { driver: string; assignedAt: string } | null;
 }
 
 export interface FleetDashboardSummary {

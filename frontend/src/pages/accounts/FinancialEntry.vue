@@ -5,16 +5,23 @@
         <h2 class="text-h6">Financial Entries</h2>
         <div class="text-body-2 text-medium-emphasis">Where did the money come from, where is it now, and what was it for.</div>
       </div>
-      <AppBtn color="primary" prepend-icon="mdi-cash-fast" @click="openCreateDialog">Record Financial Entry</AppBtn>
+      <div class="d-flex ga-2">
+        <AppBtn variant="outlined" prepend-icon="mdi-office-building-outline" @click="openQuickExpense">Record Office Expense</AppBtn>
+        <AppBtn color="primary" prepend-icon="mdi-cash-fast" @click="openCreateDialog">Record Financial Entry</AppBtn>
+      </div>
     </div>
 
     <div class="fe-stats-grid mb-4">
-      <ProfitCard label="Money In" :value="dashboard?.moneyIn || 0" color="success" icon="mdi-arrow-down-bold-circle-outline" />
-      <ProfitCard label="Money Out" :value="dashboard?.moneyOut || 0" color="error" icon="mdi-arrow-up-bold-circle-outline" />
-      <ProfitCard label="Cash Available" :value="dashboard?.cashAvailable || 0" icon="mdi-cash" color-by-value />
-      <ProfitCard label="Bank Available" :value="dashboard?.bankAvailable || 0" icon="mdi-bank-outline" color-by-value />
-      <ProfitCard label="Customer Outstanding" :value="dashboard?.customerOutstanding || 0" icon="mdi-account-cash-outline" />
-      <ProfitCard label="Supplier Outstanding" :value="dashboard?.supplierOutstanding || 0" icon="mdi-truck-outline" />
+      <ProfitCard label="Money In" :value="dashboard?.moneyIn || 0" color="success" icon="mdi-arrow-down-bold-circle-outline" clickable @click="applyMoneyDirectionFilter('Money In', MONEY_IN_TYPES)" />
+      <ProfitCard label="Money Out" :value="dashboard?.moneyOut || 0" color="error" icon="mdi-arrow-up-bold-circle-outline" clickable @click="applyMoneyDirectionFilter('Money Out', MONEY_OUT_TYPES)" />
+      <ProfitCard label="Cash Available" :value="dashboard?.cashAvailable || 0" icon="mdi-cash" color-by-value clickable @click="router.push({ name: 'accounting-cash-accounts' })" />
+      <ProfitCard label="Bank Available" :value="dashboard?.bankAvailable || 0" icon="mdi-bank-outline" color-by-value clickable @click="router.push({ name: 'accounting-bank-accounts' })" />
+      <ProfitCard label="Customer Outstanding" :value="dashboard?.customerOutstanding || 0" icon="mdi-account-cash-outline" clickable @click="router.push({ name: 'accounts-invoices' })" />
+      <ProfitCard label="Supplier Outstanding" :value="dashboard?.supplierOutstanding || 0" icon="mdi-truck-outline" clickable @click="router.push({ name: 'accounts-supplier-bills' })" />
+    </div>
+
+    <div v-if="quickFilterLabel" class="mb-3">
+      <AppChip color="primary" closable @click:close="clearQuickFilter">Filtered: {{ quickFilterLabel }}</AppChip>
     </div>
 
     <MasterDataTable
@@ -28,8 +35,8 @@
       @update:page-size="(v) => { pageSize = v; fetchEntries(); }"
     >
       <template #filters>
-        <AppSelect v-model="entryTypeFilter" :items="entryTypeOptions" item-title="label" item-value="value" label="Type" clearable density="compact" hide-details style="min-width: 200px" @update:model-value="fetchEntries" />
-        <AppSelect v-model="statusFilter" :items="statusOptions" label="Status" clearable density="compact" hide-details style="min-width: 160px" @update:model-value="fetchEntries" />
+        <AppSelect v-model="entryTypeFilter" :items="entryTypeOptions" item-title="label" item-value="value" label="Type" clearable density="compact" hide-details style="min-width: 200px" @update:model-value="onManualFilterChange" />
+        <AppSelect v-model="statusFilter" :items="statusOptions" label="Status" clearable density="compact" hide-details style="min-width: 160px" @update:model-value="onManualFilterChange" />
       </template>
       <template #item.entryDate="{ item }">{{ formatDate((item as any).entryDate) }}</template>
       <template #item.entryType="{ item }"><AppChip size="small" variant="tonal">{{ entryTypeLabel((item as any).entryType) }}</AppChip></template>
@@ -52,6 +59,7 @@
       <template #item.actions="{ item }">
         <AppBtn v-if="!['CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-close-circle-outline" variant="text" size="small" color="error" title="Cancel" @click="openCancelDialog(item as any)" />
         <AppBtn v-if="!['CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-undo-variant" variant="text" size="small" title="Reverse" @click="onReverse(item as any)" />
+        <AppBtn v-if="['DRAFT', 'CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete" @click="openDeleteConfirm(item as any)" />
       </template>
     </MasterDataTable>
 
@@ -118,14 +126,13 @@
         </div>
         <template v-if="form.purpose === 'FUEL' && form.vehicleId">
           <div class="d-flex ga-2 mb-2">
-            <AppSelect v-model="form.fuelStationId" :items="fuelStationOptions" item-title="name" item-value="id" label="Fuel Station" clearable class="flex-1" />
             <AppTextField v-model.number="form.quantityLiters" type="number" label="Quantity (Liters)" class="flex-1" />
+            <AppTextField v-model.number="form.ratePerLiter" type="number" label="Rate per Liter" class="flex-1" />
           </div>
           <div class="d-flex ga-2">
-            <AppTextField v-model.number="form.ratePerLiter" type="number" label="Rate per Liter" class="flex-1" />
             <AppTextField v-model.number="form.odometerReading" type="number" label="Odometer Reading" class="flex-1" />
           </div>
-          <div class="text-caption text-medium-emphasis mt-1">Fill all four to also log a Fuel Entry for this vehicle — otherwise this just posts as a plain fuel expense.</div>
+          <div class="text-caption text-medium-emphasis mt-1">Fill all three to also log a Fuel Entry for this vehicle — otherwise this just posts as a plain fuel expense.</div>
         </template>
         <template v-else-if="form.purpose === 'TOLL' && form.vehicleId">
           <div class="text-caption text-medium-emphasis">If this vehicle has a FastTag account, the toll amount above will also be logged against it.</div>
@@ -133,10 +140,104 @@
       </div>
     </MasterFormDialog>
 
+    <!-- Record Office Expense — a shortcut that skips Entry Type/Destination Type/Purpose
+         (always Expense / Other / Office Expense) and posts through the same store.create()
+         as the full dialog above. The "Salary Entry" toggle switches Destination/Purpose to
+         Employee-or-Driver / SALARY instead, with a live net-of-advances suggestion. -->
+    <MasterFormDialog v-model="quickExpenseDialog" title="Record Office Expense" :loading="quickExpenseSubmitting" max-width="480" @submit="onQuickExpenseSubmit">
+      <div class="d-flex ga-2 mb-2">
+        <AppSelect
+          v-model="quickForm.fundAccountType"
+          :items="fundAccountTypeOptions"
+          item-title="label"
+          item-value="value"
+          label="Paid From"
+          class="flex-1"
+          @update:model-value="quickForm.fundAccountId = ''"
+        />
+        <AppSelect
+          v-model="quickForm.fundAccountId"
+          :items="quickForm.fundAccountType === 'BANK' ? bankOptions : cashOptions"
+          item-title="name"
+          item-value="id"
+          label="Account"
+          :error-messages="quickErrors.fundAccountId"
+          class="flex-1"
+        />
+      </div>
+      <AppCheckbox v-model="isSalaryEntry" label="Salary Entry" class="mb-2" @update:model-value="onSalaryEntryToggle" />
+
+      <template v-if="!isSalaryEntry">
+        <AppTextField v-model="quickForm.vendor" label="Paid To / Vendor" :error-messages="quickErrors.vendor" class="mb-2" />
+      </template>
+      <template v-else>
+        <div class="d-flex ga-2 mb-2">
+          <AppSelect
+            v-model="salaryPartyType"
+            :items="[{ label: 'Employee', value: 'EMPLOYEE' }, { label: 'Driver', value: 'DRIVER' }]"
+            item-title="label"
+            item-value="value"
+            label="Who"
+            class="flex-1"
+            @update:model-value="onSalaryPartyChanged"
+          />
+          <AppTextField v-model="salaryPeriod" type="month" label="Salary Month" class="flex-1" @update:model-value="fetchSalaryQuote" />
+        </div>
+        <AppSelect
+          v-model="salaryPartyId"
+          :items="salaryPartyType === 'EMPLOYEE' ? employeeOptions : driverOptions"
+          item-title="name"
+          item-value="id"
+          :label="salaryPartyType === 'EMPLOYEE' ? 'Employee' : 'Driver'"
+          :error-messages="quickErrors.vendor"
+          class="mb-2"
+          @update:model-value="fetchSalaryQuote"
+        />
+
+        <AppCard v-if="salaryQuoteLoading" variant="tonal" class="mb-2 pa-3 text-caption text-medium-emphasis">Loading salary details…</AppCard>
+        <AppCard v-else-if="salaryQuote" variant="tonal" class="mb-2 pa-3">
+          <div class="text-subtitle-2 mb-1">{{ salaryQuote.party.name }} ({{ salaryQuote.party.code }})<span v-if="salaryQuote.party.designation"> — {{ salaryQuote.party.designation }}</span></div>
+          <AppChip v-if="salaryQuote.alreadyPaid" color="error" size="small" class="mb-2">Already paid for this month</AppChip>
+          <div v-if="salaryQuote.structureAmount !== null" class="d-flex justify-space-between text-body-2">
+            <span>Salary Structure Amount</span>
+            <span>{{ formatCurrency(salaryQuote.structureAmount) }}</span>
+          </div>
+          <p v-else class="text-caption text-medium-emphasis mb-1">No active salary structure found — enter the amount manually.</p>
+          <div v-if="salaryQuote.advances.length > 0" class="d-flex justify-space-between text-body-2 text-error">
+            <span>Less: Advances this month ({{ salaryQuote.advances.length }})</span>
+            <span>− {{ formatCurrency(salaryQuote.advanceTotal) }}</span>
+          </div>
+          <div v-if="salaryQuote.netAmount !== null" class="d-flex justify-space-between text-subtitle-2 font-weight-bold mt-1">
+            <span>Suggested Net Amount</span>
+            <span>{{ formatCurrency(salaryQuote.netAmount) }}</span>
+          </div>
+        </AppCard>
+      </template>
+
+      <div class="d-flex ga-2 mb-2">
+        <AppTextField v-model.number="quickForm.amount" type="number" label="Amount" :error-messages="quickErrors.amount" class="flex-1" />
+        <AppTextField v-model="quickForm.entryDate" type="date" label="Date" class="flex-1" />
+      </div>
+      <div class="d-flex ga-2 mb-2">
+        <AppSelect v-model="quickForm.paymentModeId" :items="paymentModeOptions" item-title="name" item-value="id" label="Payment Mode" clearable class="flex-1" />
+        <AppTextField v-model="quickForm.referenceNumber" label="Reference Number" clearable class="flex-1" />
+      </div>
+      <AppTextarea v-model="quickForm.remarks" label="Remarks (optional)" rows="2" />
+    </MasterFormDialog>
+
     <!-- Cancel -->
     <MasterFormDialog v-model="cancelDialog" title="Cancel Financial Entry" :loading="cancelSubmitting" max-width="480" @submit="onCancel">
       <AppTextarea v-model="cancelReason" label="Reason for cancellation" rows="2" :error-messages="cancelError" />
     </MasterFormDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Financial Entry"
+      message="Delete this financial entry? This cannot be undone."
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
 
     <!-- View Split (FIFO breakdown, read-only) -->
     <AppDialog v-model="splitDialog" max-width="560" persistent>
@@ -166,22 +267,27 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useFinancialEntryStore } from '@/stores/accounts/financialEntry';
 import { adminCompanyApi } from '@/services/admin-company.service';
-import { driverApi, supplierApi, employeeApi, vehicleApi, paymentModeApi, fuelStationApi } from '@/services/masters';
+import { driverApi, supplierApi, employeeApi, vehicleApi, paymentModeApi } from '@/services/masters';
 import { tripApi } from '@/services/operations';
 import { useBankAccountStore, useCashAccountStore } from '@/stores/banking';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, localDateStr } from '@/utils/format';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
 import {
   AppBtn, AppSelect, AppTextField, AppTextarea, AppChip, AppIcon, AppDialog, AppCard,
-  AppCardTitle, AppCardText, AppCardActions, AppTable,
+  AppCardTitle, AppCardText, AppCardActions, AppTable, AppCheckbox,
 } from '@/components/ui';
+import { salaryPaymentQuoteApi } from '@/services/accounts/driverPayroll';
 import type { FinancialEntry, FinancialPartyType, FinancialEntryType, FinancialEntryPurpose } from '@/types/financialEntry.types';
+import type { SalaryQuote } from '@/types/phase5.types';
 
+const router = useRouter();
 const store = useFinancialEntryStore();
 const bankAccountStore = useBankAccountStore();
 const cashAccountStore = useCashAccountStore();
@@ -227,6 +333,7 @@ const purposeOptions: { label: string; value: FinancialEntryPurpose }[] = [
   { label: 'Trip Advance', value: 'TRIP_ADVANCE' },
   { label: 'Trip Payment', value: 'TRIP_PAYMENT' },
   { label: 'Supplier Payment', value: 'SUPPLIER_PAYMENT' },
+  { label: 'Client Payment', value: 'CLIENT_PAYMENT' },
   { label: 'Driver Advance', value: 'DRIVER_ADVANCE' },
   { label: 'Salary', value: 'SALARY' },
   { label: 'Fuel', value: 'FUEL' },
@@ -269,7 +376,6 @@ const employeeOptions = ref<{ id: string; name: string }[]>([]);
 const vehicleOptions = ref<{ id: string; name: string }[]>([]);
 const paymentModeOptions = ref<{ id: string; name: string }[]>([]);
 const tripOptions = ref<{ id: string; tripNumber: string }[]>([]);
-const fuelStationOptions = ref<{ id: string; name: string }[]>([]);
 
 const bankOptions = computed(() => bankAccountStore.items.map((b: any) => ({ id: b.id, name: `${b.accountHolderName} (${b.accountNumber})` })));
 const cashOptions = computed(() => cashAccountStore.items.map((c: any) => ({ id: c.id, name: c.ledger?.name || c.cashAccountType })));
@@ -292,6 +398,33 @@ const pageSize = ref(10);
 const entryTypeFilter = ref<string | null>(null);
 const statusFilter = ref<string | null>(null);
 
+// Same entryType groupings the "Money In"/"Money Out" numbers on this page
+// are summed from (financial-state.service.ts dashboard()) — clicking
+// either stat card filters the list to exactly that group.
+const MONEY_IN_TYPES = ['MONEY_RECEIVED', 'ADVANCE_RECEIVED', 'REFUND_RECEIVED', 'LOAN_RECEIVED'];
+const MONEY_OUT_TYPES = ['MONEY_PAID', 'ADVANCE_GIVEN', 'REFUND_PAID', 'LOAN_REPAYMENT', 'EXPENSE', 'SALARY_SETTLEMENT'];
+const quickFilterLabel = ref('');
+const quickFilterTypes = ref<string[] | null>(null);
+
+function applyMoneyDirectionFilter(label: string, types: string[]) {
+  entryTypeFilter.value = null;
+  statusFilter.value = null;
+  quickFilterLabel.value = label;
+  quickFilterTypes.value = types;
+  page.value = 1;
+  fetchEntries();
+}
+function clearQuickFilter() {
+  quickFilterLabel.value = '';
+  quickFilterTypes.value = null;
+  fetchEntries();
+}
+function onManualFilterChange() {
+  quickFilterLabel.value = '';
+  quickFilterTypes.value = null;
+  fetchEntries();
+}
+
 const headers = [
   { title: 'Entry No.', key: 'entryNumber', sortable: false },
   { title: 'Date', key: 'entryDate', sortable: false },
@@ -305,7 +438,8 @@ const headers = [
 ];
 
 async function fetchEntries() {
-  await store.fetchList({ page: page.value, pageSize: pageSize.value, entryType: entryTypeFilter.value || undefined, status: statusFilter.value || undefined });
+  const entryType = quickFilterTypes.value ? quickFilterTypes.value.join(',') : entryTypeFilter.value || undefined;
+  await store.fetchList({ page: page.value, pageSize: pageSize.value, entryType, status: statusFilter.value || undefined });
 }
 
 const dashboard = computed(() => store.dashboard);
@@ -329,7 +463,6 @@ const form = reactive({
   purposeNotes: '',
   vehicleId: '',
   tripId: '',
-  fuelStationId: '',
   quantityLiters: undefined as number | undefined,
   ratePerLiter: undefined as number | undefined,
   odometerReading: undefined as number | undefined,
@@ -360,7 +493,6 @@ function openCreateDialog() {
     purposeNotes: '',
     vehicleId: '',
     tripId: '',
-    fuelStationId: '',
     quantityLiters: undefined,
     ratePerLiter: undefined,
     odometerReading: undefined,
@@ -395,7 +527,6 @@ async function onSubmit() {
       purposeNotes: form.purposeNotes || undefined,
       vehicleId: form.vehicleId || undefined,
       tripId: form.tripId || undefined,
-      fuelStationId: form.fuelStationId || undefined,
       quantityLiters: form.quantityLiters || undefined,
       ratePerLiter: form.ratePerLiter || undefined,
       odometerReading: form.odometerReading || undefined,
@@ -408,6 +539,133 @@ async function onSubmit() {
     error(extractErrorMessage(err, 'Failed to record financial entry'));
   } finally {
     submitting.value = false;
+  }
+}
+
+// --- Record Office Expense (quick entry) — always EXPENSE / Other / Office
+// Expense under the hood, posted through the same store.create() as the
+// full dialog above. Just a faster form for the single most common case.
+const fundAccountTypeOptions = [
+  { label: 'Cash', value: 'CASH' },
+  { label: 'Bank', value: 'BANK' },
+];
+const quickExpenseDialog = ref(false);
+const quickExpenseSubmitting = ref(false);
+const quickForm = reactive({
+  fundAccountType: 'CASH' as 'BANK' | 'CASH',
+  fundAccountId: '',
+  vendor: '',
+  amount: undefined as number | undefined,
+  entryDate: localDateStr(),
+  paymentModeId: '',
+  referenceNumber: '',
+  remarks: '',
+});
+const quickErrors = reactive({ fundAccountId: '', vendor: '', amount: '' });
+function clearQuickErrors() {
+  quickErrors.fundAccountId = '';
+  quickErrors.vendor = '';
+  quickErrors.amount = '';
+}
+
+// --- Salary Entry toggle (within Record Office Expense) — replaces the
+// free-text "Paid To" vendor field with Who/Month/Person, shows a live
+// net-of-this-month's-advances suggestion (salary-payment-quote.service.ts),
+// and posts as purpose=SALARY (not OFFICE_EXPENSE) so
+// financial-entry.service.ts's delegateToEmployee/DriverSalaryPayment marks
+// that month paid and settles those same advances — see financial-entry.service.ts.
+const isSalaryEntry = ref(false);
+const salaryPartyType = ref<'EMPLOYEE' | 'DRIVER'>('EMPLOYEE');
+const salaryPartyId = ref('');
+const salaryPeriod = ref(localDateStr().slice(0, 7));
+const salaryQuote = ref<SalaryQuote | null>(null);
+const salaryQuoteLoading = ref(false);
+
+function onSalaryEntryToggle() {
+  salaryPartyType.value = 'EMPLOYEE';
+  salaryPartyId.value = '';
+  salaryPeriod.value = localDateStr().slice(0, 7);
+  salaryQuote.value = null;
+  quickForm.amount = undefined;
+}
+function onSalaryPartyChanged() {
+  salaryPartyId.value = '';
+  salaryQuote.value = null;
+  quickForm.amount = undefined;
+}
+async function fetchSalaryQuote() {
+  if (!salaryPartyId.value || !salaryPeriod.value) {
+    salaryQuote.value = null;
+    return;
+  }
+  salaryQuoteLoading.value = true;
+  try {
+    const response =
+      salaryPartyType.value === 'EMPLOYEE'
+        ? await salaryPaymentQuoteApi.employeeQuote(salaryPartyId.value, salaryPeriod.value)
+        : await salaryPaymentQuoteApi.driverQuote(salaryPartyId.value, salaryPeriod.value);
+    salaryQuote.value = response.data.data;
+    quickForm.amount = salaryQuote.value.netAmount ?? undefined;
+  } catch (err) {
+    salaryQuote.value = null;
+    error(extractErrorMessage(err, 'Failed to fetch salary details'));
+  } finally {
+    salaryQuoteLoading.value = false;
+  }
+}
+
+function openQuickExpense() {
+  Object.assign(quickForm, {
+    fundAccountType: 'CASH',
+    fundAccountId: '',
+    vendor: '',
+    amount: undefined,
+    entryDate: localDateStr(),
+    paymentModeId: '',
+    referenceNumber: '',
+    remarks: '',
+  });
+  clearQuickErrors();
+  isSalaryEntry.value = false;
+  onSalaryEntryToggle();
+  quickExpenseDialog.value = true;
+}
+
+async function onQuickExpenseSubmit() {
+  clearQuickErrors();
+  quickErrors.fundAccountId = quickForm.fundAccountId ? '' : 'Select which account paid this';
+  quickErrors.vendor = isSalaryEntry.value ? (salaryPartyId.value ? '' : `Select which ${salaryPartyType.value === 'EMPLOYEE' ? 'employee' : 'driver'}`) : quickForm.vendor.trim() ? '' : 'Who was this paid to?';
+  quickErrors.amount = quickForm.amount && quickForm.amount > 0 ? '' : 'Amount must be greater than 0';
+  if (quickErrors.fundAccountId || quickErrors.vendor || quickErrors.amount) return;
+  if (isSalaryEntry.value && salaryQuote.value?.alreadyPaid) {
+    error('Salary for this month has already been marked paid');
+    return;
+  }
+
+  quickExpenseSubmitting.value = true;
+  try {
+    await store.create({
+      entryType: 'EXPENSE',
+      entryDate: quickForm.entryDate,
+      sourceType: quickForm.fundAccountType,
+      sourceId: quickForm.fundAccountId,
+      ...(isSalaryEntry.value
+        ? { destinationType: salaryPartyType.value, destinationId: salaryPartyId.value, salaryPeriod: salaryPeriod.value }
+        : { destinationType: 'OTHER', destinationLabel: quickForm.vendor }),
+      amount: quickForm.amount!,
+      paymentModeId: quickForm.paymentModeId || undefined,
+      referenceNumber: quickForm.referenceNumber || undefined,
+      remarks: quickForm.remarks || undefined,
+      purpose: isSalaryEntry.value ? 'SALARY' : 'OFFICE_EXPENSE',
+    });
+    success(isSalaryEntry.value ? 'Salary payment recorded' : 'Office expense recorded');
+    quickExpenseDialog.value = false;
+    fetchEntries();
+    store.fetchDashboard();
+  } catch (err) {
+    error(extractErrorMessage(err, isSalaryEntry.value ? 'Failed to record salary payment' : 'Failed to record office expense'));
+  } finally {
+    quickExpenseSubmitting.value = false;
   }
 }
 
@@ -454,6 +712,31 @@ async function onReverse(item: FinancialEntry) {
   }
 }
 
+// --- Delete ---
+const deleteDialog = ref(false);
+const deleteTarget = ref<FinancialEntry | null>(null);
+const deleting = ref(false);
+function openDeleteConfirm(item: FinancialEntry) {
+  deleteTarget.value = item;
+  deleteDialog.value = true;
+}
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Financial entry deleted');
+    deleteDialog.value = false;
+    fetchEntries();
+    store.fetchDashboard();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
+  }
+}
+
 // --- View Split (read-only FIFO breakdown) ---
 const splitDialog = ref(false);
 const splitTarget = ref<FinancialEntry | null>(null);
@@ -463,7 +746,7 @@ function openSplitDialog(item: FinancialEntry) {
 }
 
 onMounted(async () => {
-  const [companiesRes, suppliersRes, driversRes, employeesRes, vehiclesRes, paymentModesRes, tripsRes, fuelStationsRes] = await Promise.all([
+  const [companiesRes, suppliersRes, driversRes, employeesRes, vehiclesRes, paymentModesRes, tripsRes] = await Promise.all([
     adminCompanyApi.list({ pageSize: 200 }),
     supplierApi.list({ pageSize: 200 }),
     driverApi.list({ pageSize: 200 }),
@@ -471,7 +754,6 @@ onMounted(async () => {
     vehicleApi.list({ pageSize: 200 }),
     paymentModeApi.list({ pageSize: 50 }),
     tripApi.list({ pageSize: 200 }),
-    fuelStationApi.list({ pageSize: 200 }),
     bankAccountStore.fetchList({ pageSize: 200, isActive: 'true' }),
     cashAccountStore.fetchList({ pageSize: 200, isActive: 'true' }),
   ]);
@@ -482,7 +764,6 @@ onMounted(async () => {
   vehicleOptions.value = (vehiclesRes.data.data as any[]).map((v) => ({ id: v.id, name: v.registrationNumber }));
   paymentModeOptions.value = (paymentModesRes.data.data as any[]).map((p) => ({ id: p.id, name: p.name }));
   tripOptions.value = (tripsRes.data.data as any[]).map((t) => ({ id: t.id, tripNumber: t.tripNumber }));
-  fuelStationOptions.value = (fuelStationsRes.data.data as any[]).map((f) => ({ id: f.id, name: f.name }));
   fetchEntries();
   store.fetchDashboard();
 });

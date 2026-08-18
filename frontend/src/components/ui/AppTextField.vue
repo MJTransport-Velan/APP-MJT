@@ -46,8 +46,10 @@ const props = withDefaults(
     hint?: string;
     errorMessages?: string | string[];
     required?: boolean;
+    /** Escape hatch for a field the label/placeholder heuristic below doesn't catch. */
+    preserveCase?: boolean;
   }>(),
-  { type: 'text', disabled: false, readonly: false, clearable: false, required: false }
+  { type: 'text', disabled: false, readonly: false, clearable: false, required: false, preserveCase: false }
 );
 
 defineOptions({ inheritAttrs: false });
@@ -63,8 +65,26 @@ const errorMessage = computed(() => {
 });
 const hasError = computed(() => !!errorMessage.value);
 
+// Types where a value transform is meaningless or actively wrong (passwords
+// especially — Login.vue's show/hide toggle flips type to 'text' at runtime,
+// so this alone isn't sufficient; see the label/placeholder check below).
+const NON_TEXT_TYPES = new Set(['number', 'date', 'time', 'datetime-local', 'month', 'week', 'color', 'file', 'hidden', 'password']);
+// Case matters for identity/credential/reference/free-text fields — matched
+// against the field's own label/placeholder so most call sites need no
+// per-field opt-out. Keep in sync with the backend's equivalent list in
+// backend/src/middlewares/uppercaseBody.middleware.ts.
+const CASE_SENSITIVE_HINT =
+  /password|user\s*name|e-?mail|remarks?|\bnotes?\b|description|reason|purpose|comment|url|link|webhook|token|secret|api\s*key|json|\bid\b|otp|signature|hash/i;
+
+const preservesCase = computed(() => {
+  if (props.preserveCase) return true;
+  if (NON_TEXT_TYPES.has(props.type ?? 'text')) return true;
+  return CASE_SENSITIVE_HINT.test(`${props.label ?? ''} ${props.placeholder ?? ''}`);
+});
+
 function onInput(event: Event) {
-  emit('update:modelValue', (event.target as HTMLInputElement).value);
+  const raw = (event.target as HTMLInputElement).value;
+  emit('update:modelValue', preservesCase.value ? raw : raw.toUpperCase());
 }
 function onClear() {
   emit('update:modelValue', '');

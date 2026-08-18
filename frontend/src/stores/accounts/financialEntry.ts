@@ -37,6 +37,9 @@ export const useFinancialEntryStore = defineStore('financialEntries', {
       const response = await financialEntryApi.reverse(id, reason);
       return response.data.data;
     },
+    async remove(id: string) {
+      await financialEntryApi.remove(id);
+    },
     async fetchDashboard(params: { from?: string; to?: string } = {}) {
       const response = await financialStateApi.dashboard(params);
       this.dashboard = response.data.data;

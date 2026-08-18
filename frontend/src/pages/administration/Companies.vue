@@ -74,7 +74,7 @@
               <AppTextField v-model="form.contactPerson" label="Contact Person" />
             </div>
             <div class="col-12 col-sm-6">
-              <AppTextField v-model="form.phone" label="Phone" />
+              <AppTextField v-model="form.phone" label="Phone" maxlength="10" />
             </div>
             <div class="col-12 col-sm-6">
               <AppTextField v-model="form.email" label="Email" />

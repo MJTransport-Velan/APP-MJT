@@ -86,6 +86,10 @@ export const supplierPaymentRepository = {
     return prisma.supplierPayment.update({ where: { id }, data });
   },
 
+  allocate(id: string, billId: string, updatedById: string) {
+    return prisma.supplierPayment.update({ where: { id }, data: { billId, isAdvance: false, updatedById } });
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.supplierPayment.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

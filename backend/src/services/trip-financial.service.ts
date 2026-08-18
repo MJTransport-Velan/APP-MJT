@@ -42,20 +42,32 @@ async function computeTripLine(trip: {
   const supplierCharges = Number(trip.supplierRate || 0);
 
   const [vehicleExpenses, driverEarnings] = await Promise.all([
-    prisma.vehicleExpense.findMany({ where: { tripId: trip.id, deletedAt: null }, select: { category: true, amount: true } }),
+    prisma.vehicleExpense.findMany({ where: { tripId: trip.id, deletedAt: null }, select: { category: true, amount: true, referenceType: true } }),
     prisma.driverEarning.aggregate({ where: { tripId: trip.id, deletedAt: null }, _sum: { amount: true } }),
   ]);
 
   let dieselCost = 0;
   let fastTagCost = 0;
   let repairCost = 0;
+  let baseSalaryCost = 0;
   for (const e of vehicleExpenses) {
     const amount = Number(e.amount);
     if (e.category === 'FUEL') dieselCost += amount;
     else if (e.category === 'FASTTAG') fastTagCost += amount;
     else if (REPAIR_CATEGORIES.includes(e.category)) repairCost += amount;
+    // Only the auto-computed base-pay mirror (trip.service.ts
+    // postDriverSalaryExpense, referenceType 'TripDriverSalary') is folded
+    // in here — DriverEarning's own DRIVER_SALARY mirror rows (bata/
+    // incentives, referenceType 'DriverEarning') are already counted via
+    // the direct driverEarnings aggregate below and would double-count.
+    else if (e.category === 'DRIVER_SALARY' && e.referenceType === 'TripDriverSalary') baseSalaryCost += amount;
   }
-  const driverCost = Number(driverEarnings._sum.amount || 0);
+  // Driver cost = base pay per the driver's salary structure (Fixed/%-of-
+  // freight, computed once at trip completion) + wages/incentives
+  // (DriverEarning). Driver Penalties are deliberately excluded — whether
+  // a penalty should net against driver cost is a business call not yet
+  // made (see design note).
+  const driverCost = baseSalaryCost + Number(driverEarnings._sum.amount || 0);
 
   const totalCost = supplierCharges + driverCost + dieselCost + fastTagCost + repairCost + otherExpenses;
 

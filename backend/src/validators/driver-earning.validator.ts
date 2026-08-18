@@ -73,7 +73,6 @@ export const createDriverEarningRuleSchema = z.object({
     calculationType: calculationTypeEnum,
     value: z.number().positive('Value must be greater than 0'),
     vehicleTypeId: z.string().uuid().optional(),
-    routeId: z.string().uuid().optional(),
   }),
 });
 
@@ -84,7 +83,6 @@ export const updateDriverEarningRuleSchema = z.object({
     calculationType: calculationTypeEnum.optional(),
     value: z.number().positive().optional(),
     vehicleTypeId: z.string().uuid().optional(),
-    routeId: z.string().uuid().optional(),
     isActive: z.boolean().optional(),
   }),
 });

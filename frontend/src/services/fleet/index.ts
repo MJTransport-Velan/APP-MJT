@@ -12,7 +12,6 @@ import type {
   MaintenanceRecord,
   SparePartUsage,
   VehicleExpense,
-  SupplierVehicle,
   FleetDashboardSummary,
   TimelineEvent,
   PaginationMeta,
@@ -80,6 +79,12 @@ export const vehicleAssignmentApi = {
   },
   cancel(id: string) {
     return api.patch<ApiResponse<VehicleAssignment>>(`/fleet/assignments/${id}/cancel`);
+  },
+  update(id: string, notes?: string) {
+    return api.patch<ApiResponse<VehicleAssignment>>(`/fleet/assignments/${id}`, { notes });
+  },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/fleet/assignments/${id}`);
   },
 };
 
@@ -189,17 +194,6 @@ export const vehicleExpenseApi = {
   },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/fleet/expenses/${id}`);
-  },
-};
-
-export const supplierVehicleApi = {
-  list(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<SupplierVehicle[]> & { meta: PaginationMeta }>('/fleet/supplier-vehicles', {
-      params,
-    });
-  },
-  assignmentHistory(supplierId: string) {
-    return api.get<ApiResponse<VehicleAssignment[]>>(`/fleet/supplier-vehicles/suppliers/${supplierId}/history`);
   },
 };
 

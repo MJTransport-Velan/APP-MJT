@@ -21,6 +21,10 @@ export const supplierPaymentController = {
     const payment = await supplierPaymentService.update(req.params.id, req.body, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Supplier payment updated', data: payment });
   }),
+  allocate: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const payment = await supplierPaymentService.allocate(req.params.id, req.body.billId, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Supplier payment allocated to bill', data: payment });
+  }),
   remove: asyncHandler(async (req: AuthRequest, res: Response) => {
     await supplierPaymentService.remove(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Supplier payment deleted' });

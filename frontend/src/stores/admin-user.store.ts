@@ -45,6 +45,10 @@ export const useAdminUserStore = defineStore('adminUsers', {
       await adminUserApi.deactivate(id);
     },
 
+    async remove(id: string) {
+      await adminUserApi.remove(id);
+    },
+
     async resetPassword(id: string, newPassword: string) {
       await adminUserApi.resetPassword(id, newPassword);
     },

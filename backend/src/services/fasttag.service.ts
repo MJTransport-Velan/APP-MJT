@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { FastTagTransactionType } from '@prisma/client';
 import { fastTagRepository, FastTagAccountRow, FastTagTransactionWithRelations } from '../repositories/fasttag.repository';
+import { tripRepository } from '../repositories/trip.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { organizationService } from './organization.service';
@@ -144,13 +145,32 @@ export const fastTagService = {
 
     const transactionDate = input.transactionDate ? new Date(input.transactionDate) : new Date();
 
+    // Trip is mandatory for every toll usage — it's the vehicle's current
+    // (still-running) trip if it has one, else whatever its last trip was,
+    // unless the caller explicitly names one (e.g. a correction). A toll
+    // charge with no trip context at all isn't allowed.
+    let tripId = input.tripId;
+    if (tripId) {
+      const trip = await tripRepository.findById(tripId);
+      if (!trip) throw new AppError('Trip not found', 404);
+      if (trip.vehicleId !== input.vehicleId) {
+        throw new AppError('The selected trip is not assigned to this vehicle', 422);
+      }
+    } else {
+      const trip = await tripRepository.findCurrentOrLastTripForVehicle(input.vehicleId);
+      if (!trip) {
+        throw new AppError(`${vehicle.registrationNumber} has no trips yet — a trip is required to log toll usage`, 422);
+      }
+      tripId = trip.id;
+    }
+
     const transaction = await fastTagRepository.createTransaction({
       accountId: account.id,
       vehicleId: input.vehicleId,
       type: 'USAGE',
       status: 'VERIFIED',
       amount: input.amount,
-      tripId: input.tripId,
+      tripId,
       transactionDate,
       tollPlaza: input.tollPlaza,
       location: input.location,
@@ -164,6 +184,7 @@ export const fastTagService = {
 
     await vehicleExpenseInternalService.logFromSource({
       vehicleId: input.vehicleId,
+      tripId,
       category: 'FASTTAG',
       amount: input.amount,
       expenseDate: transaction.transactionDate,
@@ -266,6 +287,17 @@ export const fastTagService = {
     if (existing.type === 'USAGE' && input.vehicleId === null) {
       throw new AppError('A USAGE transaction must stay linked to a vehicle', 422);
     }
+    if (existing.type === 'USAGE' && input.tripId === null) {
+      throw new AppError('A USAGE transaction must stay linked to a trip', 422);
+    }
+    if (input.tripId) {
+      const trip = await tripRepository.findById(input.tripId);
+      if (!trip) throw new AppError('Trip not found', 404);
+      const vehicleId = input.vehicleId !== undefined ? input.vehicleId : existing.vehicleId;
+      if (vehicleId && trip.vehicleId !== vehicleId) {
+        throw new AppError('The selected trip is not assigned to this vehicle', 422);
+      }
+    }
 
     const oldAmount = Number(existing.amount);
     const newAmount = input.amount !== undefined ? input.amount : oldAmount;
@@ -314,6 +346,7 @@ export const fastTagService = {
         referenceType: 'FastTagTransaction',
         referenceId: transactionId,
         vehicleId: updated.vehicleId ?? undefined,
+        tripId: updated.tripId,
         amount: newAmount,
         expenseDate: updated.transactionDate,
         description: updated.tollPlaza ? `FastTag toll usage at ${updated.tollPlaza}` : 'FastTag toll usage',

@@ -25,7 +25,6 @@
       :supplier-options="supplierOptions"
       :vehicle-options="vehicleOptions"
       :driver-options="driverOptions"
-      :route-options="routeOptions"
       :vehicle-type-options="vehicleTypeOptions"
       @update:filters="onFiltersUpdate"
       @apply="onApplyFilters"
@@ -67,7 +66,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { AppSelect } from '@/components/ui';
 import { useOperationsReportsStore, useFleetReportsStore, useAccountsReportsStore, useManagementReportsStore } from '@/stores/reports';
-import { useVehicleStore, useDriverStore, useRouteStore, useVehicleTypeStore } from '@/stores/masters';
+import { useVehicleStore, useDriverStore, useVehicleTypeStore } from '@/stores/masters';
 import { adminCompanyApi } from '@/services/admin-company.service';
 import { supplierApi } from '@/services/masters';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
@@ -104,7 +103,6 @@ const filters = reactive<ReportFilterState>({
   supplierId: null,
   vehicleId: null,
   driverId: null,
-  routeId: null,
   vehicleTypeId: null,
   tripStatus: null,
   paymentStatus: null,
@@ -114,7 +112,6 @@ const companyOptions = ref<{ id: string; name: string }[]>([]);
 const supplierOptions = ref<{ id: string; name: string }[]>([]);
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
 const driverOptions = ref<{ id: string; name: string }[]>([]);
-const routeOptions = ref<{ id: string; name: string }[]>([]);
 const vehicleTypeOptions = ref<{ id: string; name: string }[]>([]);
 
 const isKpiSummary = computed(() => props.category === 'management' && reportKey.value === 'kpiSummaryReport');
@@ -200,14 +197,12 @@ onMounted(async () => {
     supplierApi.list({ pageSize: 200 }),
     useVehicleStore().fetchList({ pageSize: 200 }),
     useDriverStore().fetchList({ pageSize: 200 }),
-    useRouteStore().fetchList({ pageSize: 200 }),
     useVehicleTypeStore().fetchList({ pageSize: 200 }),
   ]);
   companyOptions.value = companiesRes.data.data.map((c) => ({ id: c.id, name: c.name }));
   supplierOptions.value = suppliersRes.data.data.map((s: any) => ({ id: s.id, name: s.name }));
   vehicleOptions.value = useVehicleStore().items.map((v: any) => ({ id: v.id, registrationNumber: v.registrationNumber }));
   driverOptions.value = useDriverStore().items.map((d: any) => ({ id: d.id, name: d.name }));
-  routeOptions.value = useRouteStore().items.map((r: any) => ({ id: r.id, name: r.name }));
   vehicleTypeOptions.value = useVehicleTypeStore().items.map((v: any) => ({ id: v.id, name: v.name }));
 
   runReport();

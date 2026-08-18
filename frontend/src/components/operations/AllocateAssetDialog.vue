@@ -43,13 +43,16 @@
               <div class="col-12 col-md-6">
                 <AppSelect
                   v-model="ownForm.driverId"
-                  :items="effectiveDriverOptions"
+                  :items="driverOptions"
                   item-title="name"
                   item-value="id"
                   label="Assign Driver"
-                  :disabled="!!assignedInfo"
                   :error-messages="errors.driverId"
                 />
+                <div v-if="driverChangedFromAssignment" class="text-caption text-medium-emphasis mt-1">
+                  Currently assigned to {{ assignedInfo?.driverName }} — picking a different driver will update the
+                  vehicle assignment.
+                </div>
               </div>
             </div>
             <AppDivider />
@@ -214,8 +217,8 @@ const errors = reactive({ vehicleId: '', driverId: '', supplierId: '', marketDri
 const opsAmount = computed(() => Number(props.trip?.intent.opsAmount || 0));
 
 const assignedInfo = computed(() => (ownForm.vehicleId ? props.vehicleDriverMap[ownForm.vehicleId] : undefined));
-const effectiveDriverOptions = computed(() =>
-  assignedInfo.value ? [{ id: assignedInfo.value.driverId, name: assignedInfo.value.driverName }] : props.driverOptions
+const driverChangedFromAssignment = computed(
+  () => !!assignedInfo.value && !!ownForm.driverId && ownForm.driverId !== assignedInfo.value.driverId
 );
 
 watch(

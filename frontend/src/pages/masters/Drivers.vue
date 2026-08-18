@@ -38,7 +38,7 @@
       <AppTextField v-model="form.name" label="Driver Name" :error-messages="errors.name" class="mb-2" />
       <AppTextField v-model="form.code" label="Driver Code" :disabled="isEditing" :error-messages="errors.code" class="mb-2" />
       <AppTextField v-model="form.licenseNumber" label="License Number" :error-messages="errors.licenseNumber" class="mb-2" />
-      <AppTextField v-model="form.phone" label="Phone" :error-messages="errors.phone" class="mb-2" />
+      <AppTextField v-model="form.phone" label="Phone" maxlength="10" :error-messages="errors.phone" class="mb-2" />
       <AppTextField v-model="form.licenseExpiryDate" type="date" label="License Expiry Date" class="mb-2" />
     </MasterFormDialog>
 

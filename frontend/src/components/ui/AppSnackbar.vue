@@ -47,8 +47,8 @@ watch(
   display: flex;
   align-items: center;
   gap: 16px;
-  min-width: 280px;
-  max-width: 90vw;
+  min-width: 200px;
+  max-width: min(420px, calc(100vw - 32px));
   padding: 12px 18px;
   border-radius: var(--radius-md);
   background: #323232;

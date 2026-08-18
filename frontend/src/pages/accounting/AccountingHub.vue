@@ -4,7 +4,7 @@
       <div>
         <h2 class="text-h6 mb-1">Accounting</h2>
         <p class="text-caption text-medium-emphasis mb-0">
-          Banking, cash and the organization these books belong to
+          GST &amp; taxation, currencies, cost categories and the organization these books belong to
         </p>
       </div>
       <HubSearch v-model="search" placeholder="Search accounting pages..." />
@@ -27,7 +27,7 @@ import { HubCard, HubCardGrid, HubSearch, HubFavoritesRecents } from '@/componen
 const search = ref('');
 
 const cards = [
-  { icon: 'mdi-bank-outline', title: 'Banking & Cash', description: 'Bank/cash accounts, transfers, cheques and petty cash', to: '/accounting/banking' },
+  { icon: 'mdi-file-percent-outline', title: 'GST & Taxation', description: 'GST rate masters for invoicing', to: '/accounts/gst-taxation' },
   { icon: 'mdi-currency-inr', title: 'Currencies', description: 'Base currency and forex reference data', to: '/accounting/currencies' },
   { icon: 'mdi-shape-outline', title: 'Cost Categories', description: 'Grouping of cost centers by type', to: '/accounting/cost-categories' },
   { icon: 'mdi-domain', title: 'Organization', description: 'The legal entity these books belong to', to: '/accounting/organizations' },

@@ -65,17 +65,6 @@
           @update:model-value="(v: string) => update('driverId', v)"
         />
       </div>
-      <div v-if="routeOptions.length" class="col-6 col-sm-4 col-md-2">
-        <AppSelect
-          :model-value="filters.routeId"
-          :items="routeOptions"
-          item-title="name"
-          item-value="id"
-          label="Route"
-          clearable
-          @update:model-value="(v: string) => update('routeId', v)"
-        />
-      </div>
       <div v-if="vehicleTypeOptions.length" class="col-6 col-sm-4 col-md-2">
         <AppSelect
           :model-value="filters.vehicleTypeId"
@@ -121,7 +110,6 @@ export interface ReportFilterState {
   supplierId: string | null;
   vehicleId: string | null;
   driverId: string | null;
-  routeId: string | null;
   vehicleTypeId: string | null;
   tripStatus: string | null;
   paymentStatus: string | null;
@@ -134,7 +122,6 @@ withDefaults(
     supplierOptions?: { id: string; name: string }[];
     vehicleOptions?: { id: string; registrationNumber: string }[];
     driverOptions?: { id: string; name: string }[];
-    routeOptions?: { id: string; name: string }[];
     vehicleTypeOptions?: { id: string; name: string }[];
   }>(),
   {
@@ -142,7 +129,6 @@ withDefaults(
     supplierOptions: () => [],
     vehicleOptions: () => [],
     driverOptions: () => [],
-    routeOptions: () => [],
     vehicleTypeOptions: () => [],
   }
 );

@@ -1,32 +1,30 @@
 import { defineStore } from 'pinia';
 import {
   driverAdvanceApi,
-  driverReimbursementApi,
   driverEarningApi,
   driverPenaltyApi,
-  driverLoanApi,
   driverSettlementApi,
   driverStatementApi,
   salaryStructureApi,
+  driverSalaryStructureApi,
   employeeAdvanceApi,
-  employeeLoanApi,
-  payrollRunApi,
+  employeeSalaryPaymentApi,
+  driverSalaryPaymentApi,
   payrollDashboardApi,
 } from '@/services/accounts/driverPayroll';
 import type {
   DriverAdvance,
-  DriverExpenseReimbursement,
   DriverEarning,
   DriverEarningRule,
   DriverPenalty,
-  DriverLoan,
   DriverSettlement,
   DriverSettlementPreview,
   DriverStatement,
   SalaryStructure,
+  DriverSalaryStructure,
   EmployeeAdvance,
-  EmployeeLoan,
-  PayrollRun,
+  EmployeeSalaryPayment,
+  DriverSalaryPayment,
   PayrollDashboardSummary,
   PaginationMeta,
 } from '@/types/phase5.types';
@@ -58,37 +56,6 @@ export const useDriverAdvanceStore = defineStore('driverAdvances', {
     },
     async remove(id: string) {
       await driverAdvanceApi.remove(id);
-    },
-  },
-});
-
-export const useDriverReimbursementStore = defineStore('driverReimbursements', {
-  state: () => ({ items: [] as DriverExpenseReimbursement[], meta: null as PaginationMeta | null, loading: false }),
-  actions: {
-    async fetchList(params: Record<string, unknown> = {}) {
-      this.loading = true;
-      try {
-        const response = await driverReimbursementApi.list(params);
-        this.items = response.data.data;
-        this.meta = response.data.meta;
-      } finally {
-        this.loading = false;
-      }
-    },
-    async request(payload: Record<string, unknown>) {
-      const response = await driverReimbursementApi.request(payload);
-      return response.data.data;
-    },
-    async approve(id: string) {
-      const response = await driverReimbursementApi.approve(id);
-      return response.data.data;
-    },
-    async reject(id: string, reason?: string) {
-      const response = await driverReimbursementApi.reject(id, reason);
-      return response.data.data;
-    },
-    async remove(id: string) {
-      await driverReimbursementApi.remove(id);
     },
   },
 });
@@ -163,37 +130,6 @@ export const useDriverPenaltyStore = defineStore('driverPenalties', {
     },
     async remove(id: string) {
       await driverPenaltyApi.remove(id);
-    },
-  },
-});
-
-export const useDriverLoanStore = defineStore('driverLoans', {
-  state: () => ({ items: [] as DriverLoan[], meta: null as PaginationMeta | null, loading: false }),
-  actions: {
-    async fetchList(params: Record<string, unknown> = {}) {
-      this.loading = true;
-      try {
-        const response = await driverLoanApi.list(params);
-        this.items = response.data.data;
-        this.meta = response.data.meta;
-      } finally {
-        this.loading = false;
-      }
-    },
-    async request(payload: Record<string, unknown>) {
-      const response = await driverLoanApi.request(payload);
-      return response.data.data;
-    },
-    async approve(id: string) {
-      const response = await driverLoanApi.approve(id);
-      return response.data.data;
-    },
-    async reject(id: string, reason?: string) {
-      const response = await driverLoanApi.reject(id, reason);
-      return response.data.data;
-    },
-    async remove(id: string) {
-      await driverLoanApi.remove(id);
     },
   },
 });
@@ -290,6 +226,38 @@ export const useSalaryStructureStore = defineStore('salaryStructures', {
   },
 });
 
+export const useDriverSalaryStructureStore = defineStore('driverSalaryStructures', {
+  state: () => ({ items: [] as DriverSalaryStructure[], active: null as DriverSalaryStructure | null, loading: false }),
+  actions: {
+    async fetchForDriver(driverId: string) {
+      this.loading = true;
+      try {
+        const response = await driverSalaryStructureApi.listForDriver(driverId);
+        this.items = response.data.data;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async fetchActiveForDriver(driverId: string) {
+      try {
+        const response = await driverSalaryStructureApi.getActiveForDriver(driverId);
+        this.active = response.data.data;
+        return this.active;
+      } catch {
+        this.active = null;
+        return null;
+      }
+    },
+    async create(payload: Record<string, unknown>) {
+      const response = await driverSalaryStructureApi.create(payload);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await driverSalaryStructureApi.remove(id);
+    },
+  },
+});
+
 export const useEmployeeAdvanceStore = defineStore('employeeAdvances', {
   state: () => ({ items: [] as EmployeeAdvance[], meta: null as PaginationMeta | null, loading: false }),
   actions: {
@@ -321,85 +289,32 @@ export const useEmployeeAdvanceStore = defineStore('employeeAdvances', {
   },
 });
 
-export const useEmployeeLoanStore = defineStore('employeeLoans', {
-  state: () => ({ items: [] as EmployeeLoan[], meta: null as PaginationMeta | null, loading: false }),
+export const useEmployeeSalaryPaymentStore = defineStore('employeeSalaryPayments', {
+  state: () => ({ items: [] as EmployeeSalaryPayment[], loading: false }),
   actions: {
-    async fetchList(params: Record<string, unknown> = {}) {
+    async fetchForEmployee(employeeId: string) {
       this.loading = true;
       try {
-        const response = await employeeLoanApi.list(params);
+        const response = await employeeSalaryPaymentApi.listForEmployee(employeeId);
         this.items = response.data.data;
-        this.meta = response.data.meta;
       } finally {
         this.loading = false;
       }
-    },
-    async request(payload: Record<string, unknown>) {
-      const response = await employeeLoanApi.request(payload);
-      return response.data.data;
-    },
-    async approve(id: string) {
-      const response = await employeeLoanApi.approve(id);
-      return response.data.data;
-    },
-    async reject(id: string, reason?: string) {
-      const response = await employeeLoanApi.reject(id, reason);
-      return response.data.data;
-    },
-    async remove(id: string) {
-      await employeeLoanApi.remove(id);
     },
   },
 });
 
-export const usePayrollRunStore = defineStore('payrollRuns', {
-  state: () => ({ items: [] as PayrollRun[], meta: null as PaginationMeta | null, loading: false }),
+export const useDriverSalaryPaymentStore = defineStore('driverSalaryPayments', {
+  state: () => ({ items: [] as DriverSalaryPayment[], loading: false }),
   actions: {
-    async fetchList(params: Record<string, unknown> = {}) {
+    async fetchForDriver(driverId: string) {
       this.loading = true;
       try {
-        const response = await payrollRunApi.list(params);
+        const response = await driverSalaryPaymentApi.listForDriver(driverId);
         this.items = response.data.data;
-        this.meta = response.data.meta;
       } finally {
         this.loading = false;
       }
-    },
-    async getById(id: string) {
-      const response = await payrollRunApi.getById(id);
-      return response.data.data;
-    },
-    async create(payload: Record<string, unknown>) {
-      const response = await payrollRunApi.create(payload);
-      return response.data.data;
-    },
-    async calculate(id: string, employeeIds?: string[]) {
-      const response = await payrollRunApi.calculate(id, employeeIds);
-      return response.data.data;
-    },
-    async verify(id: string) {
-      const response = await payrollRunApi.verify(id);
-      return response.data.data;
-    },
-    async approve(id: string) {
-      const response = await payrollRunApi.approve(id);
-      return response.data.data;
-    },
-    async process(id: string) {
-      const response = await payrollRunApi.process(id);
-      return response.data.data;
-    },
-    async pay(id: string) {
-      const response = await payrollRunApi.pay(id);
-      return response.data.data;
-    },
-    async cancel(id: string) {
-      const response = await payrollRunApi.cancel(id);
-      return response.data.data;
-    },
-    async revert(id: string) {
-      const response = await payrollRunApi.revert(id);
-      return response.data.data;
     },
   },
 });

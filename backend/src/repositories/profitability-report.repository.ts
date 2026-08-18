@@ -10,7 +10,6 @@ export const profitabilityReportRepository = {
         vehicle: { select: { id: true, registrationNumber: true } },
         driver: { select: { id: true, name: true } },
         supplier: { select: { id: true, name: true } },
-        route: { select: { id: true, name: true } },
         expenses: { where: { deletedAt: null } },
       },
     });

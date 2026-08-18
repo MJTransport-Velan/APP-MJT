@@ -60,6 +60,11 @@
       :page-size="pageSize"
       item-label="trips"
       :row-border-color="rowBorderColor"
+      export-filename="trip-list"
+      :export-columns="tripExportColumns"
+      :export-row-mapper="exportRowMapper"
+      :export-summary-row="tripExportSummaryRow"
+      :on-export-all="exportAllTrips"
       @update:search="onSearchUpdate"
       @update:page="onPageUpdate"
       @update:page-size="onPageSizeUpdate"
@@ -146,7 +151,6 @@
 
     <!-- Freight / Load Planning -->
     <MasterFormDialog v-model="planDialog" title="Freight & Load Planning" :loading="planning" @submit="onSavePlan">
-      <AppSelect v-model="planForm.routeId" :items="routeOptions" item-title="name" item-value="id" label="Route" clearable class="mb-2" />
       <AppTextField v-model.number="planForm.freightAmount" type="number" label="Freight Amount" class="mb-2" />
       <AppTextField v-model.number="planForm.loadWeight" type="number" label="Load Weight (T)" class="mb-2" />
       <AppTextarea v-model="planForm.loadDescription" label="Load Description" rows="2" />
@@ -183,8 +187,9 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTripStore } from '@/stores/operations';
+import { tripApi } from '@/services/operations';
 import { useAuthStore } from '@/stores/auth.store';
-import { useVehicleStore, useDriverStore, useRouteStore } from '@/stores/masters';
+import { useVehicleStore, useDriverStore } from '@/stores/masters';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
@@ -217,7 +222,6 @@ const store = useTripStore();
 const authStore = useAuthStore();
 const vehicleStore = useVehicleStore();
 const driverStore = useDriverStore();
-const routeStore = useRouteStore();
 const { success, error } = useSnackbar();
 
 // Fleet operators are locked to their own ownership's trips server-side
@@ -356,10 +360,8 @@ function onFilterChange() {
   fetchData();
 }
 
-async function fetchData() {
+function buildFilterParams(): Record<string, unknown> {
   const params: Record<string, unknown> = {
-    page: page.value,
-    pageSize: pageSize.value,
     search: search.value || undefined,
   };
   if (statusFilter.value) {
@@ -374,7 +376,64 @@ async function fetchData() {
   if (dateTo.value) params.dateTo = dateTo.value;
   if (vehicleIdFilter.value) params.vehicleId = vehicleIdFilter.value;
   if (driverIdFilter.value) params.driverId = driverIdFilter.value;
-  await store.fetchList(params);
+  return params;
+}
+
+async function fetchData() {
+  await store.fetchList({ page: page.value, pageSize: pageSize.value, ...buildFilterParams() });
+}
+
+const tripExportColumns = [
+  { header: 'Trip No.', key: 'tripNumber' },
+  { header: 'Client', key: 'company' },
+  { header: 'Route', key: 'route' },
+  { header: 'Vehicle', key: 'vehicle' },
+  { header: 'Driver', key: 'driver' },
+  { header: 'Client Amount', key: 'freightAmount' },
+  { header: 'Supplier Amount', key: 'supplierAmount' },
+  { header: 'Profit', key: 'profit' },
+  { header: 'Status', key: 'status' },
+  { header: 'Created By', key: 'createdBy' },
+];
+
+function exportRowMapper(item: Record<string, unknown>) {
+  const trip = item as unknown as Trip;
+  const freightAmount = Number(trip.freightAmount || 0);
+  const supplierAmount = Number(trip.supplierRate || 0);
+  return {
+    tripNumber: trip.tripNumber,
+    company: trip.intent.company.name,
+    route: `${trip.fromLocation.name} -> ${trip.toLocation.name}`,
+    vehicle: trip.vehicle?.registrationNumber || '-',
+    driver: trip.driver?.name || 'Awaiting assignment',
+    freightAmount,
+    supplierAmount,
+    profit: freightAmount - supplierAmount,
+    status: trip.status,
+    createdBy: trip.assignedBy?.fullName || '-',
+  };
+}
+
+function tripExportSummaryRow(rows: Record<string, unknown>[]) {
+  const totalFreight = rows.reduce((sum, r) => sum + Number(r.freightAmount || 0), 0);
+  const totalSupplier = rows.reduce((sum, r) => sum + Number(r.supplierAmount || 0), 0);
+  return {
+    tripNumber: 'TOTAL',
+    company: '',
+    route: '',
+    vehicle: '',
+    driver: '',
+    freightAmount: totalFreight,
+    supplierAmount: totalSupplier,
+    profit: totalFreight - totalSupplier,
+    status: '',
+    createdBy: '',
+  };
+}
+
+async function exportAllTrips() {
+  const response = await tripApi.list({ pageSize: 5000, ...buildFilterParams() });
+  return response.data.data as unknown as Record<string, unknown>[];
 }
 
 function openTrip(trip: Trip) {
@@ -386,7 +445,6 @@ function refresh() {
   store.fetchStats();
 }
 
-const routeOptions = ref<{ id: string; name: string }[]>([]);
 // Full catalogs — used for the "filter trips by vehicle/driver" pickers,
 // which must show every vehicle/driver, not just currently free ones.
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
@@ -402,8 +460,7 @@ const availableDriverOptions = ref<{ id: string; name: string }[]>([]);
 const planDialog = ref(false);
 const planning = ref(false);
 const planTarget = ref<Trip | null>(null);
-const planForm = reactive<{ routeId: string; freightAmount: number | undefined; loadWeight: number | undefined; loadDescription: string }>({
-  routeId: '',
+const planForm = reactive<{ freightAmount: number | undefined; loadWeight: number | undefined; loadDescription: string }>({
   freightAmount: undefined,
   loadWeight: undefined,
   loadDescription: '',
@@ -411,7 +468,6 @@ const planForm = reactive<{ routeId: string; freightAmount: number | undefined; 
 
 function openPlanDialog(trip: Trip) {
   planTarget.value = trip;
-  planForm.routeId = trip.route?.id || '';
   planForm.freightAmount = trip.freightAmount ?? undefined;
   planForm.loadWeight = trip.loadWeight ?? undefined;
   planForm.loadDescription = trip.loadDescription || '';
@@ -423,7 +479,6 @@ async function onSavePlan() {
   planning.value = true;
   try {
     await store.update(planTarget.value.id, {
-      routeId: planForm.routeId || undefined,
       freightAmount: planForm.freightAmount,
       loadWeight: planForm.loadWeight,
       loadDescription: planForm.loadDescription || undefined,
@@ -497,17 +552,14 @@ async function submitCancel() {
 }
 
 onMounted(async () => {
-  // Settled, not all — a role missing permission for one lookup (e.g. a
-  // fleet operator without route.view) must not abort the trip list/stats
-  // load itself, which is the point of this page.
-  const [, , , activeAssignmentsRes, suppliersRes] = await Promise.allSettled([
-    routeStore.fetchList({ pageSize: 200 }),
+  // Settled, not all — a role missing permission for one lookup must not
+  // abort the trip list/stats load itself, which is the point of this page.
+  const [, , activeAssignmentsRes, suppliersRes] = await Promise.allSettled([
     vehicleStore.fetchList({ pageSize: 200 }),
     driverStore.fetchList({ pageSize: 200 }),
     vehicleAssignmentApi.list({ status: 'ACTIVE', pageSize: 500 }),
     supplierApi.list({ pageSize: 200 }),
   ]);
-  routeOptions.value = routeStore.items.map((r: any) => ({ id: r.id, name: r.name }));
   vehicleOptions.value = vehicleStore.items.map((v: any) => ({ id: v.id, registrationNumber: v.registrationNumber }));
   driverOptions.value = driverStore.items.map((d: any) => ({ id: d.id, name: d.name }));
   if (suppliersRes.status === 'fulfilled') {

@@ -20,8 +20,4 @@ export const profitabilityReportController = {
     const data = await profitabilityReportService.driverProfitability(req.query);
     return sendSuccess(res, 200, { message: 'Driver Profitability fetched', data });
   }),
-  route: asyncHandler(async (req, res: Response) => {
-    const data = await profitabilityReportService.routeProfitability(req.query);
-    return sendSuccess(res, 200, { message: 'Route Profitability fetched', data });
-  }),
 };

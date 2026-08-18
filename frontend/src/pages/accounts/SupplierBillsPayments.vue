@@ -10,6 +10,7 @@
     <AppTabs v-model="mainTab" color="primary" class="mb-4">
       <AppTab value="outstanding">Outstanding</AppTab>
       <AppTab value="bills">Bills</AppTab>
+      <AppTab value="ungenerated">Ungenerated Bill{{ ungeneratedBillTrips.length ? ` (${ungeneratedBillTrips.length})` : '' }}</AppTab>
       <AppTab value="payments">Payments</AppTab>
     </AppTabs>
 
@@ -54,6 +55,41 @@
         </MasterDataTable>
       </AppWindowItem>
 
+      <AppWindowItem value="ungenerated">
+        <p class="text-caption text-medium-emphasis mb-3">
+          Completed supplier trips that don't have a bill yet — pick one up to generate its bill.
+        </p>
+        <div class="tblwrap">
+          <AppTable>
+            <thead>
+              <tr>
+                <th>Trip No.</th>
+                <th>Supplier</th>
+                <th>Route</th>
+                <th>Completed On</th>
+                <th class="text-right">Supplier Rate</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="trip in ungeneratedBillTrips" :key="trip.id">
+                <td>{{ trip.tripNumber }}</td>
+                <td>{{ trip.supplierName }}</td>
+                <td>{{ trip.fromLocation.name }} → {{ trip.toLocation.name }}</td>
+                <td>{{ trip.actualEndDate ? new Date(trip.actualEndDate).toLocaleDateString() : '-' }}</td>
+                <td class="text-right">{{ formatCurrency(trip.supplierRate || 0) }}</td>
+                <td class="text-right">
+                  <AppBtn size="small" variant="tonal" @click="generateBillForTrip(trip)">Generate Bill</AppBtn>
+                </td>
+              </tr>
+            </tbody>
+          </AppTable>
+        </div>
+        <p v-if="ungeneratedBillTrips.length === 0" class="text-caption text-medium-emphasis pa-4 text-center">
+          No completed supplier trips are waiting to be billed.
+        </p>
+      </AppWindowItem>
+
       <AppWindowItem value="payments">
         <MasterDataTable
           :headers="paymentHeaders"
@@ -71,6 +107,7 @@
           </template>
           <template #item.supplier="{ item }">{{ (item as any).supplier.name }}</template>
           <template #item.trip="{ item }">{{ (item as any).trip?.tripNumber || '-' }}</template>
+          <template #item.bill="{ item }">{{ (item as any).bill?.billNumber || '-' }}</template>
           <template #item.amount="{ item }">{{ formatCurrency((item as any).amount) }}</template>
           <template #item.paymentDate="{ item }">{{ new Date((item as any).paymentDate).toLocaleDateString() }}</template>
           <template #item.type="{ item }">
@@ -79,6 +116,13 @@
             </AppChip>
           </template>
           <template #item.actions="{ item }">
+            <AppBtn
+              v-if="(item as any).isAdvance"
+              icon="mdi-link-variant"
+              variant="text"
+              size="small"
+              @click="openAllocateDialog(item as any)"
+            />
             <AppBtn icon="mdi-delete-outline" variant="text" size="small" @click="openDeleteConfirm(item as any)" />
           </template>
         </MasterDataTable>
@@ -277,6 +321,14 @@
       @submit="onPaymentSubmit"
     />
 
+    <PaymentDialog
+      v-model="allocateDialog"
+      is-allocation
+      :bill-options="billOptionsForAllocation"
+      :loading="allocating"
+      @submit="onAllocateSubmit"
+    />
+
     <ConfirmDialog
       v-model="deleteDialog"
       title="Delete Payment"
@@ -331,7 +383,7 @@ const bankAccountStore = useBankAccountStore();
 const cashAccountStore = useCashAccountStore();
 const { success, error } = useSnackbar();
 
-const mainTab = ref<'outstanding' | 'bills' | 'payments'>('bills');
+const mainTab = ref<'outstanding' | 'bills' | 'ungenerated' | 'payments'>('bills');
 
 const supplierOptions = ref<{ id: string; name: string }[]>([]);
 const paymentModeOptions = ref<{ id: string; name: string }[]>([]);
@@ -354,8 +406,44 @@ function onBillDateRangeChange() {
   fetchBills();
 }
 
-const completedTrips = ref<{ id: string; tripNumber: string; supplierId: string | null; supplierRate: number | null }[]>([]);
+interface CompletedSupplierTrip {
+  id: string;
+  tripNumber: string;
+  supplierId: string | null;
+  supplierName: string;
+  supplierRate: number | null;
+  fromLocation: { id: string; name: string };
+  toLocation: { id: string; name: string };
+  actualEndDate: string | null;
+}
+const completedTrips = ref<CompletedSupplierTrip[]>([]);
 const tripsForSupplier = computed(() => completedTrips.value.filter((t) => t.supplierId === generateForm.supplierId));
+
+// Ungenerated Bill tab — every COMPLETED trip with a supplier assigned that
+// has no SupplierBill yet (checked against payablesBills, which already
+// loads every bill regardless of status), newest completion first.
+const ungeneratedBillTrips = computed(() =>
+  completedTrips.value
+    .filter((t) => t.supplierId && !payablesBills.value.some((b) => b.trip?.id === t.id))
+    .sort((a, b) => new Date(b.actualEndDate || 0).getTime() - new Date(a.actualEndDate || 0).getTime())
+);
+
+// Jumped to from the Ungenerated Bill tab — opens the same Generate Bill
+// dialog used from the Bills tab, pre-filled to that trip's supplier with
+// the trip itself already selected.
+function generateBillForTrip(trip: CompletedSupplierTrip) {
+  Object.assign(generateForm, {
+    supplierId: trip.supplierId || '',
+    tripId: trip.id,
+    subtotal: trip.supplierRate ? Number(trip.supplierRate) : undefined,
+    taxAmount: 0,
+    retentionAmount: 0,
+    dueDate: '',
+    notes: '',
+  });
+  Object.assign(generateErrors, { supplierId: '', subtotal: '' });
+  generateDialog.value = true;
+}
 
 const billHeaders = [
   { title: 'Bill No.', key: 'billNumber', sortable: false },
@@ -375,6 +463,11 @@ async function fetchBills() {
     page: billPage.value,
     pageSize: billPageSize.value,
     status: billStatusFilter.value || undefined,
+    // Bills tab is scoped to generated-and-unpaid bills by default — once a
+    // bill is fully PAID it's tracked via its SupplierPayment(s) on the
+    // Payments tab instead. Explicitly picking a status (including PAID)
+    // from the filter overrides this and shows exactly that status.
+    unpaidOnly: billStatusFilter.value ? undefined : true,
     dateFrom: billDateFrom.value || undefined,
     dateTo: billDateTo.value || undefined,
   });
@@ -523,6 +616,7 @@ const paymentHeaders = [
   { title: 'Payment No.', key: 'paymentNumber', sortable: false },
   { title: 'Supplier', key: 'supplier', sortable: false },
   { title: 'Trip', key: 'trip', sortable: false },
+  { title: 'Bill No.', key: 'bill', sortable: false },
   { title: 'Amount', key: 'amount', sortable: false },
   { title: 'Date', key: 'paymentDate', sortable: false },
   { title: 'Type', key: 'type', sortable: false },
@@ -568,6 +662,36 @@ async function onPaymentSubmit(payload: Record<string, unknown>) {
     error(extractErrorMessage(err, 'Failed to record payment'));
   } finally {
     submittingPayment.value = false;
+  }
+}
+
+// --- Allocate: links a previously unlinked "Advance" payment to a specific
+// bill after the fact — mirrors the customer side's Receipt allocation flow.
+const allocateDialog = ref(false);
+const allocateTarget = ref<SupplierPayment | null>(null);
+const allocating = ref(false);
+const billOptionsForAllocation = computed(() =>
+  billOptions.value.filter((b) => !allocateTarget.value || b.supplierId === allocateTarget.value.supplier.id)
+);
+function openAllocateDialog(payment: SupplierPayment) {
+  allocateTarget.value = payment;
+  allocateDialog.value = true;
+}
+async function onAllocateSubmit(payload: Record<string, unknown>) {
+  if (!allocateTarget.value) return;
+  allocating.value = true;
+  try {
+    await paymentStore.allocate(allocateTarget.value.id, payload.billId as string);
+    success('Payment allocated to bill');
+    allocateDialog.value = false;
+    fetchPayments();
+    loadPayablesBills();
+    fetchOutstandingTabBills();
+    fetchBills();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to allocate payment'));
+  } finally {
+    allocating.value = false;
   }
 }
 
@@ -667,7 +791,16 @@ onMounted(async () => {
     fetchOutstandingTabBills(),
   ]);
   supplierOptions.value = suppliersRes.data.data.map((s: any) => ({ id: s.id, name: s.name }));
-  completedTrips.value = tripsRes.data.data.map((t: any) => ({ id: t.id, tripNumber: t.tripNumber, supplierId: t.supplierId ?? t.supplier?.id ?? null, supplierRate: t.supplierRate }));
+  completedTrips.value = tripsRes.data.data.map((t: any) => ({
+    id: t.id,
+    tripNumber: t.tripNumber,
+    supplierId: t.supplierId ?? t.supplier?.id ?? null,
+    supplierName: t.supplier?.name || '-',
+    supplierRate: t.supplierRate,
+    fromLocation: t.fromLocation,
+    toLocation: t.toLocation,
+    actualEndDate: t.actualEndDate,
+  }));
   tripOptions.value = tripsRes.data.data.map((t: any) => ({ id: t.id, tripNumber: t.tripNumber }));
   paymentModeOptions.value = paymentModeStore.items.map((p: any) => ({ id: p.id, name: p.name }));
   fetchBills();

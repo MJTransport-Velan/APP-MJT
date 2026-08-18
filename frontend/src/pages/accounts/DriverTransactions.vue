@@ -1,12 +1,11 @@
 <template>
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
-      <h2 class="text-h6">Driver Advances, Reimbursements, Allowances &amp; Penalties</h2>
+      <h2 class="text-h6">Driver Advances, Allowances &amp; Penalties</h2>
     </div>
 
     <AppTabs v-model="activeTab" color="primary" class="mb-4">
       <AppTab value="advances">Advances</AppTab>
-      <AppTab value="reimbursements">Reimbursements</AppTab>
       <AppTab value="earnings">Allowances / Incentives</AppTab>
       <AppTab value="penalties">Penalties &amp; Recoveries</AppTab>
     </AppTabs>
@@ -28,24 +27,6 @@
             <template v-if="(item as any).approvalStatus === 'PENDING'">
               <AppBtn icon="mdi-check-circle-outline" variant="text" size="small" color="success" @click="onApprove('advance', item as any)" />
               <AppBtn icon="mdi-close-circle-outline" variant="text" size="small" color="error" @click="onReject('advance', item as any)" />
-            </template>
-          </template>
-        </MasterDataTable>
-      </AppWindowItem>
-
-      <!-- REIMBURSEMENTS -->
-      <AppWindowItem value="reimbursements">
-        <div class="d-flex justify-end mb-3">
-          <AppBtn color="primary" prepend-icon="mdi-plus" @click="openReimbursementDialog">Claim Reimbursement</AppBtn>
-        </div>
-        <MasterDataTable :headers="reimbursementHeaders" :items="reimbursementStore.items" :items-length="reimbursementStore.meta?.total || 0" :loading="reimbursementStore.loading" :page="reimPage" :page-size="reimPageSize" @update:page="(v) => { reimPage = v; fetchReimbursements(); }" @update:page-size="(v) => { reimPageSize = v; fetchReimbursements(); }">
-          <template #item.driver="{ item }">{{ (item as any).driver.name }}</template>
-          <template #item.amount="{ item }">{{ formatCurrency((item as any).amount) }}</template>
-          <template #item.approvalStatus="{ item }"><AppChip size="small" :color="statusColor((item as any).approvalStatus)">{{ (item as any).approvalStatus }}</AppChip></template>
-          <template #item.actions="{ item }">
-            <template v-if="(item as any).approvalStatus === 'PENDING'">
-              <AppBtn icon="mdi-check-circle-outline" variant="text" size="small" color="success" @click="onApprove('reimbursement', item as any)" />
-              <AppBtn icon="mdi-close-circle-outline" variant="text" size="small" color="error" @click="onReject('reimbursement', item as any)" />
             </template>
           </template>
         </MasterDataTable>
@@ -99,16 +80,6 @@
       <AppTextarea v-model="advanceForm.purpose" label="Purpose" rows="2" />
     </MasterFormDialog>
 
-    <!-- Reimbursement dialog -->
-    <MasterFormDialog v-model="reimbursementDialog" title="Claim Driver Expense Reimbursement" :loading="submitting" @submit="onSubmitReimbursement">
-      <AppSelect v-model="reimbursementForm.driverId" :items="driverOptions" item-title="name" item-value="id" label="Driver" :error-messages="formErrors.driverId" class="mb-2" />
-      <AppSelect v-model="reimbursementForm.tripId" :items="tripOptions" item-title="tripNumber" item-value="id" label="Trip (optional)" clearable class="mb-2" />
-      <AppSelect v-model="reimbursementForm.category" :items="expenseCategoryOptions" label="Category" class="mb-2" />
-      <AppTextField v-model.number="reimbursementForm.amount" type="number" label="Amount" :error-messages="formErrors.amount" class="mb-2" />
-      <AppTextField v-model="reimbursementForm.expenseDate" type="date" label="Expense Date" class="mb-2" />
-      <AppTextarea v-model="reimbursementForm.description" label="Description" rows="2" />
-    </MasterFormDialog>
-
     <!-- Earning dialog -->
     <MasterFormDialog v-model="earningDialog" title="Record Driver Allowance / Incentive" :loading="submitting" @submit="onSubmitEarning">
       <AppSelect v-model="earningForm.driverId" :items="driverOptions" item-title="name" item-value="id" label="Driver" :error-messages="formErrors.driverId" class="mb-2" />
@@ -134,7 +105,6 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import {
   useDriverAdvanceStore,
-  useDriverReimbursementStore,
   useDriverEarningStore,
   useDriverPenaltyStore,
 } from '@/stores/accounts/driverPayroll';
@@ -148,7 +118,6 @@ import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import { AppBtn, AppTabs, AppTab, AppWindow, AppWindowItem, AppSelect, AppTextField, AppTextarea, AppCheckbox, AppChip } from '@/components/ui';
 
 const advanceStore = useDriverAdvanceStore();
-const reimbursementStore = useDriverReimbursementStore();
 const earningStore = useDriverEarningStore();
 const penaltyStore = useDriverPenaltyStore();
 const bankAccountStore = useBankAccountStore();
@@ -164,7 +133,6 @@ const driverAdvanceTypeOptions = [
   'SALARY_ADVANCE', 'TRIP_ADVANCE', 'EMERGENCY_ADVANCE', 'FUEL_ADVANCE', 'TOLL_ADVANCE',
   'REPAIR_ADVANCE', 'MEDICAL_ADVANCE', 'ADVANCE_AGAINST_SALARY', 'ADVANCE_AGAINST_TRIP', 'OTHER',
 ];
-const expenseCategoryOptions = ['FUEL', 'REPAIR', 'TYRE', 'BATTERY', 'PARKING', 'TOLL', 'FOOD', 'ACCOMMODATION', 'MEDICAL', 'PHONE', 'MISCELLANEOUS'];
 const earningTypeOptions = [
   'TRIP_BATA', 'DAILY_BATA', 'NIGHT_BATA', 'LOADING_ALLOWANCE', 'UNLOADING_ALLOWANCE', 'WAITING_CHARGES',
   'OUTSTATION_ALLOWANCE', 'FOOD_ALLOWANCE', 'SPECIAL_ALLOWANCE', 'TRIP_INCENTIVE', 'MONTHLY_INCENTIVE',
@@ -236,51 +204,6 @@ async function onSubmitAdvance() {
     fetchAdvances();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to request advance'));
-  } finally {
-    submitting.value = false;
-  }
-}
-
-// --- Reimbursements ---
-const reimPage = ref(1);
-const reimPageSize = ref(10);
-const reimbursementHeaders = [
-  { title: 'Reimbursement No.', key: 'reimbursementNumber', sortable: false },
-  { title: 'Driver', key: 'driver', sortable: false },
-  { title: 'Category', key: 'category', sortable: false },
-  { title: 'Amount', key: 'amount', sortable: false },
-  { title: 'Status', key: 'approvalStatus', sortable: false },
-  { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
-];
-async function fetchReimbursements() {
-  await reimbursementStore.fetchList({ page: reimPage.value, pageSize: reimPageSize.value });
-}
-const reimbursementDialog = ref(false);
-const reimbursementForm = reactive({ driverId: '', tripId: '', category: 'FUEL', amount: undefined as number | undefined, expenseDate: new Date().toISOString().slice(0, 10), description: '' });
-function openReimbursementDialog() {
-  Object.assign(reimbursementForm, { driverId: '', tripId: '', category: 'FUEL', amount: undefined, expenseDate: new Date().toISOString().slice(0, 10), description: '' });
-  clearErrors();
-  reimbursementDialog.value = true;
-}
-async function onSubmitReimbursement() {
-  formErrors.driverId = reimbursementForm.driverId ? '' : 'Driver is required';
-  formErrors.amount = reimbursementForm.amount && reimbursementForm.amount > 0 ? '' : 'Amount must be greater than 0';
-  if (formErrors.driverId || formErrors.amount) return;
-  submitting.value = true;
-  try {
-    await reimbursementStore.request({
-      driverId: reimbursementForm.driverId,
-      tripId: reimbursementForm.tripId || undefined,
-      category: reimbursementForm.category,
-      amount: reimbursementForm.amount,
-      expenseDate: reimbursementForm.expenseDate,
-      description: reimbursementForm.description || undefined,
-    });
-    success('Reimbursement claimed');
-    reimbursementDialog.value = false;
-    fetchReimbursements();
-  } catch (err) {
-    error(extractErrorMessage(err, 'Failed to claim reimbursement'));
   } finally {
     submitting.value = false;
   }
@@ -378,30 +301,26 @@ async function onSubmitPenalty() {
 }
 
 // --- Shared approve/reject ---
-async function onApprove(kind: 'advance' | 'reimbursement' | 'earning' | 'penalty', item: { id: string }) {
+async function onApprove(kind: 'advance' | 'earning' | 'penalty', item: { id: string }) {
   try {
     if (kind === 'advance') await advanceStore.approve(item.id);
-    else if (kind === 'reimbursement') await reimbursementStore.approve(item.id);
     else if (kind === 'earning') await earningStore.approve(item.id);
     else await penaltyStore.approve(item.id);
     success('Approved and posted to the ledger');
     if (kind === 'advance') fetchAdvances();
-    else if (kind === 'reimbursement') fetchReimbursements();
     else if (kind === 'earning') fetchEarnings();
     else fetchPenalties();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to approve'));
   }
 }
-async function onReject(kind: 'advance' | 'reimbursement' | 'earning' | 'penalty', item: { id: string }) {
+async function onReject(kind: 'advance' | 'earning' | 'penalty', item: { id: string }) {
   try {
     if (kind === 'advance') await advanceStore.reject(item.id);
-    else if (kind === 'reimbursement') await reimbursementStore.reject(item.id);
     else if (kind === 'earning') await earningStore.reject(item.id);
     else await penaltyStore.reject(item.id);
     success('Rejected');
     if (kind === 'advance') fetchAdvances();
-    else if (kind === 'reimbursement') fetchReimbursements();
     else if (kind === 'earning') fetchEarnings();
     else fetchPenalties();
   } catch (err) {
@@ -419,7 +338,6 @@ onMounted(async () => {
   driverOptions.value = driversRes.data.data.map((d: any) => ({ id: d.id, name: `${d.name} (${d.code})` }));
   tripOptions.value = tripsRes.data.data.map((t: any) => ({ id: t.id, tripNumber: t.tripNumber }));
   fetchAdvances();
-  fetchReimbursements();
   fetchEarnings();
   fetchPenalties();
 });

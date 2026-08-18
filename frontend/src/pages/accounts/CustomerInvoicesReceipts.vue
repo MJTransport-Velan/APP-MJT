@@ -10,6 +10,7 @@
     <AppTabs v-model="mainTab" color="primary" class="mb-4">
       <AppTab value="outstanding">Outstanding</AppTab>
       <AppTab value="invoices">Invoices</AppTab>
+      <AppTab value="unbilled">Unbilled Trips{{ unbilledCompletedTrips.length ? ` (${unbilledCompletedTrips.length})` : '' }}</AppTab>
       <AppTab value="receipts">Receipts</AppTab>
     </AppTabs>
 
@@ -134,6 +135,41 @@
             />
           </template>
         </MasterDataTable>
+      </AppWindowItem>
+
+      <AppWindowItem value="unbilled">
+        <p class="text-caption text-medium-emphasis mb-3">
+          Completed trips that don't have an invoice yet — pick one up to generate its invoice.
+        </p>
+        <div class="tblwrap">
+          <AppTable>
+            <thead>
+              <tr>
+                <th>Trip No.</th>
+                <th>Customer</th>
+                <th>Route</th>
+                <th>Completed On</th>
+                <th class="text-right">Freight</th>
+                <th class="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="trip in unbilledCompletedTrips" :key="trip.id">
+                <td>{{ trip.tripNumber }}</td>
+                <td>{{ trip.intent.company.name }}</td>
+                <td>{{ trip.fromLocation.name }} → {{ trip.toLocation.name }}</td>
+                <td>{{ trip.actualEndDate ? new Date(trip.actualEndDate).toLocaleDateString() : '-' }}</td>
+                <td class="text-right">{{ formatCurrency(trip.freightAmount || 0) }}</td>
+                <td class="text-right">
+                  <AppBtn size="small" variant="tonal" @click="generateInvoiceForTrip(trip)">Generate Invoice</AppBtn>
+                </td>
+              </tr>
+            </tbody>
+          </AppTable>
+        </div>
+        <p v-if="unbilledCompletedTrips.length === 0" class="text-caption text-medium-emphasis pa-4 text-center">
+          No completed trips are waiting to be invoiced.
+        </p>
       </AppWindowItem>
 
       <AppWindowItem value="receipts">
@@ -457,7 +493,7 @@ const bankAccountStore = useBankAccountStore();
 const cashAccountStore = useCashAccountStore();
 const { success, error } = useSnackbar();
 
-const mainTab = ref<'outstanding' | 'invoices' | 'receipts'>('invoices');
+const mainTab = ref<'outstanding' | 'invoices' | 'unbilled' | 'receipts'>('invoices');
 
 const companyOptions = ref<{ id: string; name: string }[]>([]);
 
@@ -543,6 +579,13 @@ const selectedCompanyName = computed(() => companyOptions.value.find((c) => c.id
 const completedTripsForCompany = computed(() =>
   companyCompletedTrips.value.filter((t) => t.intent.company.id === generateForm.companyId)
 );
+// Unbilled Trips tab — every COMPLETED trip across all companies that has no
+// invoice yet, newest completion first.
+const unbilledCompletedTrips = computed(() =>
+  companyCompletedTrips.value
+    .filter((t) => !t.invoiceId)
+    .sort((a, b) => new Date(b.actualEndDate || 0).getTime() - new Date(a.actualEndDate || 0).getTime())
+);
 const selectedTripsSubtotal = computed(() =>
   completedTripsForCompany.value
     .filter((t) => generateForm.tripIds.includes(t.id))
@@ -567,6 +610,16 @@ async function viewTripInvoice(trip: Trip) {
 function openGeneratePanel() {
   Object.assign(generateForm, { companyId: '', tripIds: [], gstMasterId: '', dueDate: '', notes: '', charges: [] });
   Object.assign(generateErrors, { companyId: '', tripIds: '' });
+  showGeneratePanel.value = true;
+}
+
+// Jumped to from the Unbilled Trips tab — opens the same inline Generate
+// Invoice panel used from the Invoices tab, pre-filled to that trip's
+// company with the trip itself already checked off.
+function generateInvoiceForTrip(trip: Trip) {
+  Object.assign(generateForm, { companyId: trip.intent.company.id, tripIds: [trip.id], gstMasterId: '', dueDate: '', notes: '', charges: [] });
+  Object.assign(generateErrors, { companyId: '', tripIds: '' });
+  mainTab.value = 'invoices';
   showGeneratePanel.value = true;
 }
 
@@ -832,7 +885,11 @@ async function fetchReceipts() {
 
 async function loadOutstandingInvoices() {
   const response = await invoiceApi.list({ pageSize: 200 });
-  outstandingInvoices.value = response.data.data.filter((i) => i.outstandingAmount > 0);
+  // Cancelling an invoice only flips its status — outstandingAmount is left
+  // as-is (see invoice.service.ts's cancel()) — so status must be checked
+  // here too, not just the amount, or a cancelled invoice with a stale
+  // nonzero balance still shows up as allocatable and 400s on submit.
+  outstandingInvoices.value = response.data.data.filter((i) => i.outstandingAmount > 0 && i.status !== 'CANCELLED');
 }
 
 // Separate from outstandingInvoices above: that list feeds the Receipt-entry
@@ -847,7 +904,9 @@ async function fetchOutstandingTabInvoices() {
     dateFrom: outstandingDateFrom.value || undefined,
     dateTo: outstandingDateTo.value || undefined,
   });
-  outstandingTabInvoices.value = response.data.data.filter((i) => i.outstandingAmount > 0);
+  // Same stale-balance issue as loadOutstandingInvoices() above — cancel()
+  // never zeroes outstandingAmount, so status must be checked too.
+  outstandingTabInvoices.value = response.data.data.filter((i) => i.outstandingAmount > 0 && i.status !== 'CANCELLED');
 }
 function onOutstandingDateRangeChange() {
   fetchOutstandingTabInvoices();

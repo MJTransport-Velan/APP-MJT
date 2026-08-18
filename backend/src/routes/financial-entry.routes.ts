@@ -21,5 +21,6 @@ router.post('/', authorize('financialEntry.create'), validate(createFinancialEnt
 router.post('/:id/cancel', authorize('financialEntry.cancel'), validate(cancelFinancialEntrySchema), financialEntryController.cancel);
 router.post('/:id/reverse', authorize('financialEntry.reverse'), validate(reverseFinancialEntrySchema), financialEntryController.reverse);
 router.post('/:id/correct', authorize('financialEntry.edit'), validate(correctFinancialEntrySchema), financialEntryController.correct);
+router.delete('/:id', authorize('financialEntry.delete'), validate(financialEntryIdParamSchema), financialEntryController.remove);
 
 export default router;

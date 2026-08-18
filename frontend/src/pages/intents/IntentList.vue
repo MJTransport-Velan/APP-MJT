@@ -33,6 +33,9 @@
       :search="search"
       :page="page"
       :page-size="pageSize"
+      export-filename="intent-list"
+      :export-row-mapper="exportRowMapper"
+      :on-export-all="exportAllIntents"
       @update:search="onSearchUpdate"
       @update:page="onPageUpdate"
       @update:page-size="onPageSizeUpdate"
@@ -157,6 +160,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useIntentStore } from '@/stores/operations';
+import { intentApi } from '@/services/operations';
 import { useAuthStore } from '@/stores/auth.store';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
@@ -232,6 +236,31 @@ const statCards = computed(() =>
 function barColor(status: string) {
   const found = STAT_META.find((m) => m.key === status);
   return found ? found.color : '#94a3b8';
+}
+
+function statusLabel(status: string) {
+  return STAT_META.find((m) => m.key === status)?.label || status;
+}
+
+function exportRowMapper(item: Record<string, unknown>) {
+  const intent = item as unknown as Intent;
+  return {
+    intentNumber: intent.intentNumber,
+    company: intent.company.name,
+    route: `${intent.fromLocation.name} -> ${intent.toLocation.name}`,
+    freightAmount: intent.freightAmount || 0,
+    status: statusLabel(intent.status),
+    createdBy: intent.createdBy?.fullName || '-',
+  };
+}
+
+async function exportAllIntents() {
+  const response = await intentApi.list({
+    pageSize: 5000,
+    search: search.value || undefined,
+    status: statusFilter.value || undefined,
+  });
+  return response.data.data as unknown as Record<string, unknown>[];
 }
 
 function onStatClick(key: string) {

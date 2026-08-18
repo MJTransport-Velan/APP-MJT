@@ -32,6 +32,23 @@ export const availableResourcesSchema = z.object({
   }),
 });
 
+export const activeTripForVehicleSchema = z.object({
+  body: z.object({}).optional(),
+  params: z.object({}).optional(),
+  query: z.object({
+    vehicleId: z.string().uuid('A valid vehicle is required'),
+    at: z.string().min(1, 'Date is required'),
+  }),
+});
+
+export const currentOrLastTripForVehicleSchema = z.object({
+  body: z.object({}).optional(),
+  params: z.object({}).optional(),
+  query: z.object({
+    vehicleId: z.string().uuid('A valid vehicle is required'),
+  }),
+});
+
 export const tripIdParamSchema = z.object({
   body: z.object({}).optional(),
   query: z.object({}).optional(),
@@ -43,7 +60,6 @@ export const createTripSchema = z.object({
   params: z.object({}).optional(),
   body: z.object({
     intentId: z.string().uuid('A valid intent is required'),
-    routeId: z.string().uuid().optional(),
     freightAmount: z.number().nonnegative().optional(),
     loadWeight: z.number().positive().optional(),
     loadDescription: z.string().optional(),
@@ -57,7 +73,6 @@ export const updateTripSchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid trip id') }),
   body: z.object({
-    routeId: z.string().uuid().optional(),
     freightAmount: z.number().nonnegative().optional(),
     loadWeight: z.number().positive().optional(),
     loadDescription: z.string().optional(),
@@ -105,6 +120,10 @@ export const updateTripStatusSchema = z.object({
   body: z.object({
     status: z.enum(TRIP_STATUSES),
     notes: z.string().optional(),
+    // Only meaningful when status is LOADING or UNLOADING — added on top of
+    // the trip's freightAmount (billed to the customer), not logged as a
+    // company-side TripExpense.
+    additionalCharge: z.number().nonnegative().optional(),
   }),
 });
 

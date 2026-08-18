@@ -53,12 +53,17 @@ watch(
   z-index: 1000;
 }
 .app-dialog {
-  width: 50%;
+  width: 100%;
   max-height: 90vh;
   overflow-y: auto;
   background: var(--color-surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-3);
+}
+@media (min-width: 600px) {
+  .app-dialog {
+    width: 50%;
+  }
 }
 .app-dialog-fade-enter-active,
 .app-dialog-fade-leave-active {

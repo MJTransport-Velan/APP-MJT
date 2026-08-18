@@ -20,7 +20,42 @@
           <div class="text-caption text-medium-emphasis">Closing Balance</div>
           <div class="text-h6" :class="store.current.closingBalance >= 0 ? 'text-error' : 'text-success'">{{ formatCurrency(store.current.closingBalance) }}</div>
         </AppCard>
+        <AppCard class="pa-3 flex-1-1">
+          <div class="text-caption text-medium-emphasis">Current Vehicle</div>
+          <div v-if="store.current.currentVehicle" class="text-h6">
+            {{ store.current.currentVehicle.registrationNumber }}
+            <div class="text-caption text-medium-emphasis">since {{ new Date(store.current.currentVehicle.assignedAt).toLocaleDateString() }}</div>
+          </div>
+          <div v-else class="text-body-2 text-medium-emphasis">Not currently assigned</div>
+        </AppCard>
       </div>
+
+      <AppCard class="mb-4">
+        <AppCardTitle class="text-subtitle-1">Vehicle Assignment History</AppCardTitle>
+        <AppCardText>
+          <div class="tblwrap">
+            <AppTable>
+              <thead>
+                <tr>
+                  <th>Vehicle</th>
+                  <th>Status</th>
+                  <th>From</th>
+                  <th>To</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(v, i) in store.current.vehicleHistory" :key="i">
+                  <td>{{ v.registrationNumber }}</td>
+                  <td><AppChip size="x-small" :color="vehicleStatusColor(v.status)">{{ v.status }}</AppChip></td>
+                  <td>{{ new Date(v.assignedAt).toLocaleDateString() }}</td>
+                  <td>{{ v.unassignedAt ? new Date(v.unassignedAt).toLocaleDateString() : '-' }}</td>
+                </tr>
+              </tbody>
+            </AppTable>
+          </div>
+          <p v-if="store.current.vehicleHistory.length === 0" class="text-caption text-medium-emphasis pa-2">No vehicle assignments on record.</p>
+        </AppCardText>
+      </AppCard>
 
       <div class="tblwrap">
         <AppTable>
@@ -59,13 +94,19 @@ import { ref, onMounted } from 'vue';
 import { useDriverStatementStore } from '@/stores/accounts/driverPayroll';
 import { driverApi } from '@/services/masters';
 import { formatCurrency } from '@/utils/format';
-import { AppCard, AppCardText, AppSelect, AppTextField, AppTable, AppChip } from '@/components/ui';
+import { AppCard, AppCardTitle, AppCardText, AppSelect, AppTextField, AppTable, AppChip } from '@/components/ui';
 
 const store = useDriverStatementStore();
 const driverId = ref('');
 const from = ref('');
 const to = ref('');
 const driverOptions = ref<{ id: string; name: string }[]>([]);
+
+function vehicleStatusColor(status: string) {
+  if (status === 'ACTIVE') return 'info';
+  if (status === 'COMPLETED') return 'success';
+  return 'default';
+}
 
 async function fetchStatement() {
   if (!driverId.value) return;

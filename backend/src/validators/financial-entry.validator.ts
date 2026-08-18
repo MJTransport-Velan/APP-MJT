@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format');
+const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format');
 
 export const financialEntryTypeEnum = z.enum([
   'MONEY_RECEIVED',
@@ -35,6 +36,7 @@ export const financialEntryPurposeEnum = z.enum([
   'TRIP_ADVANCE',
   'TRIP_PAYMENT',
   'SUPPLIER_PAYMENT',
+  'CLIENT_PAYMENT',
   'DRIVER_ADVANCE',
   'SALARY',
   'FUEL',
@@ -55,7 +57,15 @@ export const listFinancialEntriesSchema = z.object({
     page: z.string().optional(),
     pageSize: z.string().optional(),
     search: z.string().optional(),
-    entryType: financialEntryTypeEnum.optional(),
+    // Single type ("MONEY_RECEIVED") or a comma-separated group
+    // ("MONEY_RECEIVED,ADVANCE_RECEIVED,...") — the latter is how the
+    // Financial Entry page's Money In / Money Out stat cards filter the
+    // list to the same entryType set financial-state.service.ts's
+    // dashboard() sums for that card.
+    entryType: z
+      .string()
+      .optional()
+      .refine((v) => !v || v.split(',').every((t) => financialEntryTypeEnum.options.includes(t as never)), 'Invalid entry type filter'),
     status: z.enum(['DRAFT', 'COMPLETED', 'CANCELLED', 'REVERSED']).optional(),
     sourceType: financialPartyTypeEnum.optional(),
     sourceId: z.string().uuid().optional(),
@@ -92,13 +102,19 @@ export const createFinancialEntrySchema = z.object({
       remarks: z.string().optional(),
       purpose: financialEntryPurposeEnum.default('OTHER'),
       purposeNotes: z.string().optional(),
+      // Which calendar month this salary payment covers (Financial Entry's
+      // "Salary Entry" toggle) — distinct from entryDate, which is when it
+      // was actually paid (e.g. August salary paid on Sept 5). Only
+      // meaningful when purpose=SALARY; falls back to entryDate's own
+      // month when omitted (financial-entry.service.ts delegateToEmployee/
+      // DriverSalaryPayment).
+      salaryPeriod: isoMonth.optional(),
       // Optional Fleet-module linkage — only used when purpose is FUEL
-      // (all four fuel fields present) or TOLL (vehicleId present); see
+      // (all three fuel fields present) or TOLL (vehicleId present); see
       // maybeLinkFleetRecords() in financial-entry.service.ts. Harmless to
       // omit — the entry still posts as a plain expense either way.
       vehicleId: z.string().uuid().optional(),
       tripId: z.string().uuid().optional(),
-      fuelStationId: z.string().uuid().optional(),
       quantityLiters: z.number().positive().optional(),
       ratePerLiter: z.number().positive().optional(),
       odometerReading: z.number().int().positive().optional(),

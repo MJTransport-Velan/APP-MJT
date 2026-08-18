@@ -29,4 +29,8 @@ export const financialEntryController = {
     const entry = await financialEntryService.correct(req.params.id, req.body, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Financial Entry corrected', data: entry });
   }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await financialEntryService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Financial Entry deleted', data: null });
+  }),
 };

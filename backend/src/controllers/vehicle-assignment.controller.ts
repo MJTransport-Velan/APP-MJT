@@ -25,4 +25,12 @@ export const vehicleAssignmentController = {
     const assignment = await vehicleAssignmentService.cancel(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Assignment cancelled', data: assignment });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const assignment = await vehicleAssignmentService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Assignment updated', data: assignment });
+  }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await vehicleAssignmentService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Assignment deleted' });
+  }),
 };

@@ -47,7 +47,7 @@
       <AppTextField v-model="form.name" label="Branch Name" :error-messages="errors.name" class="mb-2" />
       <AppTextField v-model="form.code" label="Branch Code" :disabled="isEditing" :error-messages="errors.code" class="mb-2" />
       <AppTextField v-model="form.address" label="Address" class="mb-2" />
-      <AppTextField v-model="form.phone" label="Phone" class="mb-2" />
+      <AppTextField v-model="form.phone" label="Phone" maxlength="10" class="mb-2" />
       <AppTextField v-model="form.email" label="Email" :error-messages="errors.email" class="mb-2" />
     </MasterFormDialog>
 

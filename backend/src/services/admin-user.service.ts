@@ -148,6 +148,27 @@ export const adminUserService = {
     return adminUserService.getById(id);
   },
 
+  async remove(id: string, actorId: string) {
+    if (id === actorId) {
+      throw new AppError('You cannot delete your own account', 400);
+    }
+
+    const existing = await adminUserRepository.findById(id);
+    if (!existing) {
+      throw new AppError('User not found', 404);
+    }
+
+    await adminUserRepository.softDelete(id);
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'User',
+      entityId: id,
+      description: `Deleted user ${existing.username}`,
+    });
+  },
+
   async resetPassword(id: string, newPassword: string, actorId: string) {
     const existing = await adminUserRepository.findById(id);
     if (!existing) {

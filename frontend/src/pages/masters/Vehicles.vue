@@ -117,6 +117,18 @@ import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import StatusChip from '@/components/masters/StatusChip.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import {
+  AppBtn,
+  AppChip,
+  AppTextField,
+  AppSelect,
+  AppDialog,
+  AppCard,
+  AppCardTitle,
+  AppCardText,
+  AppCardActions,
+  AppFileInput,
+} from '@/components/ui';
 
 const store = useVehicleStore();
 const vehicleTypeStore = useVehicleTypeStore();

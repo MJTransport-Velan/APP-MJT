@@ -56,6 +56,20 @@ export const tripApi = {
   stats() {
     return api.get<ApiResponse<TripStats>>('/operations/trips/stats');
   },
+  /** Which trip a vehicle was actually on at a given date/time, if any — lets a form preview the trip (and driver) it's about to auto-attach. */
+  activeForVehicle(vehicleId: string, at: string) {
+    return api.get<ApiResponse<{ id: string; tripNumber: string; driver: { id: string; name: string; code: string } | null } | null>>(
+      '/operations/trips/active-for-vehicle',
+      { params: { vehicleId, at } }
+    );
+  },
+  /** The vehicle's current trip, else its last trip — what a FASTag toll usage entry always attaches to; lets the form preview it before submit. */
+  currentOrLastForVehicle(vehicleId: string) {
+    return api.get<ApiResponse<{ id: string; tripNumber: string; driver: { id: string; name: string; code: string } | null } | null>>(
+      '/operations/trips/current-or-last-for-vehicle',
+      { params: { vehicleId } }
+    );
+  },
   getById(id: string) {
     return api.get<ApiResponse<Trip>>(`/operations/trips/${id}`);
   },
@@ -80,8 +94,8 @@ export const tripApi = {
   allocate(id: string, payload: Record<string, unknown>) {
     return api.patch<ApiResponse<Trip>>(`/operations/trips/${id}/allocate`, payload);
   },
-  updateStatus(id: string, status: string, notes?: string) {
-    return api.patch<ApiResponse<Trip>>(`/operations/trips/${id}/status`, { status, notes });
+  updateStatus(id: string, status: string, notes?: string, additionalCharge?: number) {
+    return api.patch<ApiResponse<Trip>>(`/operations/trips/${id}/status`, { status, notes, additionalCharge });
   },
   start(id: string, notes?: string) {
     return api.patch<ApiResponse<Trip>>(`/operations/trips/${id}/start`, { notes });

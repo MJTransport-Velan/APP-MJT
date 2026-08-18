@@ -38,6 +38,19 @@
 
       <!-- Transactions -->
       <AppWindowItem value="transactions">
+        <div class="d-flex justify-end mb-3">
+          <AppMenu>
+            <template #activator>
+              <AppBtn color="primary" prepend-icon="mdi-plus" append-icon="mdi-chevron-down">New Transaction</AppBtn>
+            </template>
+            <div class="pa-1" style="min-width: 210px">
+              <AppBtn variant="text" block class="justify-start mb-1" prepend-icon="mdi-cash-plus" @click="openRechargeDialog">Recharge</AppBtn>
+              <AppBtn variant="text" block class="justify-start mb-1" prepend-icon="mdi-minus-circle-outline" @click="openUsageDialog">Log Toll Usage</AppBtn>
+              <AppBtn variant="text" block class="justify-start mb-1" prepend-icon="mdi-cash-refund" @click="openRefundDialog">Refund</AppBtn>
+              <AppBtn variant="text" block class="justify-start" prepend-icon="mdi-tune" @click="openAdjustDialog">Adjust Balance</AppBtn>
+            </div>
+          </AppMenu>
+        </div>
         <div class="d-flex flex-wrap ga-2 mb-3">
           <div style="width: 220px">
             <AppSelect
@@ -90,6 +103,7 @@
 
     <!-- Log Usage (Toll Deduction) -->
     <MasterFormDialog v-model="usageDialog" title="Log Toll Deduction" :loading="loggingUsage" @submit="onLogUsage">
+      <AppTextField v-model="usageForm.transactionDate" type="date" label="Transaction Date" class="mb-2" />
       <AppSelect
         v-model="usageForm.vehicleId"
         :items="vehicleOptions"
@@ -100,10 +114,25 @@
         class="mb-2"
       />
       <AppTextField v-model.number="usageForm.amount" type="number" label="Toll Amount" :error-messages="usageErrors.amount" class="mb-2" />
-      <AppTextField v-model="usageForm.transactionDate" type="date" label="Transaction Date" class="mb-2" />
       <AppTextField v-model="usageForm.tollPlaza" label="Toll Plaza" class="mb-2" />
       <AppTextField v-model="usageForm.location" label="Location (optional)" class="mb-2" />
-      <AppSelect v-model="usageForm.tripId" :items="tripOptions" item-title="tripNumber" item-value="id" label="Trip (optional)" clearable class="mb-2" />
+      <AppSelect
+        v-model="usageForm.tripId"
+        :items="tripOptions"
+        item-title="tripNumber"
+        item-value="id"
+        label="Trip (required — the vehicle's current trip, else its last one)"
+        :error-messages="usageErrors.tripId"
+        class="mb-2"
+      />
+      <div class="text-caption text-medium-emphasis mb-2">
+        <span v-if="resolvingUsageTrip">Checking this vehicle's current/last trip…</span>
+        <span v-else-if="autoUsageTrip">
+          Auto-attached to trip {{ autoUsageTrip.tripNumber }}<span v-if="autoUsageTrip.driver"> (driver {{ autoUsageTrip.driver.name }})</span>.
+        </span>
+        <span v-else-if="usageForm.vehicleId">This vehicle has no trips yet — a trip is required before you can log toll usage for it.</span>
+        <span v-else>Select a vehicle to auto-attach its current or last trip.</span>
+      </div>
       <AppTextField v-model="usageForm.transactionReference" label="Transaction Reference (optional)" class="mb-2" />
       <AppSelect v-model="usageForm.paymentSource" :items="['FASTAG_WALLET', 'BANK', 'OTHER']" label="Payment Source" class="mb-2" />
       <AppTextField v-model="usageForm.remarks" label="Remarks (optional)" />
@@ -151,7 +180,15 @@
       <template v-if="editTarget?.type === 'USAGE'">
         <AppTextField v-model="editForm.tollPlaza" label="Toll Plaza" class="mb-2" />
         <AppTextField v-model="editForm.location" label="Location (optional)" class="mb-2" />
-        <AppSelect v-model="editForm.tripId" :items="tripOptions" item-title="tripNumber" item-value="id" label="Trip (optional)" clearable class="mb-2" />
+        <AppSelect
+          v-model="editForm.tripId"
+          :items="tripOptions"
+          item-title="tripNumber"
+          item-value="id"
+          label="Trip (required)"
+          :error-messages="editErrors.tripId"
+          class="mb-2"
+        />
       </template>
       <AppTextField v-if="editTarget?.type !== 'ADJUSTMENT'" v-model="editForm.transactionReference" label="Transaction Reference (optional)" class="mb-2" />
       <AppSelect v-if="editTarget?.type === 'RECHARGE'" v-model="editForm.fundAccountType" :items="['BANK', 'CASH']" label="Fund Account Type" clearable class="mb-2" />
@@ -237,10 +274,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, watch, onMounted } from 'vue';
 import { useFastTagStore } from '@/stores/accounts/vehicleAssets';
 import { useVehicleStore } from '@/stores/masters';
 import { useTripStore } from '@/stores/operations';
+import { tripApi } from '@/services/operations';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import { importApi } from '@/services/system/phase8';
@@ -249,7 +287,7 @@ import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import {
   AppTabs, AppTab, AppWindow, AppWindowItem, AppBtn, AppSelect, AppTextField, AppChip,
-  AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput,
+  AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput, AppMenu,
 } from '@/components/ui';
 import type { FastTagWalletSummary, FastTagTransaction } from '@/types/phase6.types';
 
@@ -395,7 +433,7 @@ const usageForm = reactive({
   paymentSource: 'FASTAG_WALLET',
   remarks: '',
 });
-const usageErrors = reactive({ vehicleId: '', amount: '' });
+const usageErrors = reactive({ vehicleId: '', amount: '', tripId: '' });
 function openUsageDialog() {
   Object.assign(usageForm, {
     vehicleId: '',
@@ -408,13 +446,46 @@ function openUsageDialog() {
     paymentSource: 'FASTAG_WALLET',
     remarks: '',
   });
-  Object.assign(usageErrors, { vehicleId: '', amount: '' });
+  Object.assign(usageErrors, { vehicleId: '', amount: '', tripId: '' });
+  autoUsageTrip.value = null;
   usageDialog.value = true;
 }
+
+// --- Live current-or-last-trip preview as Vehicle changes ---
+const autoUsageTrip = ref<{ id: string; tripNumber: string; driver: { id: string; name: string; code: string } | null } | null>(null);
+const resolvingUsageTrip = ref(false);
+async function refreshUsageTrip() {
+  if (!usageForm.vehicleId) {
+    autoUsageTrip.value = null;
+    usageForm.tripId = '';
+    return;
+  }
+  resolvingUsageTrip.value = true;
+  try {
+    const response = await tripApi.currentOrLastForVehicle(usageForm.vehicleId);
+    autoUsageTrip.value = response.data.data;
+    usageForm.tripId = autoUsageTrip.value?.id || '';
+    if (autoUsageTrip.value && !tripOptions.value.some((t) => t.id === autoUsageTrip.value!.id)) {
+      tripOptions.value = [...tripOptions.value, { id: autoUsageTrip.value.id, tripNumber: autoUsageTrip.value.tripNumber }];
+    }
+  } catch {
+    autoUsageTrip.value = null;
+  } finally {
+    resolvingUsageTrip.value = false;
+  }
+}
+watch(
+  () => usageForm.vehicleId,
+  () => {
+    if (usageDialog.value) refreshUsageTrip();
+  }
+);
+
 async function onLogUsage() {
   usageErrors.vehicleId = usageForm.vehicleId ? '' : 'Vehicle is required';
   usageErrors.amount = usageForm.amount && usageForm.amount > 0 ? '' : 'Amount must be greater than 0';
-  if (usageErrors.vehicleId || usageErrors.amount) return;
+  usageErrors.tripId = usageForm.tripId ? '' : 'This vehicle has no trip to attach — add a trip for it first';
+  if (usageErrors.vehicleId || usageErrors.amount || usageErrors.tripId) return;
   loggingUsage.value = true;
   try {
     await store.logUsage({
@@ -515,7 +586,7 @@ const editForm = reactive({
   fundAccountType: undefined as string | undefined,
   remarks: '',
 });
-const editErrors = reactive({ vehicleId: '', amount: '' });
+const editErrors = reactive({ vehicleId: '', amount: '', tripId: '' });
 function openEditDialog(txn: FastTagTransaction) {
   editTarget.value = txn;
   Object.assign(editForm, {
@@ -529,14 +600,15 @@ function openEditDialog(txn: FastTagTransaction) {
     fundAccountType: txn.fundAccountType || undefined,
     remarks: txn.remarks || '',
   });
-  Object.assign(editErrors, { vehicleId: '', amount: '' });
+  Object.assign(editErrors, { vehicleId: '', amount: '', tripId: '' });
   editDialog.value = true;
 }
 async function onEditSubmit() {
   if (!editTarget.value) return;
   editErrors.vehicleId = editTarget.value.type === 'USAGE' && !editForm.vehicleId ? 'Vehicle is required' : '';
   editErrors.amount = editForm.amount && editForm.amount > 0 ? '' : 'Amount must be greater than 0';
-  if (editErrors.vehicleId || editErrors.amount) return;
+  editErrors.tripId = editTarget.value.type === 'USAGE' && !editForm.tripId ? 'A trip is required' : '';
+  if (editErrors.vehicleId || editErrors.amount || editErrors.tripId) return;
   editing.value = true;
   try {
     await store.updateTransaction(editTarget.value.id, {

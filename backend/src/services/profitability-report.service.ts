@@ -91,10 +91,4 @@ export const profitabilityReportService = {
     const rows = await computeGrouped(from, to, { driverId: { not: null } }, (t) => (t.driver ? { key: t.driver.id, label: t.driver.name } : null));
     return { from, to, rows };
   },
-
-  async routeProfitability(query: Request['query']) {
-    const { from, to } = parseRange(query);
-    const rows = await computeGrouped(from, to, { routeId: { not: null } }, (t) => (t.route ? { key: t.route.id, label: t.route.name } : null));
-    return { from, to, rows };
-  },
 };

@@ -10,7 +10,7 @@
 
     <HubCardGrid :items="filteredCards" item-key="title">
       <template #default="{ item }">
-        <HubCard v-bind="(item as any)" />
+        <HubCard v-bind="(item as any)" :background-images="ACCOUNTS_CARD_BACKGROUNDS" />
       </template>
     </HubCardGrid>
 
@@ -21,11 +21,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { HubCard, HubCardGrid, HubSearch, HubFavoritesRecents } from '@/components/hub';
+import { ACCOUNTS_CARD_BACKGROUNDS } from '@/assets/acc-card-background';
 
 const search = ref('');
 
 const cards = [
-  { icon: 'mdi-receipt-text-outline', title: 'GST Masters', description: 'GST rate configurations', to: '/masters/gst-masters' },
+  { icon: 'mdi-receipt-text-outline', title: 'GST Masters', description: 'GST rate configurations', to: '/accounts/gst-taxation/gst-masters' },
 ];
 
 const filteredCards = computed(() => {

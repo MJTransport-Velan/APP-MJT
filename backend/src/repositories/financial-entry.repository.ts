@@ -40,7 +40,11 @@ export const financialEntryRepository = {
               ],
             }
           : {},
-        params.entryType ? { entryType: params.entryType as never } : {},
+        params.entryType
+          ? params.entryType.includes(',')
+            ? { entryType: { in: params.entryType.split(',') as never[] } }
+            : { entryType: params.entryType as never }
+          : {},
         params.status ? { status: params.status as never } : {},
         params.sourceType ? { sourceType: params.sourceType as never } : {},
         params.sourceId ? { sourceId: params.sourceId } : {},
@@ -79,5 +83,9 @@ export const financialEntryRepository = {
 
   update(id: string, data: Prisma.FinancialEntryUncheckedUpdateInput) {
     return prisma.financialEntry.update({ where: { id }, data, include: entryWithRelations });
+  },
+
+  softDelete(id: string, actorId: string) {
+    return prisma.financialEntry.update({ where: { id }, data: { deletedAt: new Date(), updatedById: actorId } });
   },
 };

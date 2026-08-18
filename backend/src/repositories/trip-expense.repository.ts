@@ -33,6 +33,26 @@ export const tripExpenseRepository = {
     return prisma.trip.findFirst({ where: { id, deletedAt: null } });
   },
 
+/** Fuel/toll costs already recorded through the dedicated Fuel Entry and FASTag modules (mirrored into VehicleExpense, trip-linked) — the actual rows, so this screen can list them, not just total them, instead of undercounting by ignoring them entirely. Only rows with a tripId are relevant here (TripExpense is inherently trip-scoped); tripId param further narrows to one trip when the caller has a trip filter active. */
+  linkedExpenseRows(params: { tripId?: string; category?: 'FUEL' | 'TOLL'; take: number }) {
+    const categories: ('FUEL' | 'FASTTAG')[] =
+      params.category === 'FUEL' ? ['FUEL'] : params.category === 'TOLL' ? ['FASTTAG'] : ['FUEL', 'FASTTAG'];
+    return prisma.vehicleExpense.findMany({
+      where: { tripId: params.tripId ?? { not: null }, deletedAt: null, category: { in: categories } },
+      include: { trip: true },
+      orderBy: { expenseDate: 'desc' },
+      take: params.take,
+    });
+  },
+
+  countLinkedExpenseRows(params: { tripId?: string; category?: 'FUEL' | 'TOLL' }) {
+    const categories: ('FUEL' | 'FASTTAG')[] =
+      params.category === 'FUEL' ? ['FUEL'] : params.category === 'TOLL' ? ['FASTTAG'] : ['FUEL', 'FASTTAG'];
+    return prisma.vehicleExpense.count({
+      where: { tripId: params.tripId ?? { not: null }, deletedAt: null, category: { in: categories } },
+    });
+  },
+
   create(data: {
     tripId: string;
     category: TripExpenseCategory;

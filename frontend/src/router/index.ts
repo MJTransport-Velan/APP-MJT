@@ -110,13 +110,11 @@ const routes: RouteRecordRaw[] = [
         path: 'fleet',
         name: 'fleet',
         component: RouterView,
-        meta: { breadcrumb: 'Fleet', permission: 'fleet.view' },
+        meta: { breadcrumb: 'Operations', permission: 'fleet.view' },
         children: [
           {
             path: '',
-            name: 'fleet-hub',
-            component: () => import('@/pages/fleet/FleetHub.vue'),
-            meta: { breadcrumb: 'Fleet' },
+            redirect: { name: 'operations-hub' },
           },
           {
             path: 'vehicles',
@@ -155,12 +153,6 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Vehicle Expenses' },
           },
           {
-            path: 'supplier-vehicles',
-            name: 'fleet-supplier-vehicles',
-            component: () => import('@/pages/fleet/SupplierVehicles.vue'),
-            meta: { breadcrumb: 'Supplier Vehicles' },
-          },
-          {
             path: 'dashboard',
             name: 'fleet-dashboard',
             component: () => import('@/pages/fleet/FleetDashboard.vue'),
@@ -185,6 +177,12 @@ const routes: RouteRecordRaw[] = [
             name: 'accounts-financial-entry',
             component: () => import('@/pages/accounts/FinancialEntry.vue'),
             meta: { breadcrumb: 'Financial Entry', permission: 'financialEntry.view' },
+          },
+          {
+            path: 'capital-account',
+            name: 'accounts-capital-account',
+            component: () => import('@/pages/accounts/CapitalAccount.vue'),
+            meta: { breadcrumb: 'Capital Account', permission: 'capital_transaction.view' },
           },
           {
             path: 'receivables',
@@ -214,6 +212,19 @@ const routes: RouteRecordRaw[] = [
             path: 'gst-taxation',
             name: 'accounts-gst-taxation-hub',
             component: () => import('@/pages/accounts/GstTaxationHub.vue'),
+            meta: { breadcrumb: 'GST & Taxation' },
+          },
+          // GST Masters — previously only reachable at /masters/gst-masters,
+          // which meant a user needed BOTH accounts.view (to see this hub's
+          // card) AND masters.view (to pass that route's own guard) just to
+          // open it. Moved under accounts/gst-taxation so it only needs
+          // accounts.view, matching the fact its only real entry point is
+          // this hub. Same generic config-driven page/pattern as
+          // accounting-simple/masters-simple above.
+          {
+            path: 'gst-taxation/:module',
+            name: 'accounts-gst-taxation-simple',
+            component: () => import('@/pages/masters/SimpleMasterPage.vue'),
             meta: { breadcrumb: 'GST & Taxation' },
           },
           {
@@ -282,12 +293,6 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Driver Advances & Allowances' },
           },
           {
-            path: 'driver-loans',
-            name: 'accounts-driver-loans',
-            component: () => import('@/pages/accounts/DriverLoans.vue'),
-            meta: { breadcrumb: 'Driver Loans' },
-          },
-          {
             path: 'driver-settlements',
             name: 'accounts-driver-settlements',
             component: () => import('@/pages/accounts/DriverSettlements.vue'),
@@ -300,22 +305,22 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Driver Statement' },
           },
           {
+            path: 'driver-salary-structures',
+            name: 'accounts-driver-salary-structures',
+            component: () => import('@/pages/accounts/DriverSalaryStructures.vue'),
+            meta: { breadcrumb: 'Driver Salary Structures' },
+          },
+          {
             path: 'salary-structures',
             name: 'accounts-salary-structures',
             component: () => import('@/pages/accounts/SalaryStructures.vue'),
             meta: { breadcrumb: 'Salary Structures' },
           },
           {
-            path: 'employee-advances-loans',
-            name: 'accounts-employee-advances-loans',
-            component: () => import('@/pages/accounts/EmployeeAdvancesLoans.vue'),
-            meta: { breadcrumb: 'Employee Advances & Loans' },
-          },
-          {
-            path: 'payroll-runs',
-            name: 'accounts-payroll-runs',
-            component: () => import('@/pages/accounts/PayrollRuns.vue'),
-            meta: { breadcrumb: 'Payroll Processing' },
+            path: 'employee-advances',
+            name: 'accounts-employee-advances',
+            component: () => import('@/pages/accounts/EmployeeAdvances.vue'),
+            meta: { breadcrumb: 'Employee Advances' },
           },
           {
             path: 'payroll-dashboard',
@@ -409,6 +414,18 @@ const routes: RouteRecordRaw[] = [
             name: 'accounts-mis-dashboard',
             component: () => import('@/pages/accounts/MisDashboard.vue'),
             meta: { breadcrumb: 'MIS Dashboard' },
+          },
+          {
+            path: 'balance-sheet',
+            name: 'accounts-balance-sheet',
+            component: () => import('@/pages/accounts/BalanceSheet.vue'),
+            meta: { breadcrumb: 'Balance Sheet', permission: 'balance_sheet.view' },
+          },
+          {
+            path: 'profit-loss',
+            name: 'accounts-profit-loss',
+            component: () => import('@/pages/accounts/ProfitAndLoss.vue'),
+            meta: { breadcrumb: 'Profit & Loss', permission: 'profit_loss.view' },
           },
           {
             path: 'audit-reports',
@@ -652,12 +669,6 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Branches' },
           },
           {
-            path: 'routes',
-            name: 'masters-routes',
-            component: () => import('@/pages/masters/Routes.vue'),
-            meta: { breadcrumb: 'Routes' },
-          },
-          {
             path: 'vehicles',
             name: 'masters-vehicles',
             component: () => import('@/pages/masters/Vehicles.vue'),
@@ -676,9 +687,9 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Suppliers' },
           },
           // Vehicle Types, Locations, Materials, Expense Categories,
-          // Fuel Stations, Banks, Payment Modes, Tyres, Service Categories,
-          // Trailer Types, Designations, GST Masters — all served by the
-          // generic config-driven page, keyed off the :module param.
+          // Payment Modes, Tyres, Service Categories, Trailer Types,
+          // Designations, GST Masters — all served by the generic
+          // config-driven page, keyed off the :module param.
           {
             path: ':module',
             name: 'masters-simple',

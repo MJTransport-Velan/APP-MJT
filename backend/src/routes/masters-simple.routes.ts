@@ -37,30 +37,6 @@ const configs: MasterModuleConfig[] = [
     fields: [{ key: 'description', zod: z.string() }],
   },
   {
-    modelName: 'fuelStation',
-    entityLabel: 'Fuel Station',
-    permissionPrefix: 'fuel_station',
-    searchFields: ['name', 'code', 'location'],
-    fields: [
-      { key: 'location', zod: z.string() },
-      { key: 'contactPerson', zod: z.string() },
-      { key: 'phone', zod: z.string() },
-    ],
-  },
-  {
-    modelName: 'bank',
-    entityLabel: 'Bank',
-    permissionPrefix: 'bank',
-    searchFields: ['name', 'code', 'ifscCode'],
-    fields: [
-      { key: 'branch', zod: z.string() },
-      {
-        key: 'ifscCode',
-        zod: z.string().regex(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code'),
-      },
-    ],
-  },
-  {
     modelName: 'paymentMode',
     entityLabel: 'Payment Mode',
     permissionPrefix: 'payment_mode',
@@ -184,6 +160,16 @@ const configs: MasterModuleConfig[] = [
     // already tagged under it.
     systemFlagField: 'isSystemCategory',
   },
+  {
+    // Capital partners/proprietors — a simple named master. codeFieldKey
+    // set to nameFieldKey (same as FuelCard.cardNumber) since a person's
+    // name doubles as their own unique identifier here; no separate code.
+    modelName: 'capitalPartner',
+    entityLabel: 'Capital Partner',
+    permissionPrefix: 'capital_partner',
+    codeFieldKey: 'name',
+    fields: [],
+  },
 ];
 
 // URL segment for each module, keyed by permissionPrefix (kept explicit
@@ -194,8 +180,6 @@ const routePaths: Record<string, string> = {
   trailer_type: 'trailer-types',
   material: 'materials',
   expense_category: 'expense-categories',
-  fuel_station: 'fuel-stations',
-  bank: 'banks',
   payment_mode: 'payment-modes',
   tyre: 'tyres',
   service_category: 'service-categories',
@@ -205,6 +189,7 @@ const routePaths: Record<string, string> = {
   cost_category: 'cost-categories',
   employee: 'employees',
   tds_section: 'tds-sections',
+  capital_partner: 'capital-partners',
 };
 
 const router = Router();

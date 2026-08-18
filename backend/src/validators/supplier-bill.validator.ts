@@ -13,6 +13,9 @@ export const listSupplierBillsSchema = z.object({
     search: z.string().optional(),
     supplierId: z.string().uuid().optional(),
     status: z.enum(['DRAFT', 'GENERATED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED']).optional(),
+    unpaidOnly: z.enum(['true', 'false']).optional(),
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
   }),
 });
 

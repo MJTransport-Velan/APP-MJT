@@ -21,6 +21,7 @@ router.post('/', authorize('user.create'), validate(createAdminUserSchema), admi
 router.put('/:id', authorize('user.edit'), validate(updateAdminUserSchema), adminUserController.update);
 router.patch('/:id/activate', authorize('user.edit'), validate(userIdParamSchema), adminUserController.activate);
 router.patch('/:id/deactivate', authorize('user.delete'), validate(userIdParamSchema), adminUserController.deactivate);
+router.delete('/:id', authorize('user.delete'), validate(userIdParamSchema), adminUserController.remove);
 router.post(
   '/:id/reset-password',
   authorize('user.reset_password'),

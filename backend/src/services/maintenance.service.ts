@@ -130,6 +130,15 @@ export const maintenanceService = {
       await maintenanceRepository.setVehicleStatus(existing.vehicleId, 'AVAILABLE', actorId);
     }
 
+    await vehicleExpenseInternalService.updateFromSource({
+      referenceType: 'MaintenanceRecord',
+      referenceId: id,
+      amount: input.cost,
+      expenseDate: input.serviceDate ? new Date(input.serviceDate) : undefined,
+      description: input.description ? `${existing.type}: ${input.description}` : undefined,
+      actorId,
+    });
+
     await auditService.record({
       userId: actorId,
       action: 'UPDATE',
@@ -167,6 +176,7 @@ export const maintenanceService = {
     }
 
     await maintenanceRepository.softDelete(id, actorId);
+    await vehicleExpenseInternalService.removeFromSource({ referenceType: 'MaintenanceRecord', referenceId: id, actorId });
 
     await auditService.record({
       userId: actorId,

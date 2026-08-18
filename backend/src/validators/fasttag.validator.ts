@@ -44,7 +44,10 @@ export const rechargeFastTagSchema = z.object({
 // these exist on the underlying Financial Entry engine, they're specific to
 // this module and stored directly on FastTagTransaction. vehicleId is
 // required — every toll swipe debits the shared wallet on behalf of one
-// specific truck's tag.
+// specific truck's tag. tripId is optional here only as an explicit
+// override — fastTagService.logUsage() always resolves one (the vehicle's
+// current trip, else its last trip) and hard-fails if neither exists, since
+// a USAGE transaction must always have a trip.
 export const logFastTagUsageSchema = z.object({
   query: z.object({}).optional(),
   params: z.object({}).optional(),

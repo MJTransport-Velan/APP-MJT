@@ -239,6 +239,117 @@ async function delegateToDriverAdvance(input: CreateFinancialEntryInput, _organi
   return { sourceDocumentType: 'DriverAdvance', sourceDocumentId: approved.id };
 }
 
+// Which calendar month a salary payment covers — input.salaryPeriod
+// ("YYYY-MM", set by the Financial Entry "Salary Entry" toggle) when
+// present, otherwise entryDate's own month (the plain generic-form path).
+// Also returns the UTC month's [start, end] bounds, used to scope which
+// advances count as "this month's" for the auto-settle step below.
+function resolveSalaryPeriod(input: CreateFinancialEntryInput) {
+  let year: number;
+  let month: number;
+  if (input.salaryPeriod) {
+    const [y, m] = input.salaryPeriod.split('-').map(Number);
+    year = y;
+    month = m;
+  } else {
+    const entryDate = new Date(`${input.entryDate}T00:00:00.000Z`);
+    year = entryDate.getUTCFullYear();
+    month = entryDate.getUTCMonth() + 1;
+  }
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+  return { year, month, monthStart, monthEnd };
+}
+
+/**
+ * Marks the employee's salary period (input.salaryPeriod, or entryDate's
+ * own month) paid — the simple replacement for the old multi-step
+ * PayrollRun engine. One row per employee per month (employeeId_year_month
+ * unique constraint blocks a duplicate payment); the amount is exactly
+ * whatever was typed into this entry, no Salary Structure recomputation.
+ * Also settles (isSettled=true) whichever of the employee's unsettled
+ * advances were raised within that same month — the "Salary Entry" toggle
+ * on Financial Entry shows the caller a suggested net-of-advances amount
+ * computed the same way (salary-payment-quote.service.ts), so this mirrors
+ * that same month-scoped set rather than the generic oldest-first sweep
+ * recoverOldEmployeeAdvances() does for every other Employee-destination
+ * entry (skipped for this delegate — see create()'s skipGenericRecovery).
+ */
+async function delegateToEmployeeSalaryPayment(input: CreateFinancialEntryInput, organizationId: string, actorId: string): Promise<DelegateResult> {
+  const { year, month, monthStart, monthEnd } = resolveSalaryPeriod(input);
+
+  const existing = await prisma.employeeSalaryPayment.findUnique({
+    where: { employeeId_year_month: { employeeId: input.destinationId!, year, month } },
+  });
+  if (existing) {
+    throw new AppError(`Salary for this employee has already been marked paid for ${month}/${year}`, 409);
+  }
+
+  if (!input.sourceId) throw new AppError('A Bank/Cash source account must be selected', 422);
+  const src = await resolveFundAccount(organizationId, input.sourceType as 'BANK' | 'CASH', input.sourceId);
+  if (!src.isActive) throw new AppError('The selected source account is inactive', 409);
+  await adjustFundAccountBalance(src.type, src.id, -input.amount);
+
+  const payment = await prisma.employeeSalaryPayment.create({
+    data: {
+      employeeId: input.destinationId!,
+      year,
+      month,
+      amount: input.amount,
+      paidDate: new Date(`${input.entryDate}T00:00:00.000Z`),
+      createdById: actorId,
+    },
+  });
+
+  const monthAdvances = await prisma.employeeAdvance.findMany({
+    where: { employeeId: input.destinationId!, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: monthStart, lte: monthEnd } },
+    select: { id: true },
+  });
+  if (monthAdvances.length > 0) {
+    await prisma.employeeAdvance.updateMany({ where: { id: { in: monthAdvances.map((a) => a.id) } }, data: { isSettled: true, updatedById: actorId } });
+  }
+
+  return { sourceDocumentType: 'EmployeeSalaryPayment', sourceDocumentId: payment.id };
+}
+
+/** Driver equivalent of delegateToEmployeeSalaryPayment — same month-scoped paid-flag and advance auto-settle, against DriverSalaryPayment/DriverAdvance instead. */
+async function delegateToDriverSalaryPayment(input: CreateFinancialEntryInput, organizationId: string, actorId: string): Promise<DelegateResult> {
+  const { year, month, monthStart, monthEnd } = resolveSalaryPeriod(input);
+
+  const existing = await prisma.driverSalaryPayment.findUnique({
+    where: { driverId_year_month: { driverId: input.destinationId!, year, month } },
+  });
+  if (existing) {
+    throw new AppError(`Salary for this driver has already been marked paid for ${month}/${year}`, 409);
+  }
+
+  if (!input.sourceId) throw new AppError('A Bank/Cash source account must be selected', 422);
+  const src = await resolveFundAccount(organizationId, input.sourceType as 'BANK' | 'CASH', input.sourceId);
+  if (!src.isActive) throw new AppError('The selected source account is inactive', 409);
+  await adjustFundAccountBalance(src.type, src.id, -input.amount);
+
+  const payment = await prisma.driverSalaryPayment.create({
+    data: {
+      driverId: input.destinationId!,
+      year,
+      month,
+      amount: input.amount,
+      paidDate: new Date(`${input.entryDate}T00:00:00.000Z`),
+      createdById: actorId,
+    },
+  });
+
+  const monthAdvances = await prisma.driverAdvance.findMany({
+    where: { driverId: input.destinationId!, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: monthStart, lte: monthEnd } },
+    select: { id: true },
+  });
+  if (monthAdvances.length > 0) {
+    await prisma.driverAdvance.updateMany({ where: { id: { in: monthAdvances.map((a) => a.id) } }, data: { isSettled: true, updatedById: actorId } });
+  }
+
+  return { sourceDocumentType: 'DriverSalaryPayment', sourceDocumentId: payment.id };
+}
+
 async function delegateToEmployeeAdvance(input: CreateFinancialEntryInput, _organizationId: string, actorId: string): Promise<DelegateResult> {
   const created = await employeeAdvanceService.request(
     {
@@ -262,8 +373,17 @@ async function delegateToEmployeeAdvance(input: CreateFinancialEntryInput, _orga
 // through it.
 const DRIVER_EMPLOYEE_ENTRY_TYPES = new Set(['ADVANCE_GIVEN', 'MONEY_PAID', 'SALARY_SETTLEMENT']);
 
+// A money-out entry to a Driver/Employee marked purpose=SALARY is a real
+// salary payment, not an advance — except ADVANCE_GIVEN, which always means
+// "give an advance" regardless of purpose (purpose there only picks the
+// DriverAdvance/EmployeeAdvance's advanceType, see
+// DRIVER_ADVANCE_TYPE_BY_PURPOSE/EMPLOYEE_ADVANCE_TYPE_BY_PURPOSE).
 function resolveDelegate(input: CreateFinancialEntryInput): Delegate | null {
   if (input.entryType === 'MONEY_TRANSFER' && isFundType(input.sourceType) && isFundType(input.destinationType)) return delegateToBankTransfer;
+  if (input.entryType !== 'ADVANCE_GIVEN' && input.purpose === 'SALARY' && isFundType(input.sourceType)) {
+    if (input.destinationType === 'EMPLOYEE') return delegateToEmployeeSalaryPayment;
+    if (input.destinationType === 'DRIVER') return delegateToDriverSalaryPayment;
+  }
   if (DRIVER_EMPLOYEE_ENTRY_TYPES.has(input.entryType) && input.destinationType === 'DRIVER' && isFundType(input.sourceType)) return delegateToDriverAdvance;
   if (DRIVER_EMPLOYEE_ENTRY_TYPES.has(input.entryType) && input.destinationType === 'EMPLOYEE' && isFundType(input.sourceType)) return delegateToEmployeeAdvance;
   return null;
@@ -296,11 +416,11 @@ async function postGenericFundMovement(organizationId: string, input: CreateFina
  * when the optional Fleet fields weren't filled in.
  */
 async function maybeLinkFleetRecords(input: CreateFinancialEntryInput, actorId: string): Promise<{ fuelEntryId?: string; fastTagTransactionId?: string }> {
-  if (input.purpose === 'FUEL' && input.vehicleId && input.fuelStationId && input.quantityLiters && input.ratePerLiter && input.odometerReading) {
+  if (input.purpose === 'FUEL' && input.vehicleId && input.quantityLiters && input.ratePerLiter && input.odometerReading) {
     const fuelEntry = await fuelEntryService.create(
       {
         vehicleId: input.vehicleId,
-        fuelStationId: input.fuelStationId,
+        tripId: input.tripId,
         quantityLiters: input.quantityLiters,
         ratePerLiter: input.ratePerLiter,
         odometerReading: input.odometerReading,
@@ -344,7 +464,6 @@ function serialize(entry: FinancialEntryWithRelations) {
     fleet: {
       vehicleId: entry.vehicleId,
       tripId: entry.tripId,
-      fuelStationId: entry.fuelStationId,
       quantityLiters: entry.quantityLiters,
       ratePerLiter: entry.ratePerLiter,
       odometerReading: entry.odometerReading,
@@ -432,7 +551,6 @@ export const financialEntryService = {
       purposeNotes: input.purposeNotes,
       vehicleId: input.vehicleId,
       tripId: input.tripId,
-      fuelStationId: input.fuelStationId,
       quantityLiters: input.quantityLiters,
       ratePerLiter: input.ratePerLiter,
       odometerReading: input.odometerReading,
@@ -459,10 +577,15 @@ export const financialEntryService = {
         sourceDocumentType = result.sourceDocumentType;
         sourceDocumentId = result.sourceDocumentId;
 
-        if (input.destinationType === 'DRIVER') {
+        // Salary-payment delegates already settled exactly this month's
+        // advances themselves (delegateToEmployee/DriverSalaryPayment) —
+        // running the generic oldest-first sweep on top of that would
+        // over-recover into other months using the same entry amount.
+        const isSalaryPayment = sourceDocumentType === 'EmployeeSalaryPayment' || sourceDocumentType === 'DriverSalaryPayment';
+        if (!isSalaryPayment && input.destinationType === 'DRIVER') {
           const recovered = await recoverOldDriverAdvances(input.destinationId!, input.amount, actorId);
           if (recovered.length > 0) recoveredNote = ` — recovered ${recovered.length} prior advance(s) totaling ₹${recovered.reduce((s, r) => s + r.amount, 0).toFixed(2)}`;
-        } else if (input.destinationType === 'EMPLOYEE') {
+        } else if (!isSalaryPayment && input.destinationType === 'EMPLOYEE') {
           const recovered = await recoverOldEmployeeAdvances(input.destinationId!, input.amount, actorId);
           if (recovered.length > 0) recoveredNote = ` — recovered ${recovered.length} prior advance(s) totaling ₹${recovered.reduce((s, r) => s + r.amount, 0).toFixed(2)}`;
         }
@@ -572,6 +695,26 @@ export const financialEntryService = {
 
     await auditService.record({ userId: actorId, action: 'UPDATE', entityType: 'FinancialEntry', entityId: id, description: `Reversed entry ${entry.entryNumber} via ${reversalEntry.entryNumber}` });
     return financialEntryService.getById(reversalEntry.id);
+  },
+
+  /**
+   * Hard-removes an entry from the list. Only allowed once it has no live
+   * balance effect — DRAFT (never finished posting) or already
+   * CANCELLED/REVERSED (its money effect was already undone by cancel()/
+   * reverse()). A COMPLETED/*_ALLOCATED entry must be Cancelled or Reversed
+   * first, which reuses the one already-tested balance-undo path instead of
+   * this method growing a second one.
+   */
+  async remove(id: string, actorId: string) {
+    const entry = await financialEntryRepository.findByIdBasic(id);
+    if (!entry) throw new AppError('Financial Entry not found', 404);
+    if (!['DRAFT', 'CANCELLED', 'REVERSED'].includes(entry.status)) {
+      throw new AppError('Only a Draft, Cancelled or Reversed entry can be deleted — cancel or reverse this entry first', 409);
+    }
+
+    await financialEntryRepository.softDelete(id, actorId);
+
+    await auditService.record({ userId: actorId, action: 'DELETE', entityType: 'FinancialEntry', entityId: id, description: `Deleted entry ${entry.entryNumber}` });
   },
 
   /** Correction = reverse the original (preserving it in full) + create a fresh, corrected entry linked back via correctionOfId. */

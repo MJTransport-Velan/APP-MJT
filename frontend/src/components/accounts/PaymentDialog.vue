@@ -1,50 +1,62 @@
 <template>
   <AppDialog v-model="internalModel" max-width="480" persistent>
     <AppCard>
-      <AppCardTitle class="text-h6">Supplier Payment Entry</AppCardTitle>
+      <AppCardTitle class="text-h6">{{ isAllocation ? 'Allocate Payment' : 'Supplier Payment Entry' }}</AppCardTitle>
       <AppCardText>
-        <AppSelect
-          v-model="form.supplierId"
-          :items="supplierOptions"
-          item-title="name"
-          item-value="id"
-          label="Supplier"
-          :error-messages="errors.supplierId"
-          class="mb-2"
-        />
-        <AppSelect
-          v-model="form.tripId"
-          :items="tripOptions"
-          item-title="tripNumber"
-          item-value="id"
-          label="Trip (leave blank for advance)"
-          clearable
-          class="mb-2"
-        />
-        <AppSelect
-          v-model="form.billId"
-          :items="billOptionsForSupplier"
-          item-title="billNumber"
-          item-value="id"
-          label="Supplier Bill (leave blank for advance)"
-          clearable
-          class="mb-2"
-        />
-        <AppTextField v-model.number="form.amount" type="number" label="Amount" :error-messages="errors.amount" class="mb-2" />
-        <AppTextField v-model="form.paymentDate" type="date" label="Payment Date" class="mb-2" />
-        <AppSelect
-          v-model="fundAccountKey"
-          :items="fundAccountOptions"
-          item-title="label"
-          item-value="key"
-          label="Paid From (Bank/Cash)"
-          :error-messages="errors.fundAccount"
-          class="mb-2"
-        />
-        <AppSelect v-model="form.paymentModeId" :items="paymentModeOptions" item-title="name" item-value="id" label="Payment Mode" clearable class="mb-2" />
-        <AppTextField v-model="form.referenceNumber" label="Reference Number" class="mb-2" />
-        <AppCheckbox v-if="form.billId" v-model="form.isRetentionRelease" label="This is a retention release" class="mb-2" />
-        <AppTextarea v-model="form.remarks" label="Remarks" rows="2" />
+        <template v-if="!isAllocation">
+          <AppSelect
+            v-model="form.supplierId"
+            :items="supplierOptions"
+            item-title="name"
+            item-value="id"
+            label="Supplier"
+            :error-messages="errors.supplierId"
+            class="mb-2"
+          />
+          <AppSelect
+            v-model="form.tripId"
+            :items="tripOptions"
+            item-title="tripNumber"
+            item-value="id"
+            label="Trip (optional)"
+            clearable
+            class="mb-2"
+          />
+          <AppSelect
+            v-model="form.billId"
+            :items="billOptionsForSupplier"
+            item-title="billNumber"
+            item-value="id"
+            label="Supplier Bill"
+            :error-messages="errors.billId"
+            class="mb-2"
+          />
+          <AppTextField v-model.number="form.amount" type="number" label="Amount" :error-messages="errors.amount" class="mb-2" />
+          <AppTextField v-model="form.paymentDate" type="date" label="Payment Date" class="mb-2" />
+          <AppSelect
+            v-model="fundAccountKey"
+            :items="fundAccountOptions"
+            item-title="label"
+            item-value="key"
+            label="Paid From (Bank/Cash)"
+            :error-messages="errors.fundAccount"
+            class="mb-2"
+          />
+          <AppSelect v-model="form.paymentModeId" :items="paymentModeOptions" item-title="name" item-value="id" label="Payment Mode" clearable class="mb-2" />
+          <AppTextField v-model="form.referenceNumber" label="Reference Number" class="mb-2" />
+          <AppCheckbox v-if="form.billId" v-model="form.isRetentionRelease" label="This is a retention release" class="mb-2" />
+          <AppTextarea v-model="form.remarks" label="Remarks" rows="2" />
+        </template>
+        <template v-else>
+          <AppSelect
+            v-model="form.billId"
+            :items="billOptions"
+            item-title="billNumber"
+            item-value="id"
+            label="Supplier Bill"
+            :error-messages="errors.billId"
+          />
+        </template>
       </AppCardText>
       <AppCardActions>
         <div class="spacer"></div>
@@ -73,6 +85,7 @@ import {
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
+    isAllocation?: boolean;
     supplierOptions?: { id: string; name: string }[];
     tripOptions?: { id: string; tripNumber: string }[];
     billOptions?: { id: string; billNumber: string; supplierId: string }[];
@@ -82,6 +95,7 @@ const props = withDefaults(
     loading?: boolean;
   }>(),
   {
+    isAllocation: false,
     supplierOptions: () => [],
     tripOptions: () => [],
     billOptions: () => [],
@@ -131,7 +145,7 @@ const form = reactive<{
   remarks: '',
   isRetentionRelease: false,
 });
-const errors = reactive({ supplierId: '', amount: '', fundAccount: '' });
+const errors = reactive({ supplierId: '', amount: '', fundAccount: '', billId: '' });
 
 watch(
   () => props.modelValue,
@@ -149,7 +163,7 @@ watch(
         isRetentionRelease: false,
       });
       fundAccountKey.value = '';
-      Object.assign(errors, { supplierId: '', amount: '', fundAccount: '' });
+      Object.assign(errors, { supplierId: '', amount: '', fundAccount: '', billId: '' });
     }
   }
 );
@@ -160,17 +174,25 @@ function onCancel() {
 }
 
 function onSubmit() {
+  if (props.isAllocation) {
+    errors.billId = form.billId ? '' : 'Please select a bill';
+    if (errors.billId) return;
+    emit('submit', { billId: form.billId });
+    return;
+  }
+
   errors.supplierId = form.supplierId ? '' : 'Supplier is required';
+  errors.billId = form.billId ? '' : 'A supplier bill is required — generate one first if none exists yet';
   errors.amount = !form.amount || form.amount <= 0 ? 'Amount must be greater than 0' : '';
   errors.fundAccount = fundAccountKey.value ? '' : 'Select where the payment was made from';
-  if (errors.supplierId || errors.amount || errors.fundAccount) return;
+  if (errors.supplierId || errors.billId || errors.amount || errors.fundAccount) return;
 
   const [fundAccountType, fundAccountId] = fundAccountKey.value.split(':');
 
   emit('submit', {
     supplierId: form.supplierId,
     tripId: form.tripId || undefined,
-    billId: form.billId || undefined,
+    billId: form.billId,
     amount: form.amount,
     paymentDate: form.paymentDate,
     paymentModeId: form.paymentModeId || undefined,
@@ -178,7 +200,7 @@ function onSubmit() {
     remarks: form.remarks || undefined,
     fundAccountType,
     fundAccountId,
-    isRetentionRelease: form.billId ? form.isRetentionRelease : undefined,
+    isRetentionRelease: form.isRetentionRelease,
   });
 }
 </script>

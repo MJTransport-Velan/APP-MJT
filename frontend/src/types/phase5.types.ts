@@ -5,7 +5,6 @@ export type DriverAdvanceType =
   | 'SALARY_ADVANCE' | 'TRIP_ADVANCE' | 'EMERGENCY_ADVANCE' | 'FUEL_ADVANCE' | 'TOLL_ADVANCE'
   | 'REPAIR_ADVANCE' | 'MEDICAL_ADVANCE' | 'ADVANCE_AGAINST_SALARY' | 'ADVANCE_AGAINST_TRIP' | 'OTHER';
 export type EmployeeAdvanceType = 'SALARY_ADVANCE' | 'EMERGENCY_ADVANCE' | 'MEDICAL_ADVANCE' | 'ADVANCE_AGAINST_SALARY' | 'OTHER';
-export type DriverExpenseCategory = 'FUEL' | 'REPAIR' | 'TYRE' | 'BATTERY' | 'PARKING' | 'TOLL' | 'FOOD' | 'ACCOMMODATION' | 'MEDICAL' | 'PHONE' | 'MISCELLANEOUS';
 export type DriverEarningCategory = 'ALLOWANCE' | 'INCENTIVE';
 export type DriverEarningType =
   | 'TRIP_BATA' | 'DAILY_BATA' | 'NIGHT_BATA' | 'LOADING_ALLOWANCE' | 'UNLOADING_ALLOWANCE' | 'WAITING_CHARGES'
@@ -16,22 +15,15 @@ export type EarningCalculationType = 'FIXED_PER_TRIP' | 'PER_KM' | 'PER_DAY' | '
 export type DriverPenaltyType =
   | 'FUEL_RECOVERY' | 'DAMAGE_RECOVERY' | 'ACCIDENT_RECOVERY' | 'LATE_DELIVERY_PENALTY' | 'TRAFFIC_FINE'
   | 'ADVANCE_RECOVERY' | 'LOAN_RECOVERY' | 'UNIFORM_RECOVERY' | 'OTHER';
-export type DriverLoanType = 'PERSONAL' | 'EMERGENCY' | 'VEHICLE' | 'FESTIVAL' | 'MEDICAL';
-export type EmployeeLoanType = 'PERSONAL' | 'EMERGENCY' | 'FESTIVAL' | 'MEDICAL';
-export type LoanStatus = 'PENDING_APPROVAL' | 'ACTIVE' | 'CLOSED' | 'REJECTED' | 'WRITTEN_OFF';
-export type LoanInstallmentStatus = 'PENDING' | 'RECOVERED' | 'WAIVED';
 export type DriverSettlementType = 'PARTIAL' | 'FINAL' | 'EXIT' | 'YEAR_END';
 export type DriverSettlementStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID';
-export type SettlementLineSourceType = 'ADVANCE' | 'ALLOWANCE' | 'INCENTIVE' | 'REIMBURSEMENT' | 'PENALTY' | 'LOAN_INSTALLMENT' | 'SALARY';
+export type SettlementLineSourceType = 'ADVANCE' | 'ALLOWANCE' | 'INCENTIVE' | 'PENALTY' | 'SALARY';
 export type LineDirection = 'DEBIT' | 'CREDIT';
 export type SalaryComponentType =
   | 'BASIC' | 'HRA' | 'DA' | 'SPECIAL_ALLOWANCE' | 'TRAVEL_ALLOWANCE' | 'MEDICAL_ALLOWANCE' | 'PF' | 'ESI'
   | 'PROFESSIONAL_TAX' | 'TDS' | 'OTHER_DEDUCTION' | 'BONUS' | 'ARREARS' | 'LEAVE_DEDUCTION'
   | 'ATTENDANCE_DEDUCTION' | 'OVERTIME' | 'RECOVERY' | 'MANUAL_ADJUSTMENT' | 'CUSTOM';
 export type SalaryCalculationType = 'FIXED_AMOUNT' | 'PERCENT_OF_BASIC' | 'PERCENT_OF_GROSS';
-export type PayrollPeriodType = 'MONTHLY' | 'WEEKLY' | 'DAILY_WAGE' | 'CONTRACT';
-export type PayrollRunType = 'REGULAR' | 'FINAL_SETTLEMENT' | 'EXIT';
-export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'VERIFIED' | 'APPROVED' | 'PROCESSED' | 'PAID' | 'CANCELLED';
 
 export interface DriverRef {
   id: string;
@@ -62,24 +54,6 @@ export interface DriverAdvance {
   updatedAt: string;
 }
 
-export interface DriverExpenseReimbursement {
-  id: string;
-  reimbursementNumber: string;
-  category: DriverExpenseCategory;
-  amount: number;
-  expenseDate: string;
-  description: string | null;
-  receiptDocument: string | null;
-  approvalStatus: ApprovalStatus;
-  isSettled: boolean;
-  settlementId: string | null;
-  driver: DriverRef;
-  trip: { id: string; tripNumber: string } | null;
-  vehicle: { id: string; registrationNumber: string } | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface DriverEarning {
   id: string;
   earningNumber: string;
@@ -104,7 +78,6 @@ export interface DriverEarningRule {
   calculationType: EarningCalculationType;
   value: number;
   vehicleTypeId: string | null;
-  routeId: string | null;
   isActive: boolean;
 }
 
@@ -119,31 +92,6 @@ export interface DriverPenalty {
   settlementId: string | null;
   driver: DriverRef;
   trip: { id: string; tripNumber: string } | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LoanInstallment {
-  id: string;
-  installmentNo: number;
-  dueDate: string;
-  emiAmount: number;
-  status: LoanInstallmentStatus;
-  recoveredSettlementId?: string | null;
-}
-
-export interface DriverLoan {
-  id: string;
-  loanNumber: string;
-  loanType: DriverLoanType;
-  principalAmount: number;
-  tenureMonths: number;
-  emiAmount: number;
-  interestRate: number;
-  status: LoanStatus;
-  outstandingPrincipal: number;
-  driver: DriverRef;
-  installments: LoanInstallment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -190,11 +138,21 @@ export interface DriverStatementTransaction {
   runningBalance: number;
 }
 
+export interface DriverVehicleAssignmentSummary {
+  vehicleId: string;
+  registrationNumber: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  assignedAt: string;
+  unassignedAt: string | null;
+}
+
 export interface DriverStatement {
   driver: DriverRef;
   openingBalance: number;
   closingBalance: number;
   transactions: DriverStatementTransaction[];
+  currentVehicle: { vehicleId: string; registrationNumber: string; assignedAt: string } | null;
+  vehicleHistory: DriverVehicleAssignmentSummary[];
 }
 
 export interface SalaryStructureComponent {
@@ -218,6 +176,21 @@ export interface SalaryStructure {
   updatedAt: string;
 }
 
+export type DriverSalaryType = 'FIXED' | 'PERCENT_OF_FREIGHT';
+
+export interface DriverSalaryStructure {
+  id: string;
+  driverId: string;
+  salaryType: DriverSalaryType;
+  fixedAmount: number | null;
+  percentValue: number | null;
+  effectiveFrom: string;
+  isActive: boolean;
+  driver: DriverRef;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface EmployeeAdvance {
   id: string;
   advanceNumber: string;
@@ -232,63 +205,50 @@ export interface EmployeeAdvance {
   updatedAt: string;
 }
 
-export interface EmployeeLoan {
-  id: string;
-  loanNumber: string;
-  loanType: EmployeeLoanType;
-  principalAmount: number;
-  tenureMonths: number;
-  emiAmount: number;
-  status: LoanStatus;
-  outstandingPrincipal: number;
-  employee: EmployeeRef;
-  installments: LoanInstallment[];
-  createdAt: string;
-  updatedAt: string;
-}
 
-export interface PayrollRunLineComponentRow {
-  componentType: SalaryComponentType;
-  name: string | null;
+export interface EmployeeSalaryPayment {
+  id: string;
+  employeeId: string;
+  year: number;
+  month: number;
   amount: number;
-  isEarning: boolean;
-}
-
-export interface PayrollRunLine {
-  id: string;
-  employee: EmployeeRef;
-  grossEarnings: number;
-  totalDeductions: number;
-  netPay: number;
-  components: PayrollRunLineComponentRow[];
-}
-
-export interface PayrollRun {
-  id: string;
-  runNumber: string;
-  periodType: PayrollPeriodType;
-  periodStart: string;
-  periodEnd: string;
-  runType: PayrollRunType;
-  status: PayrollRunStatus;
-  lines: PayrollRunLine[];
+  paidDate: string;
   createdAt: string;
-  updatedAt: string;
+}
+
+export interface DriverSalaryPayment {
+  id: string;
+  driverId: string;
+  year: number;
+  month: number;
+  amount: number;
+  paidDate: string;
+  createdAt: string;
+}
+
+export interface SalaryQuoteAdvance {
+  id: string;
+  number: string;
+  amount: number;
+  date: string;
+}
+
+export interface SalaryQuote {
+  party: { id: string; name: string; code: string; designation: string | null };
+  structureAmount: number | null;
+  advances: SalaryQuoteAdvance[];
+  advanceTotal: number;
+  netAmount: number | null;
+  alreadyPaid: boolean;
 }
 
 export interface PayrollDashboardSummary {
-  pendingPayrollRuns: number;
   pendingAdvances: number;
   pendingDriverAdvances: number;
   pendingEmployeeAdvances: number;
   pendingSettlements: number;
-  pendingLoans: number;
-  pendingDriverLoans: number;
-  pendingEmployeeLoans: number;
   outstandingDriverAdvances: number;
   outstandingEmployeeAdvances: number;
-  outstandingDriverLoans: number;
-  outstandingEmployeeLoans: number;
   todaysPayments: number;
 }
 

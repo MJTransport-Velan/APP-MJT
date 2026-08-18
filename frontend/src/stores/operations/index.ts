@@ -128,8 +128,8 @@ export const useTripStore = defineStore('opsTrips', {
       const response = await tripApi.allocate(id, payload);
       return response.data.data;
     },
-    async updateStatus(id: string, status: string, notes?: string) {
-      const response = await tripApi.updateStatus(id, status, notes);
+    async updateStatus(id: string, status: string, notes?: string, additionalCharge?: number) {
+      const response = await tripApi.updateStatus(id, status, notes, additionalCharge);
       return response.data.data;
     },
     async start(id: string, notes?: string) {

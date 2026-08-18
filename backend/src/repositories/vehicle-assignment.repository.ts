@@ -48,6 +48,18 @@ export const vehicleAssignmentRepository = {
     return prisma.vehicleAssignment.findFirst({ where: { vehicleId, status: 'ACTIVE' } });
   },
 
+  findActiveByDriver(driverId: string) {
+    return prisma.vehicleAssignment.findFirst({ where: { driverId, status: 'ACTIVE' }, include: { vehicle: true } });
+  },
+
+  findAllByDriver(driverId: string) {
+    return prisma.vehicleAssignment.findMany({
+      where: { driverId },
+      include: { vehicle: true },
+      orderBy: { assignedAt: 'desc' },
+    });
+  },
+
   findVehicleById(id: string) {
     return prisma.vehicle.findFirst({ where: { id, deletedAt: null } });
   },
@@ -78,6 +90,17 @@ export const vehicleAssignmentRepository = {
       where: { id },
       data: { status: 'CANCELLED', unassignedAt: new Date(), updatedById },
     });
+  },
+
+  updateNotes(id: string, notes: string | undefined, updatedById: string) {
+    return prisma.vehicleAssignment.update({
+      where: { id },
+      data: { notes, updatedById },
+    });
+  },
+
+  remove(id: string) {
+    return prisma.vehicleAssignment.delete({ where: { id } });
   },
 
   setVehicleStatus(vehicleId: string, status: VehicleStatus, updatedById: string) {

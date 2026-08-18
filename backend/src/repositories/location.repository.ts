@@ -61,10 +61,4 @@ export const locationRepository = {
   toggleStatus(id: string, isActive: boolean, updatedById: string) {
     return prisma.location.update({ where: { id }, data: { isActive, updatedById } });
   },
-
-  countRouteUsage(locationId: string) {
-    return prisma.transportRoute.count({
-      where: { OR: [{ fromLocationId: locationId }, { toLocationId: locationId }], deletedAt: null },
-    });
-  },
 };

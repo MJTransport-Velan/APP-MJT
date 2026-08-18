@@ -44,28 +44,38 @@
           <AppBtn icon="mdi-check-circle-outline" variant="text" size="small" @click="openCompleteDialog(item as any)" />
           <AppBtn icon="mdi-close-circle-outline" variant="text" size="small" @click="onCancel(item as any)" />
         </template>
+        <AppBtn icon="mdi-pencil-outline" variant="text" size="small" :disabled="!canAssign" @click="openEditDialog(item as any)" />
+        <AppBtn
+          v-if="(item as any).status !== 'ACTIVE'"
+          icon="mdi-delete-outline"
+          variant="text"
+          size="small"
+          :disabled="!canAssign"
+          @click="openDeleteConfirm(item as any)"
+        />
       </template>
     </MasterDataTable>
 
     <MasterFormDialog v-model="dialog" title="New Assignment" :loading="submitting" @submit="onSubmit">
       <AppSelect
         v-model="form.vehicleId"
-        :items="vehicleOptions"
+        :items="availableVehicleOptions"
         item-title="registrationNumber"
         item-value="id"
-        label="Vehicle"
+        label="Vehicle (already-assigned vehicles are hidden)"
         :error-messages="errors.vehicleId"
         class="mb-2"
       />
       <AppSelect
         v-model="form.driverId"
-        :items="driverOptions"
+        :items="availableDriverOptions"
         item-title="name"
         item-value="id"
-        label="Driver"
+        label="Driver (already-assigned drivers are hidden)"
         :error-messages="errors.driverId"
         class="mb-2"
       />
+      <div v-if="loadingAvailability" class="text-caption text-medium-emphasis mb-2">Checking who's already assigned…</div>
       <AppTextarea v-model="form.notes" label="Notes" rows="2" />
     </MasterFormDialog>
 
@@ -82,16 +92,45 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <AppDialog v-model="editDialog" max-width="420" persistent>
+      <AppCard>
+        <AppCardTitle class="text-h6">Edit Assignment</AppCardTitle>
+        <AppCardText>
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            {{ editTarget?.vehicle.registrationNumber }} &mdash; {{ editTarget?.driver.name }}
+          </p>
+          <AppTextarea v-model="editNotes" label="Notes" rows="2" />
+        </AppCardText>
+        <AppCardActions>
+          <div class="spacer"></div>
+          <AppBtn variant="text" @click="editDialog = false">Cancel</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="editSubmitting" @click="submitEdit">Save</AppBtn>
+        </AppCardActions>
+      </AppCard>
+    </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Assignment"
+      :message="`Delete assignment record for ${deleteTarget?.vehicle.registrationNumber} / ${deleteTarget?.driver.name}?`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useVehicleAssignmentStore } from '@/stores/fleet';
+import { vehicleAssignmentApi } from '@/services/fleet';
 import { useVehicleStore, useDriverStore } from '@/stores/masters';
+import { useAuthStore } from '@/stores/auth.store';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import {
   AppBtn,
   AppSelect,
@@ -107,7 +146,10 @@ import {
 const store = useVehicleAssignmentStore();
 const vehicleStore = useVehicleStore();
 const driverStore = useDriverStore();
+const authStore = useAuthStore();
 const { success, error } = useSnackbar();
+
+const canAssign = authStore.hasPermission('vehicle.assign');
 
 const search = ref('');
 const page = ref(1);
@@ -122,6 +164,29 @@ const statusOptions = [
 
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
 const driverOptions = ref<{ id: string; name: string }[]>([]);
+
+// --- Availability filtering for the New Assignment dialog ---
+// A vehicle/driver already holding an ACTIVE assignment is hidden from
+// these pickers entirely, rather than only surfacing the conflict as an
+// error toast after submission (matches Trip's allocate/assign pattern).
+const loadingAvailability = ref(false);
+const busyVehicleIds = ref(new Set<string>());
+const busyDriverIds = ref(new Set<string>());
+const availableVehicleOptions = computed(() => vehicleOptions.value.filter((v) => !busyVehicleIds.value.has(v.id)));
+const availableDriverOptions = computed(() => driverOptions.value.filter((d) => !busyDriverIds.value.has(d.id)));
+
+async function refreshAvailability() {
+  loadingAvailability.value = true;
+  try {
+    const response = await vehicleAssignmentApi.list({ status: 'ACTIVE', pageSize: 500 });
+    busyVehicleIds.value = new Set(response.data.data.map((a: any) => a.vehicle.id));
+    busyDriverIds.value = new Set(response.data.data.map((a: any) => a.driver.id));
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to check current assignments'));
+  } finally {
+    loadingAvailability.value = false;
+  }
+}
 
 const headers = [
   { title: 'Vehicle', key: 'vehicle', sortable: false },
@@ -172,6 +237,7 @@ function openCreateDialog() {
   Object.assign(form, { vehicleId: '', driverId: '', notes: '' });
   Object.assign(errors, { vehicleId: '', driverId: '' });
   dialog.value = true;
+  refreshAvailability();
 }
 
 function validateForm(): boolean {
@@ -232,6 +298,56 @@ async function onCancel(assignment: any) {
     fetchData();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to cancel assignment'));
+  }
+}
+
+const editDialog = ref(false);
+const editTarget = ref<any>(null);
+const editNotes = ref('');
+const editSubmitting = ref(false);
+
+function openEditDialog(assignment: any) {
+  editTarget.value = assignment;
+  editNotes.value = assignment.notes || '';
+  editDialog.value = true;
+}
+
+async function submitEdit() {
+  if (!editTarget.value) return;
+  editSubmitting.value = true;
+  try {
+    await store.update(editTarget.value.id, editNotes.value || undefined);
+    success('Assignment updated');
+    editDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to update assignment'));
+  } finally {
+    editSubmitting.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<any>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(assignment: any) {
+  deleteTarget.value = assignment;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Assignment deleted');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete assignment'));
+  } finally {
+    deleting.value = false;
   }
 }
 

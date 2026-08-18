@@ -7,7 +7,6 @@ import {
   maintenanceApi,
   sparePartUsageApi,
   vehicleExpenseApi,
-  supplierVehicleApi,
   fleetDashboardApi,
 } from '@/services/fleet';
 import type {
@@ -18,7 +17,6 @@ import type {
   MaintenanceRecord,
   SparePartUsage,
   VehicleExpense,
-  SupplierVehicle,
   FleetDashboardSummary,
   TimelineEvent,
   PaginationMeta,
@@ -120,6 +118,13 @@ export const useVehicleAssignmentStore = defineStore('fleetVehicleAssignments', 
     async cancel(id: string) {
       const response = await vehicleAssignmentApi.cancel(id);
       return response.data.data;
+    },
+    async update(id: string, notes?: string) {
+      const response = await vehicleAssignmentApi.update(id, notes);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await vehicleAssignmentApi.remove(id);
     },
   },
 });
@@ -262,30 +267,6 @@ export const useVehicleExpenseStore = defineStore('fleetVehicleExpenses', {
     },
     async remove(id: string) {
       await vehicleExpenseApi.remove(id);
-    },
-  },
-});
-
-export const useSupplierVehicleStore = defineStore('fleetSupplierVehicles', {
-  state: () => ({
-    items: [] as SupplierVehicle[],
-    meta: null as PaginationMeta | null,
-    loading: false,
-  }),
-  actions: {
-    async fetchList(params: Record<string, unknown> = {}) {
-      this.loading = true;
-      try {
-        const response = await supplierVehicleApi.list(params);
-        this.items = response.data.data;
-        this.meta = response.data.meta;
-      } finally {
-        this.loading = false;
-      }
-    },
-    async fetchAssignmentHistory(supplierId: string) {
-      const response = await supplierVehicleApi.assignmentHistory(supplierId);
-      return response.data.data;
     },
   },
 });

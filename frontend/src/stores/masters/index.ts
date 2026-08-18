@@ -5,15 +5,12 @@ import { createMasterStore } from '../masterStoreFactory';
 
 export const useBranchStore = createMasterStore('mastersBranch', '/masters/branches');
 export const useLocationStore = createMasterStore('mastersLocation', '/masters/locations');
-export const useRouteStore = createMasterStore('mastersRoute', '/masters/routes');
 export const useVehicleTypeStore = createMasterStore('mastersVehicleType', '/masters/vehicle-types');
 export const useVehicleStore = createMasterStore('mastersVehicle', '/masters/vehicles');
 export const useDriverStore = createMasterStore('mastersDriver', '/masters/drivers');
 export const useSupplierStore = createMasterStore('mastersSupplier', '/masters/suppliers');
 export const useMaterialStore = createMasterStore('mastersMaterial', '/masters/materials');
 export const useExpenseCategoryStore = createMasterStore('mastersExpenseCategory', '/masters/expense-categories');
-export const useFuelStationStore = createMasterStore('mastersFuelStation', '/masters/fuel-stations');
-export const useBankStore = createMasterStore('mastersBank', '/masters/banks');
 export const usePaymentModeStore = createMasterStore('mastersPaymentMode', '/masters/payment-modes');
 export const useTyreStore = createMasterStore('mastersTyre', '/masters/tyres');
 export const useServiceCategoryStore = createMasterStore('mastersServiceCategory', '/masters/service-categories');
@@ -38,8 +35,6 @@ export const simpleMasterStoreMap: Record<string, ReturnType<typeof createMaster
   'trailer-types': useTrailerTypeStore,
   materials: useMaterialStore,
   'expense-categories': useExpenseCategoryStore,
-  'fuel-stations': useFuelStationStore,
-  banks: useBankStore,
   'payment-modes': usePaymentModeStore,
   tyres: useTyreStore,
   'service-categories': useServiceCategoryStore,

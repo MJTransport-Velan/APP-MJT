@@ -3,7 +3,6 @@ import { prisma } from '../config/db';
 
 const fuelEntryWithRelations = Prisma.validator<Prisma.FuelEntryInclude>()({
   vehicle: true,
-  fuelStation: true,
   fuelCard: true,
   trip: { select: { id: true, tripNumber: true, vehicleId: true } },
   driver: { select: { id: true, name: true, code: true } },
@@ -19,12 +18,10 @@ export const fuelEntryRepository = {
     skip: number;
     take: number;
     vehicleId?: string;
-    fuelStationId?: string;
     tripId?: string;
     driverId?: string;
     fuelType?: string;
     billingMethod?: string;
-    isAnomaly?: boolean;
     from?: Date;
     to?: Date;
   }) {
@@ -32,12 +29,10 @@ export const fuelEntryRepository = {
       deletedAt: null,
       AND: [
         params.vehicleId ? { vehicleId: params.vehicleId } : {},
-        params.fuelStationId ? { fuelStationId: params.fuelStationId } : {},
         params.tripId ? { tripId: params.tripId } : {},
         params.driverId ? { driverId: params.driverId } : {},
         params.fuelType ? { fuelType: params.fuelType as never } : {},
         params.billingMethod ? { billingMethod: params.billingMethod as never } : {},
-        params.isAnomaly !== undefined ? { isAnomaly: params.isAnomaly } : {},
         params.from || params.to
           ? {
               entryDate: {
@@ -71,16 +66,8 @@ export const fuelEntryRepository = {
     return prisma.vehicle.findFirst({ where: { id, deletedAt: null } });
   },
 
-  findFuelStationById(id: string) {
-    return prisma.fuelStation.findFirst({ where: { id, deletedAt: null } });
-  },
-
   findTripById(id: string) {
-    return prisma.trip.findFirst({ where: { id, deletedAt: null }, select: { id: true, vehicleId: true, status: true, tripNumber: true } });
-  },
-
-  findDriverById(id: string) {
-    return prisma.driver.findFirst({ where: { id, deletedAt: null } });
+    return prisma.trip.findFirst({ where: { id, deletedAt: null }, select: { id: true, vehicleId: true, status: true, tripNumber: true, driverId: true } });
   },
 
   findSupplierById(id: string) {
@@ -102,36 +89,6 @@ export const fuelEntryRepository = {
     return prisma.fuelEntry.findFirst({
       where: { vehicleId, deletedAt: null, entryDate: { lt: beforeDate }, ...(excludeId ? { id: { not: excludeId } } : {}) },
       orderBy: { entryDate: 'desc' },
-    });
-  },
-
-  /** Same vehicle, same calendar day, same quantity — the duplicate-entry check. */
-  findPossibleDuplicate(vehicleId: string, entryDate: Date, quantityLiters: number, excludeId?: string) {
-    const dayStart = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate(), 0, 0, 0, 0);
-    const dayEnd = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate(), 23, 59, 59, 999);
-    return prisma.fuelEntry.findFirst({
-      where: {
-        vehicleId,
-        deletedAt: null,
-        entryDate: { gte: dayStart, lte: dayEnd },
-        quantityLiters,
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-    });
-  },
-
-  /** Last N entries for a vehicle, used to compute a rolling average quantity/mileage for anomaly detection. */
-  recentEntriesForVehicle(vehicleId: string, take: number, excludeId?: string) {
-    return prisma.fuelEntry.findMany({
-      where: { vehicleId, deletedAt: null, ...(excludeId ? { id: { not: excludeId } } : {}) },
-      orderBy: { entryDate: 'desc' },
-      take,
-    });
-  },
-
-  countEntriesSince(vehicleId: string, since: Date, excludeId?: string) {
-    return prisma.fuelEntry.count({
-      where: { vehicleId, deletedAt: null, entryDate: { gte: since }, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
   },
 

@@ -18,6 +18,7 @@ export const adminUserRepository = {
     teamId?: string;
   }) {
     const where: Prisma.UserWhereInput = {
+      deletedAt: null,
       AND: [
         params.search
           ? {
@@ -49,7 +50,7 @@ export const adminUserRepository = {
   },
 
   findById(id: string) {
-    return prisma.user.findUnique({ where: { id }, include: userWithRelations });
+    return prisma.user.findFirst({ where: { id, deletedAt: null }, include: userWithRelations });
   },
 
   findByUsername(username: string) {
@@ -66,6 +67,10 @@ export const adminUserRepository = {
 
   setActive(id: string, isActive: boolean) {
     return prisma.user.update({ where: { id }, data: { isActive } });
+  },
+
+  softDelete(id: string) {
+    return prisma.user.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, refreshToken: null } });
   },
 
   setPassword(id: string, password: string) {

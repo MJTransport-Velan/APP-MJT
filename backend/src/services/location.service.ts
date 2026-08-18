@@ -119,14 +119,6 @@ export const locationService = {
       throw new AppError('Location not found', 404);
     }
 
-    const routeUsage = await locationRepository.countRouteUsage(id);
-    if (routeUsage > 0) {
-      throw new AppError(
-        `Cannot delete location "${existing.name}" — it is used by ${routeUsage} transport route(s).`,
-        409
-      );
-    }
-
     await locationRepository.softDelete(id, actorId);
 
     await auditService.record({

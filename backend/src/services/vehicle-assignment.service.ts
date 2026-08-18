@@ -7,7 +7,7 @@ import {
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
-import { CreateAssignmentInput } from '../validators/vehicle-assignment.validator';
+import { CreateAssignmentInput, UpdateAssignmentInput } from '../validators/vehicle-assignment.validator';
 
 function serialize(assignment: VehicleAssignmentWithRelations) {
   return {
@@ -74,6 +74,11 @@ export const vehicleAssignmentService = {
       throw new AppError('Cannot assign an inactive driver', 400);
     }
 
+    const driverBusy = await vehicleAssignmentRepository.findActiveByDriver(input.driverId);
+    if (driverBusy) {
+      throw new AppError(`${driver.name} is already actively assigned to vehicle ${driverBusy.vehicle.registrationNumber}`, 409);
+    }
+
     const assignment = await vehicleAssignmentRepository.create({
       ...input,
       createdById: actorId,
@@ -136,5 +141,83 @@ export const vehicleAssignmentService = {
     });
 
     return vehicleAssignmentService.getById(id);
+  },
+
+  async update(id: string, input: UpdateAssignmentInput, actorId: string) {
+    const assignment = await vehicleAssignmentRepository.findById(id);
+    if (!assignment) {
+      throw new AppError('Assignment not found', 404);
+    }
+
+    await vehicleAssignmentRepository.updateNotes(id, input.notes, actorId);
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'VehicleAssignment',
+      entityId: id,
+      description: `Updated notes for assignment on vehicle ${assignment.vehicle.registrationNumber}`,
+    });
+
+    return vehicleAssignmentService.getById(id);
+  },
+
+  // Keeps VehicleAssignment in sync when a trip is allocated with a driver
+  // other than the vehicle's currently active assignment — e.g. the regular
+  // driver is unavailable and someone else drives this trip. Cancels
+  // whatever active assignment(s) conflict (the vehicle's old driver, and/or
+  // the new driver's old vehicle) and opens a fresh ACTIVE assignment for
+  // this vehicle/driver pair. No-op if they're already assigned together.
+  // Deliberately leaves Vehicle.status alone — trip.service owns that
+  // transition on its own lifecycle (trip start/complete), not on allocation.
+  async syncForVehicleDriver(vehicleId: string, driverId: string, actorId: string) {
+    const activeForVehicle = await vehicleAssignmentRepository.findActiveByVehicle(vehicleId);
+    if (activeForVehicle?.driverId === driverId) {
+      return;
+    }
+    if (activeForVehicle) {
+      await vehicleAssignmentRepository.cancel(activeForVehicle.id, actorId);
+    }
+
+    const activeForDriver = await vehicleAssignmentRepository.findActiveByDriver(driverId);
+    if (activeForDriver && activeForDriver.vehicleId !== vehicleId) {
+      await vehicleAssignmentRepository.cancel(activeForDriver.id, actorId);
+    }
+
+    const assignment = await vehicleAssignmentRepository.create({
+      vehicleId,
+      driverId,
+      notes: 'Auto-created from trip allocation',
+      createdById: actorId,
+      updatedById: actorId,
+    });
+
+    await auditService.record({
+      userId: actorId,
+      action: 'CREATE',
+      entityType: 'VehicleAssignment',
+      entityId: assignment.id,
+      description: 'Auto-assigned driver to vehicle from trip allocation',
+    });
+  },
+
+  async remove(id: string, actorId: string) {
+    const assignment = await vehicleAssignmentRepository.findById(id);
+    if (!assignment) {
+      throw new AppError('Assignment not found', 404);
+    }
+    if (assignment.status === 'ACTIVE') {
+      throw new AppError('Cancel or complete an active assignment before deleting it', 400);
+    }
+
+    await vehicleAssignmentRepository.remove(id);
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'VehicleAssignment',
+      entityId: id,
+      description: `Deleted assignment record for vehicle ${assignment.vehicle.registrationNumber}`,
+    });
   },
 };

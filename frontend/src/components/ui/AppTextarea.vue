@@ -8,24 +8,33 @@
       :disabled="disabled"
       :rows="Number(rows)"
       v-bind="$attrs"
-      @input="$emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
+      @input="onInput"
     ></textarea>
   </div>
 </template>
 
 <script setup lang="ts">
-withDefaults(
+const props = withDefaults(
   defineProps<{
     modelValue?: string | number;
     label?: string;
     placeholder?: string;
     disabled?: boolean;
     rows?: string | number;
+    /** Textareas in this app are almost always remarks/description/notes — free
+     * text stays as typed by default. Opt in explicitly if a given textarea
+     * genuinely needs uppercase. */
+    uppercase?: boolean;
   }>(),
-  { rows: 3, disabled: false }
+  { rows: 3, disabled: false, uppercase: false }
 );
 defineOptions({ inheritAttrs: false });
-defineEmits<{ 'update:modelValue': [value: string] }>();
+const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
+
+function onInput(event: Event) {
+  const raw = (event.target as HTMLTextAreaElement).value;
+  emit('update:modelValue', props.uppercase ? raw.toUpperCase() : raw);
+}
 </script>
 
 <style scoped>

@@ -1,5 +1,6 @@
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
+import { vehicleAssignmentRepository } from '../repositories/vehicle-assignment.repository';
 
 /**
  * Driver History / Financial Statement — a running-balance view of every
@@ -49,11 +50,28 @@ export const driverStatementService = {
       };
     });
 
+    const assignments = await vehicleAssignmentRepository.findAllByDriver(driverId);
+    const activeAssignment = assignments.find((a) => a.status === 'ACTIVE');
+
     return {
       driver: { id: driver.id, name: driver.name, code: driver.code },
       openingBalance: Math.round(openingBalance * 100) / 100,
       closingBalance: Math.round(running * 100) / 100,
       transactions,
+      currentVehicle: activeAssignment
+        ? {
+            vehicleId: activeAssignment.vehicle.id,
+            registrationNumber: activeAssignment.vehicle.registrationNumber,
+            assignedAt: activeAssignment.assignedAt,
+          }
+        : null,
+      vehicleHistory: assignments.map((a) => ({
+        vehicleId: a.vehicle.id,
+        registrationNumber: a.vehicle.registrationNumber,
+        status: a.status,
+        assignedAt: a.assignedAt,
+        unassignedAt: a.unassignedAt,
+      })),
     };
   },
 };

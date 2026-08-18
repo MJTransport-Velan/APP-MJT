@@ -197,32 +197,6 @@ async function main() {
     );
   }
 
-  console.log('Seeding demo Transport Routes...');
-  const routePairs: [number, number][] = [[0, 1], [0, 2], [1, 2], [2, 3], [4, 5], [6, 7], [0, 4], [2, 4], [8, 0], [9, 1]];
-  const routes = [];
-  for (let i = 0; i < routePairs.length; i++) {
-    const [fromIdx, toIdx] = routePairs[i];
-    const from = locations[fromIdx];
-    const to = locations[toIdx];
-    const code = `RT-${String(i + 1).padStart(3, '0')}`;
-    routes.push(
-      await prisma.transportRoute.upsert({
-        where: { code },
-        update: {},
-        create: {
-          name: `${from.name} - ${to.name}`,
-          code,
-          fromLocationId: from.id,
-          toLocationId: to.id,
-          distanceKm: randomInt(80, 1400),
-          isActive: true,
-          createdById: adminUser.id,
-          updatedById: adminUser.id,
-        },
-      })
-    );
-  }
-
   console.log('Seeding demo Vehicle Types...');
   const vehicleTypeData = [
     { name: 'Flat-bed Tata Ace', code: 'VT-FB-TATA-ACE' },
@@ -296,49 +270,6 @@ async function main() {
       where: { code },
       update: {},
       create: { name: expenseCategoryNames[i], code, isActive: true, createdById: adminUser.id, updatedById: adminUser.id },
-    });
-  }
-
-  console.log('Seeding demo Fuel Stations...');
-  const fuelStationData = [
-    { name: 'Highway Fuels - Chennai Bypass', location: 'Chennai' },
-    { name: 'National Petroleum - Coimbatore', location: 'Coimbatore' },
-    { name: 'Speed Fuels - Bangalore Outer Ring', location: 'Bangalore' },
-    { name: 'Trans Highway Fuel Point - Hyderabad', location: 'Hyderabad' },
-    { name: 'Metro Fuels - Mumbai Expressway', location: 'Mumbai' },
-    { name: 'Deccan Petroleum - Pune', location: 'Pune' },
-    { name: 'Capital Fuels - Delhi NH8', location: 'Delhi' },
-    { name: 'Eastern Fuel Point - Kolkata', location: 'Kolkata' },
-  ];
-  const fuelStations = [];
-  for (let i = 0; i < fuelStationData.length; i++) {
-    const code = `FS-${String(i + 1).padStart(3, '0')}`;
-    fuelStations.push(
-      await prisma.fuelStation.upsert({
-        where: { code },
-        update: {},
-        create: { ...fuelStationData[i], code, contactPerson: 'Station Manager', phone: `9600${String(100000 + i)}`, isActive: true, createdById: adminUser.id, updatedById: adminUser.id },
-      })
-    );
-  }
-
-  console.log('Seeding demo Banks...');
-  const bankData = [
-    { name: 'State Bank of India', branch: 'Anna Nagar', ifscCode: 'SBIN0001234' },
-    { name: 'HDFC Bank', branch: 'T Nagar', ifscCode: 'HDFC0001234' },
-    { name: 'ICICI Bank', branch: 'Adyar', ifscCode: 'ICIC0001234' },
-    { name: 'Axis Bank', branch: 'Velachery', ifscCode: 'UTIB0001234' },
-    { name: 'Canara Bank', branch: 'Guindy', ifscCode: 'CNRB0001234' },
-    { name: 'Indian Bank', branch: 'Mylapore', ifscCode: 'IDIB0001234' },
-    { name: 'Punjab National Bank', branch: 'Egmore', ifscCode: 'PUNB0001234' },
-    { name: 'Bank of Baroda', branch: 'Nungambakkam', ifscCode: 'BARB0001234' },
-  ];
-  for (let i = 0; i < bankData.length; i++) {
-    const code = `BANK-${String(i + 1).padStart(2, '0')}`;
-    await prisma.bank.upsert({
-      where: { code },
-      update: {},
-      create: { ...bankData[i], code, isActive: true, createdById: adminUser.id, updatedById: adminUser.id },
     });
   }
 
@@ -516,7 +447,6 @@ async function main() {
       data: {
         vehicleId: vehicle.id,
         fuelCardId: fuelCards[i % fuelCards.length]?.id,
-        fuelStationId: randomFrom(fuelStations).id,
         quantityLiters: quantity,
         ratePerLiter: rate,
         totalAmount: quantity * rate,
@@ -667,7 +597,6 @@ async function main() {
           vehicleId: vehicle.id,
           driverId: driver.id,
           supplierId: isMarket ? vehicle.supplierId ?? undefined : undefined,
-          routeId: randomFrom(routes).id,
           fromLocationId: intent.fromLocationId,
           toLocationId: intent.toLocationId,
           freightAmount: intent.freightAmount ?? randomInt(15000, 85000),

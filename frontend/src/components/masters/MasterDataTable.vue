@@ -15,6 +15,7 @@
         <div v-if="$slots.filters" class="master-filter-row__filters">
           <slot name="filters" />
         </div>
+        <AppBtn variant="outlined" prepend-icon="mdi-file-excel-outline" :loading="exporting" @click="onExportClick">Export</AppBtn>
       </div>
     </AppCardText>
 
@@ -38,8 +39,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
-import { AppCard, AppCardText, AppTextField, AppDataTable } from '@/components/ui';
+import { computed, ref } from 'vue';
+import { AppCard, AppCardText, AppTextField, AppDataTable, AppBtn } from '@/components/ui';
+import { exportRowsToExcel, flattenValueForExport, type ExportColumn } from '@/utils/exportExcel';
+import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 
 const props = withDefaults(
   defineProps<{
@@ -52,6 +55,16 @@ const props = withDefaults(
     pageSize?: number;
     itemLabel?: string;
     rowBorderColor?: (item: Record<string, unknown>, index: number) => string | undefined;
+    /** Name for the downloaded file (without .xlsx) — defaults to itemLabel, then "export". */
+    exportFilename?: string;
+    /** Per-row transform for the exported sheet — falls back to a generic flattener (handles nested {name}-shaped relations, ISO dates) when not given. */
+    exportRowMapper?: (item: Record<string, unknown>) => Record<string, unknown>;
+    /** Overrides which columns appear in the export (and their order) — defaults to `headers` minus any Actions column. Use when a display column doesn't translate to a spreadsheet cell (e.g. a progress bar) or should split into more than one real column. */
+    exportColumns?: ExportColumn[];
+    /** Given the final mapped export rows, returns an extra row (e.g. column totals) appended to the sheet — omitted when not provided. */
+    exportSummaryRow?: (rows: Record<string, unknown>[]) => Record<string, unknown> | null;
+    /** Fetches every matching row (ignoring pagination) for a full export — falls back to exporting just the currently-loaded page when not given. */
+    onExportAll?: () => Promise<Record<string, unknown>[]>;
   }>(),
   {
     loading: false,
@@ -77,6 +90,49 @@ const pageSizeModel = computed({
   get: () => props.pageSize,
   set: (v: number) => emit('update:pageSize', v),
 });
+
+const { success, error } = useSnackbar();
+const exporting = ref(false);
+
+const derivedExportColumns = computed<ExportColumn[]>(() =>
+  props.headers
+    .filter((h) => {
+      const key = String(h.key ?? '');
+      const title = String(h.title ?? '');
+      return key && !/actions?$/i.test(key) && !/^actions?$/i.test(title);
+    })
+    .map((h) => ({ header: String(h.title), key: String(h.key) }))
+);
+
+async function onExportClick() {
+  exporting.value = true;
+  try {
+    const sourceRows = props.onExportAll ? await props.onExportAll() : props.items;
+    if (sourceRows.length === 0) {
+      error('Nothing to export');
+      return;
+    }
+    const columns = props.exportColumns || derivedExportColumns.value;
+    const rows = sourceRows.map((item) => {
+      if (props.exportRowMapper) return props.exportRowMapper(item);
+      const flat: Record<string, unknown> = {};
+      for (const col of columns) flat[col.key] = flattenValueForExport(item[col.key]);
+      return flat;
+    });
+    const rowCount = rows.length;
+    if (props.exportSummaryRow) {
+      const summaryRow = props.exportSummaryRow(rows);
+      if (summaryRow) rows.push(summaryRow);
+    }
+    const filename = props.exportFilename || props.itemLabel || 'export';
+    await exportRowsToExcel(filename, columns, rows);
+    success(`Exported ${rowCount} row${rowCount === 1 ? '' : 's'} to Excel`);
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to export'));
+  } finally {
+    exporting.value = false;
+  }
+}
 </script>
 
 <style scoped>

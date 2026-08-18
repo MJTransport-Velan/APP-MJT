@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import financialEntryRoutes from './financial-entry.routes';
 import financialStateRoutes from './financial-state.routes';
+import balanceSheetRoutes from './balance-sheet.routes';
+import capitalTransactionRoutes from './capital-transaction.routes';
+import profitLossRoutes from './profit-loss.routes';
 import authRoutes from './auth.routes';
 import userRoutes from './user.routes';
 import dashboardRoutes from './dashboard.routes';
@@ -15,7 +18,6 @@ import adminAuditRoutes from './admin-audit.routes';
 import mastersSimpleRoutes from './masters-simple.routes';
 import branchRoutes from './branch.routes';
 import locationRoutes from './location.routes';
-import transportRouteRoutes from './transport-route.routes';
 import vehicleRoutes from './vehicle.routes';
 import driverRoutes from './driver.routes';
 import supplierRoutes from './supplier.routes';
@@ -26,7 +28,6 @@ import fuelEntryRoutes from './fuel-entry.routes';
 import maintenanceRoutes from './maintenance.routes';
 import sparePartUsageRoutes from './spare-part-usage.routes';
 import vehicleExpenseRoutes from './vehicle-expense.routes';
-import supplierVehicleRoutes from './supplier-vehicle.routes';
 import fleetDashboardRoutes from './fleet-dashboard.routes';
 import intentRoutes from './intent.routes';
 import tripRoutes from './trip.routes';
@@ -56,16 +57,16 @@ import { bankChargeRouter, interestRouter } from './bank-charge-interest.routes'
 import pettyCashRequestRoutes from './petty-cash-request.routes';
 import bankingDashboardRoutes from './banking-dashboard.routes';
 import driverAdvanceRoutes from './driver-advance.routes';
-import driverReimbursementRoutes from './driver-reimbursement.routes';
 import driverEarningRoutes from './driver-earning.routes';
 import driverPenaltyRoutes from './driver-penalty.routes';
-import driverLoanRoutes from './driver-loan.routes';
 import driverSettlementRoutes from './driver-settlement.routes';
+import driverSalaryStructureRoutes from './driver-salary-structure.routes';
+import driverSalaryPaymentRoutes from './driver-salary-payment.routes';
 import driverStatementRoutes from './driver-statement.routes';
 import salaryStructureRoutes from './salary-structure.routes';
 import employeeAdvanceRoutes from './employee-advance.routes';
-import employeeLoanRoutes from './employee-loan.routes';
-import payrollRunRoutes from './payroll-run.routes';
+import employeeSalaryPaymentRoutes from './employee-salary-payment.routes';
+import salaryPaymentQuoteRoutes from './salary-payment-quote.routes';
 import payrollDashboardRoutes from './payroll-dashboard.routes';
 import assetCategoryRoutes from './asset-category.routes';
 import fixedAssetRoutes from './fixed-asset.routes';
@@ -97,6 +98,7 @@ import approvalDelegationRoutes from './approval-delegation.routes';
 import enterpriseAuditRoutes from './enterprise-audit.routes';
 import mfaRoutes from './mfa.routes';
 import importRoutes from './import.routes';
+import excelExportRoutes from './excel-export.routes';
 import webhookRoutes from './webhook.routes';
 import apiKeyRoutes from './api-key.routes';
 import aiInsightRoutes from './ai-insight.routes';
@@ -124,12 +126,11 @@ router.use('/administration/audit-logs', adminAuditRoutes);
 // Phase 3 — Masters
 router.use('/masters/branches', branchRoutes);
 router.use('/masters/locations', locationRoutes);
-router.use('/masters/routes', transportRouteRoutes);
 router.use('/masters/vehicles', vehicleRoutes);
 router.use('/masters/drivers', driverRoutes);
 router.use('/masters/suppliers', supplierRoutes);
 // vehicle-types, trailer-types, materials, expense-categories,
-// fuel-stations, banks, payment-modes, tyres, service-categories,
+// banks, payment-modes, tyres, service-categories,
 // designations, gst-masters — all mounted inside mastersSimpleRoutes.
 router.use('/masters', mastersSimpleRoutes);
 
@@ -141,7 +142,6 @@ router.use('/fleet/fuel-entries', fuelEntryRoutes);
 router.use('/fleet/maintenance', maintenanceRoutes);
 router.use('/fleet/spare-part-usage', sparePartUsageRoutes);
 router.use('/fleet/expenses', vehicleExpenseRoutes);
-router.use('/fleet/supplier-vehicles', supplierVehicleRoutes);
 // fuel-cards, spare-parts — simple catalogs mounted inside fleetSimpleRoutes.
 router.use('/fleet', fleetSimpleRoutes);
 
@@ -160,6 +160,16 @@ router.use('/operations/dashboard', operationsDashboardRoutes);
 // and its own stored running balance.
 router.use('/accounts/financial-entries', financialEntryRoutes);
 router.use('/accounts/financial-state', financialStateRoutes);
+// Finance → Balance Sheet — a read-only report computed from the tables
+// above, no ledger/voucher concept added.
+router.use('/accounts/balance-sheet', balanceSheetRoutes);
+// Capital Account — partner contributions/withdrawals, a simple named
+// master (capitalPartner, served by masters-simple.routes.ts) + one-shot
+// fund-account-adjusting transactions.
+router.use('/accounts/capital-transactions', capitalTransactionRoutes);
+// Finance → Profit & Loss — a read-only, single-period report, same
+// reuse-only approach as Balance Sheet.
+router.use('/accounts/profit-loss', profitLossRoutes);
 
 // Accounts — Receivables & Payables
 router.use('/accounts/invoices', invoiceRoutes);
@@ -192,16 +202,16 @@ router.use('/accounting/banking/dashboard', bankingDashboardRoutes);
 
 // Driver Accounts, Employee Payroll & Settlements
 router.use('/accounts/driver/advances', driverAdvanceRoutes);
-router.use('/accounts/driver/reimbursements', driverReimbursementRoutes);
 router.use('/accounts/driver/earnings', driverEarningRoutes);
 router.use('/accounts/driver/penalties', driverPenaltyRoutes);
-router.use('/accounts/driver/loans', driverLoanRoutes);
 router.use('/accounts/driver/settlements', driverSettlementRoutes);
+router.use('/accounts/driver/salary-structures', driverSalaryStructureRoutes);
+router.use('/accounts/driver/salary-payments', driverSalaryPaymentRoutes);
 router.use('/accounts/driver', driverStatementRoutes);
 router.use('/accounts/payroll/salary-structures', salaryStructureRoutes);
 router.use('/accounts/payroll/advances', employeeAdvanceRoutes);
-router.use('/accounts/payroll/loans', employeeLoanRoutes);
-router.use('/accounts/payroll/runs', payrollRunRoutes);
+router.use('/accounts/payroll/salary-payments', employeeSalaryPaymentRoutes);
+router.use('/accounts/payroll/salary-quote', salaryPaymentQuoteRoutes);
 router.use('/accounts/payroll/dashboard', payrollDashboardRoutes);
 
 // Vehicle Asset Accounting, Vehicle Loans, Vehicle Expenses & Depreciation
@@ -248,6 +258,7 @@ router.use('/system/approval-delegations', approvalDelegationRoutes);
 router.use('/system/audit-center', enterpriseAuditRoutes);
 router.use('/system/mfa', mfaRoutes);
 router.use('/system/imports', importRoutes);
+router.use('/system/export-excel', excelExportRoutes);
 router.use('/system/webhooks', webhookRoutes);
 router.use('/system/api-keys', apiKeyRoutes);
 router.use('/system/ai-insights', aiInsightRoutes);

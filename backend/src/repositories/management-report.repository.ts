@@ -86,44 +86,6 @@ const branchWiseReport: ReportDefinition = {
   },
 };
 
-const routeWiseReport: ReportDefinition = {
-  key: 'routeWiseReport',
-  label: 'Route-wise Report',
-  columns: [
-    { key: 'route', label: 'Route' },
-    { key: 'tripCount', label: 'Trips' },
-    { key: 'totalRevenue', label: 'Revenue' },
-    { key: 'avgFreight', label: 'Avg Freight' },
-  ],
-  run: async (filters) => {
-    const trips = await prisma.trip.findMany({
-      where: {
-        deletedAt: null,
-        status: 'COMPLETED',
-        ...(filters.routeId ? { routeId: filters.routeId } : {}),
-        ...dateRangeWhere('actualEndDate', filters),
-      },
-      include: { route: true, fromLocation: true, toLocation: true },
-    });
-
-    const grouped = new Map<string, { route: string; tripCount: number; totalRevenue: number }>();
-    for (const trip of trips) {
-      const key = trip.route?.id || `${trip.fromLocationId}-${trip.toLocationId}`;
-      const label = trip.route?.name || `${trip.fromLocation.name} -> ${trip.toLocation.name}`;
-      const existing = grouped.get(key) || { route: label, tripCount: 0, totalRevenue: 0 };
-      existing.tripCount += 1;
-      existing.totalRevenue += Number(trip.freightAmount || 0);
-      grouped.set(key, existing);
-    }
-
-    const rows = Array.from(grouped.values()).map((r) => ({
-      ...r,
-      avgFreight: r.tripCount > 0 ? Number((r.totalRevenue / r.tripCount).toFixed(2)) : 0,
-    }));
-    return { rows, total: rows.length };
-  },
-};
-
 async function computePeriodSummary(from: Date, to: Date) {
   const [intentCount, trips, tripExpenseAgg, supplierPaymentAgg] = await Promise.all([
     prisma.intent.count({ where: { deletedAt: null, createdAt: { gte: from, lte: to } } }),
@@ -267,7 +229,6 @@ const kpiSummaryReport: ReportDefinition = {
 export const managementReportRepository: Record<string, ReportDefinition> = {
   companyWiseReport,
   branchWiseReport,
-  routeWiseReport,
   monthlyBusinessSummaryReport,
   yearlyBusinessSummaryReport,
   kpiSummaryReport,

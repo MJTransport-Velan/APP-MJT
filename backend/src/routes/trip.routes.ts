@@ -12,6 +12,8 @@ import {
   updateTripStatusSchema,
   cancelTripSchema,
   availableResourcesSchema,
+  activeTripForVehicleSchema,
+  currentOrLastTripForVehicleSchema,
 } from '../validators/trip.validator';
 
 const router = Router();
@@ -19,6 +21,18 @@ router.use(authenticate);
 
 router.get('/', authorize('trip.view'), tripController.list);
 router.get('/stats', authorize('trip.view'), tripController.stats);
+router.get(
+  '/active-for-vehicle',
+  authorize('trip.view'),
+  validate(activeTripForVehicleSchema),
+  tripController.activeForVehicle
+);
+router.get(
+  '/current-or-last-for-vehicle',
+  authorize('trip.view'),
+  validate(currentOrLastTripForVehicleSchema),
+  tripController.currentOrLastForVehicle
+);
 router.get(
   '/available-resources',
   authorize('trip.assign'),

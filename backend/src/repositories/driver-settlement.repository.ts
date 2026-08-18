@@ -1,6 +1,5 @@
 import { Prisma, DriverSettlementStatus } from '@prisma/client';
 import { prisma } from '../config/db';
-import { partyLoanRepository } from './party-loan.repository';
 
 const settlementWithRelations = Prisma.validator<Prisma.DriverSettlementInclude>()({
   driver: true,
@@ -71,16 +70,8 @@ export const driverSettlementRepository = {
     return prisma.driverEarning.findMany({ where: { driverId, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } } });
   },
 
-  findUnsettledReimbursements(driverId: string, periodStart: Date, periodEnd: Date) {
-    return prisma.driverExpenseReimbursement.findMany({ where: { driverId, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } } });
-  },
-
   findUnsettledPenalties(driverId: string, periodStart: Date, periodEnd: Date) {
     return prisma.driverPenalty.findMany({ where: { driverId, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: periodStart, lte: periodEnd } } });
-  },
-
-  findDueLoanInstallments(driverId: string, periodEnd: Date) {
-    return partyLoanRepository.findDueInstallmentsForBorrower('DRIVER', driverId, periodEnd);
   },
 
   markAdvancesSettled(ids: string[], settlementId: string) {
@@ -93,18 +84,8 @@ export const driverSettlementRepository = {
     return prisma.driverEarning.updateMany({ where: { id: { in: ids } }, data: { isSettled: true, settlementId } });
   },
 
-  markReimbursementsSettled(ids: string[], settlementId: string) {
-    if (ids.length === 0) return Promise.resolve();
-    return prisma.driverExpenseReimbursement.updateMany({ where: { id: { in: ids } }, data: { isSettled: true, settlementId } });
-  },
-
   markPenaltiesSettled(ids: string[], settlementId: string) {
     if (ids.length === 0) return Promise.resolve();
     return prisma.driverPenalty.updateMany({ where: { id: { in: ids } }, data: { isSettled: true, settlementId } });
-  },
-
-  markInstallmentsRecovered(ids: string[], settlementId: string) {
-    if (ids.length === 0) return Promise.resolve();
-    return partyLoanRepository.markInstallmentsRecoveredBulk(ids, 'DRIVER_SETTLEMENT', settlementId);
   },
 };

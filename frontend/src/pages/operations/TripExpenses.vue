@@ -32,11 +32,21 @@
       <template #item.category="{ item }">
         <AppChip size="small" variant="outlined">{{ (item as any).category }}</AppChip>
       </template>
+      <template #item.source="{ item }">
+        <AppChip size="small" :color="(item as any).source === 'linked' ? 'info' : undefined" :variant="(item as any).source === 'linked' ? 'flat' : 'outlined'">
+          {{ (item as any).source === 'linked' ? 'Auto' : 'Manual' }} · {{ sourceLabel(item) }}
+        </AppChip>
+      </template>
       <template #item.amount="{ item }">{{ formatCurrency((item as any).amount) }}</template>
       <template #item.expenseDate="{ item }">{{ new Date((item as any).expenseDate).toLocaleDateString() }}</template>
       <template #item.actions="{ item }">
-        <AppBtn icon="mdi-file-upload-outline" variant="text" size="small" @click="openBillDialog(item as any)" />
-        <AppBtn icon="mdi-delete-outline" variant="text" size="small" @click="openDeleteConfirm(item as any)" />
+        <template v-if="(item as any).source === 'linked'">
+          <span class="text-caption text-medium-emphasis">Edit in {{ sourceLabel(item) }}</span>
+        </template>
+        <template v-else>
+          <AppBtn icon="mdi-file-upload-outline" variant="text" size="small" @click="openBillDialog(item as any)" />
+          <AppBtn icon="mdi-delete-outline" variant="text" size="small" @click="openDeleteConfirm(item as any)" />
+        </template>
       </template>
     </MasterDataTable>
 
@@ -112,10 +122,16 @@ const categoryOptions = ['FUEL', 'DRIVER_BATA', 'TOLL', 'LOADING', 'UNLOADING', 
 const headers = [
   { title: 'Trip', key: 'trip', sortable: false },
   { title: 'Category', key: 'category', sortable: false },
+  { title: 'Source', key: 'source', sortable: false },
   { title: 'Amount', key: 'amount', sortable: false },
   { title: 'Date', key: 'expenseDate', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
 ];
+
+function sourceLabel(item: any) {
+  if (item.source !== 'linked') return 'Manual';
+  return item.sourceType === 'FastTagTransaction' ? 'FASTag' : 'Diesel/Fuel';
+}
 
 function onPageUpdate(v: number) {
   page.value = v;

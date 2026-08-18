@@ -1,7 +1,16 @@
 import api from '../api';
 import type { ApiResponse } from '@/types/api.types';
 import type { PaginationMeta } from '@/types/admin.types';
-import type { FinancialEntry, CreateFinancialEntryInput, BankAndCashState, FinancialDashboardSummary } from '@/types/financialEntry.types';
+import type {
+  FinancialEntry,
+  CreateFinancialEntryInput,
+  BankAndCashState,
+  FinancialDashboardSummary,
+  CustomerFinancialState,
+  SupplierFinancialState,
+  DriverFinancialState,
+  EmployeeFinancialState,
+} from '@/types/financialEntry.types';
 
 export const financialEntryApi = {
   list(params: Record<string, unknown> = {}) {
@@ -22,6 +31,9 @@ export const financialEntryApi = {
   correct(id: string, payload: CreateFinancialEntryInput) {
     return api.post<ApiResponse<FinancialEntry>>(`/accounts/financial-entries/${id}/correct`, payload);
   },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/accounts/financial-entries/${id}`);
+  },
 };
 
 export const financialStateApi = {
@@ -30,5 +42,17 @@ export const financialStateApi = {
   },
   bankAndCash() {
     return api.get<ApiResponse<BankAndCashState>>('/accounts/financial-state/bank-cash');
+  },
+  customer(companyId: string) {
+    return api.get<ApiResponse<CustomerFinancialState>>(`/accounts/financial-state/customer/${companyId}`);
+  },
+  supplier(supplierId: string) {
+    return api.get<ApiResponse<SupplierFinancialState>>(`/accounts/financial-state/supplier/${supplierId}`);
+  },
+  driver(driverId: string) {
+    return api.get<ApiResponse<DriverFinancialState>>(`/accounts/financial-state/driver/${driverId}`);
+  },
+  employee(employeeId: string) {
+    return api.get<ApiResponse<EmployeeFinancialState>>(`/accounts/financial-state/employee/${employeeId}`);
   },
 };

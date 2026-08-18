@@ -17,6 +17,14 @@ export const tripController = {
     const stats = await tripService.stats(req.user?.roles, req.user?.userId);
     return sendSuccess(res, 200, { message: 'Trip stats fetched', data: stats });
   }),
+  activeForVehicle: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const trip = await tripService.activeTripForVehicle(req.query.vehicleId as string, new Date(req.query.at as string));
+    return sendSuccess(res, 200, { message: 'Active trip fetched', data: trip });
+  }),
+  currentOrLastForVehicle: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const trip = await tripService.currentOrLastTripForVehicle(req.query.vehicleId as string);
+    return sendSuccess(res, 200, { message: 'Current or last trip fetched', data: trip });
+  }),
   timeline: asyncHandler(async (req: AuthRequest, res: Response) => {
     const history = await tripService.timeline(req.params.id, req.user?.roles, req.user?.userId);
     return sendSuccess(res, 200, { message: 'Trip timeline fetched', data: history });
@@ -43,7 +51,13 @@ export const tripController = {
     return sendSuccess(res, 200, { message: 'Asset allocated', data: trip });
   }),
   updateStatus: asyncHandler(async (req: AuthRequest, res: Response) => {
-    const trip = await tripService.updateStatus(req.params.id, req.body.status, req.body.notes, req.user!.userId);
+    const trip = await tripService.updateStatus(
+      req.params.id,
+      req.body.status,
+      req.body.notes,
+      req.user!.userId,
+      req.body.additionalCharge
+    );
     return sendSuccess(res, 200, { message: 'Trip status updated', data: trip });
   }),
   start: asyncHandler(async (req: AuthRequest, res: Response) => {

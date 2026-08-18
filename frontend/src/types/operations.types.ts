@@ -96,6 +96,8 @@ export interface Trip {
   tripNumber: string;
   status: TripStatus;
   freightAmount: number | null;
+  loadingCharges: number | null;
+  unloadingCharges: number | null;
   supplierRate: number | null;
   marketVehicleNumber: string | null;
   marketDriverName: string | null;
@@ -127,7 +129,6 @@ export interface Trip {
   vehicle: { id: string; registrationNumber: string; ownership: 'OWN' | 'MARKET' } | null;
   driver: { id: string; name: string; phone: string | null } | null;
   supplier: { id: string; name: string } | null;
-  route: { id: string; name: string } | null;
   fromLocation: { id: string; name: string };
   toLocation: { id: string; name: string };
   createdBy: { id: string; fullName: string } | null;
@@ -171,6 +172,12 @@ export interface TripExpense {
   description: string | null;
   billDocument: string | null;
   trip: { id: string; tripNumber: string };
+  // 'linked' rows are read-only — sourced from Fuel Entry/FASTag (mirrored
+  // into VehicleExpense) rather than the TripExpense table, and only appear
+  // when the list is filtered to a single tripId. sourceType names which
+  // module they came from ('FuelEntry' | 'FastTagTransaction').
+  source: 'manual' | 'linked';
+  sourceType?: string;
   createdAt: string;
   updatedAt: string;
 }
