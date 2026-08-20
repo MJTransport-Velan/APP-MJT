@@ -95,6 +95,21 @@ const OPERATIONS_PERMISSIONS = [
   { name: 'operations.view', description: 'View Operations Dashboard' },
 ];
 
+// Phase 16 — Booking & LR. Parcel bookings taken on the public MJ Express
+// website and worked through to a Lorry Receipt here. Like Intent/Trip above,
+// the workflow verbs are bespoke rather than a uniform CRUD set, so that
+// confirming a booking and issuing an LR can be granted separately.
+const BOOKING_PERMISSIONS = [
+  { name: 'booking.view', description: 'View Bookings and Lorry Receipts' },
+  { name: 'booking.create', description: 'Enter Counter Bookings (walk-in / phone)' },
+  { name: 'booking.confirm', description: 'Confirm Bookings (issues the LR and tracking numbers)' },
+  { name: 'booking.reject', description: 'Reject Bookings' },
+  { name: 'booking.assign_vehicle', description: 'Assign Vehicle and Driver to a Booking' },
+  { name: 'booking.generate_lr', description: 'Generate the Lorry Receipt for a Booking' },
+  { name: 'booking.track', description: 'Update Booking Delivery Status (Picked Up ... Delivered)' },
+  { name: 'booking.delete', description: 'Delete Bookings' },
+];
+
 // Phase 6 — Accounts. Deliberately uses the same camelCase multi-word
 // style as the brief's own examples (supplierPayment.create,
 // tripFinancial.view) rather than the snake_case used elsewhere, since
@@ -437,6 +452,7 @@ const PERMISSIONS = [
     { name: `${prefix}.delete`, description: `Delete ${FLEET_MODULE_LABELS[prefix]}` },
   ]),
   ...OPERATIONS_PERMISSIONS,
+  ...BOOKING_PERMISSIONS,
   ...ACCOUNTS_PERMISSIONS,
   ...ACCOUNTING_FOUNDATION_PERMISSIONS,
   ...BANKING_PERMISSIONS,
@@ -666,6 +682,31 @@ async function main() {
         where: { roleId_permissionId: { roleId: operationManagerRole.id, permissionId: permission.id } },
         update: {},
         create: { roleId: operationManagerRole.id, permissionId: permission.id },
+      });
+    }
+  }
+
+  console.log('Assigning Phase 16 Booking & LR permissions to ADMIN and OPERATION_MANAGER...');
+  const bookingPermissionNames = BOOKING_PERMISSIONS.map((p) => p.name);
+  // Lookups ride along: vehicle.view/driver.view populate the Own Vehicle
+  // branch of the allocation form, and location.view/location.create back the
+  // route mapping on the confirm screen (which may need a new town adding).
+  // Without them those calls 403 and the dropdowns stay empty.
+  const bookingWithLookups = [
+    ...bookingPermissionNames,
+    'vehicle.view',
+    'driver.view',
+    'location.view',
+    'location.create',
+  ];
+  const bookingPermissionRecords = await prisma.permission.findMany({ where: { name: { in: bookingWithLookups } } });
+  for (const role of [adminRole, operationManagerRole]) {
+    if (!role) continue;
+    for (const permission of bookingPermissionRecords) {
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+        update: {},
+        create: { roleId: role.id, permissionId: permission.id },
       });
     }
   }

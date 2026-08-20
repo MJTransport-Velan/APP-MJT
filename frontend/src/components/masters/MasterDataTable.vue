@@ -15,7 +15,7 @@
         <div v-if="$slots.filters" class="master-filter-row__filters">
           <slot name="filters" />
         </div>
-        <AppBtn variant="outlined" prepend-icon="mdi-file-excel-outline" :loading="exporting" @click="onExportClick">Export</AppBtn>
+        <ExcelExportButton variant="outlined" :loading="exporting" @click="onExportClick" />
       </div>
     </AppCardText>
 
@@ -40,7 +40,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { AppCard, AppCardText, AppTextField, AppDataTable, AppBtn } from '@/components/ui';
+import { AppCard, AppCardText, AppTextField, AppDataTable, ExcelExportButton } from '@/components/ui';
 import { exportRowsToExcel, flattenValueForExport, type ExportColumn } from '@/utils/exportExcel';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 
@@ -158,5 +158,13 @@ async function onExportClick() {
   flex: 0 0 auto;
   width: auto !important;
   min-width: 140px;
+}
+/* Fields carry a bottom margin for stacked forms; in this single-row filter bar
+   it would lift every input off the baseline the buttons sit on. */
+.master-filter-row :deep(.app-field) {
+  margin-bottom: 0 !important;
+}
+.master-filter-row :deep(.app-btn) {
+  height: 42px !important;
 }
 </style>

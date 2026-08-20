@@ -30,6 +30,10 @@ const EXCLUDED_KEYS = new Set([
   'comment',
   'comments',
   'reason',
+  // Customer-authored free text arriving from the public booking form — the
+  // same class as remarks/notes above, and it is reproduced verbatim on the LR.
+  'instructions',
+  'specialinstructions',
   'purpose',
   'purposenotes',
   'resolution',

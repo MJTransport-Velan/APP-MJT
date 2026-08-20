@@ -2,7 +2,9 @@
   <div class="app-shell">
     <aside class="mj-sidebar" :class="{ 'mj-sidebar--rail': rail, 'mj-sidebar--closed': !drawer }">
       <div class="sidebar-header">
-        <div class="logo-circle-sm">MJ</div>
+        <div class="logo-circle-sm">
+          <img :src="mjLogo" alt="MJ Transport" class="logo-circle-sm__img" />
+        </div>
         <div v-if="!rail" class="sidebar-title-block">
           <span class="sidebar-title">MJ Transport</span>
           <span class="sidebar-subtitle">Transport Management System</span>
@@ -91,7 +93,7 @@
       <button type="button" class="mj-nav-icon" @click="drawer = !drawer">
         <AppIcon icon="mdi-menu" color="white" />
       </button>
-      <span class="mj-app-bar__title text-white font-weight-medium">MJ Transport ERP</span>
+      <!-- <span class="mj-app-bar__title text-white font-weight-medium">MJ Transport ERP</span> -->
 
       <div class="mj-app-bar__search">
         <AppIcon icon="mdi-magnify" size="small" class="mj-app-bar__search-icon" />
@@ -129,11 +131,11 @@
 
       <div class="spacer"></div>
 
-      <AppBtn icon color="white" variant="text">
+      <button type="button" class="mj-nav-icon mj-app-bar__bell">
         <AppBadge dot color="secondary">
-          <AppIcon icon="mdi-bell-outline" />
+          <AppIcon icon="mdi-bell-outline" color="white" />
         </AppBadge>
-      </AppBtn>
+      </button>
     </header>
 
     <main class="mj-main main" :class="{ 'mj-main--rail': rail, 'mj-main--closed': !drawer }">
@@ -154,9 +156,10 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { moduleRegistry, moduleGrantsAccess } from '@/config/moduleRegistry';
+import { useTheme } from '@/composables/useTheme';
+import mjLogo from '@/assets/login/MJ Transport Logo.png';
 import {
   AppIcon,
-  AppBtn,
   AppAvatar,
   AppBadge,
   AppMenu,
@@ -226,19 +229,11 @@ function onKeydown(event: KeyboardEvent) {
 
 // --- Dark mode: toggles the app-wide data-theme attribute already
 // wired up in styles/main.css (:root[data-theme='dark']). The sidebar
-// itself stays a fixed dark navy regardless of this toggle.
-const isDark = ref(true);
-function applyTheme(dark: boolean) {
-  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  localStorage.setItem('mj_theme', dark ? 'dark' : 'light');
-}
-watch(isDark, (value) => applyTheme(value));
+// itself stays a fixed dark navy regardless of this toggle. Shared via
+// useTheme() so other components (e.g. Dashboard's charts) can react to it.
+const { isDark } = useTheme();
 
 onMounted(() => {
-  const stored = localStorage.getItem('mj_theme');
-  const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-  isDark.value = stored ? stored === 'dark' : !!prefersDark;
-  applyTheme(isDark.value);
   window.addEventListener('keydown', onKeydown);
   mobileQuery?.addEventListener('change', onMobileQueryChange);
 });
@@ -374,15 +369,20 @@ async function onLogout() {
 .logo-circle-sm {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  color: #fff;
+  border-radius: var(--radius-md);
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
+  padding: 3px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+.logo-circle-sm__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .sidebar-title-block {
@@ -548,13 +548,14 @@ async function onLogout() {
   left: 272px;
   right: 0;
   height: 64px;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary) 0%, #16255c 100%);
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 16px;
+  padding: 0 20px;
   z-index: 40;
   transition: left 0.15s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
 }
 .mj-sidebar--rail + .mj-app-bar {
   left: 76px;
@@ -565,18 +566,22 @@ async function onLogout() {
 
 .mj-nav-icon {
   border: none;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
   cursor: pointer;
   display: flex;
-  padding: 8px;
-  border-radius: 50%;
+  padding: 9px;
+  border-radius: var(--radius-md);
+  transition: background 0.15s ease, transform 0.15s ease;
 }
 .mj-nav-icon:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
 }
 
 .mj-app-bar__title {
-  font-size: 1.125rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   flex-shrink: 0;
 }
 
@@ -585,13 +590,21 @@ async function onLogout() {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: var(--radius-lg);
-  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-pill);
+  padding: 0 14px;
   height: 40px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 420px;
   margin-left: 24px;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mj-app-bar__search:focus-within {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
 }
 .mj-app-bar__search-icon {
   color: rgba(255, 255, 255, 0.75);
@@ -616,8 +629,8 @@ async function onLogout() {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
   background: rgba(255, 255, 255, 0.16);
-  border-radius: 6px;
-  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
   flex-shrink: 0;
 }
 .mj-app-bar__search-clear {
@@ -677,8 +690,7 @@ async function onLogout() {
 .mj-main {
   margin-left: 272px;
   padding-top: 64px;
-  /* background: #f5f7fa; */
-  background: #ffffff;
+  background: var(--color-background);
   min-height: 100vh;
   display: flex;
   flex-direction: column;

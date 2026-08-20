@@ -1,17 +1,21 @@
 <template>
-  <div class="d-flex flex-wrap ga-2">
+  <!--
+    From/To always sit side by side: the pair is one filter, so it must not
+    break across two rows and push the rest of a filter bar out of alignment.
+  -->
+  <div class="date-range">
     <AppTextField
       :model-value="from"
       type="date"
       label="From"
-      style="max-width: 170px"
+      class="date-range__field"
       @update:model-value="onFrom"
     />
     <AppTextField
       :model-value="to"
       type="date"
       label="To"
-      style="max-width: 170px"
+      class="date-range__field"
       @update:model-value="onTo"
     />
   </div>
@@ -32,3 +36,26 @@ function onTo(value: string) {
   emit('change');
 }
 </script>
+
+<style scoped>
+.date-range {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.date-range__field {
+  flex: 0 0 165px;
+  width: 165px;
+}
+/* Phone widths: the pair has nowhere to go sideways, so let it stack again. */
+@media (max-width: 599px) {
+  .date-range {
+    flex-wrap: wrap;
+  }
+  .date-range__field {
+    flex: 1 1 140px;
+    width: auto;
+  }
+}
+</style>

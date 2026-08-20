@@ -18,29 +18,9 @@
       <div class="login-right">
         <div class="login-card">
           <div class="login-header">
-            <svg class="login-logo" viewBox="0 0 140 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="mj-blue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#60a5fa" />
-                  <stop offset="100%" stop-color="#1d4ed8" />
-                </linearGradient>
-                <linearGradient id="mj-orange" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#fb923c" />
-                  <stop offset="100%" stop-color="#ea580c" />
-                </linearGradient>
-              </defs>
-              <text x="0" y="40" font-family="Arial, sans-serif" font-weight="900" font-size="44" font-style="italic" fill="url(#mj-blue)">M</text>
-              <text x="62" y="40" font-family="Arial, sans-serif" font-weight="900" font-size="44" font-style="italic" fill="url(#mj-orange)">J</text>
-              <g transform="translate(4 46) rotate(-6)">
-                <rect x="0" y="0" width="76" height="9" rx="2" fill="#1e293b" />
-                <rect x="6" y="4" width="10" height="1.6" rx="0.8" fill="#e2e8f0" />
-                <rect x="22" y="4" width="10" height="1.6" rx="0.8" fill="#e2e8f0" />
-                <rect x="38" y="4" width="10" height="1.6" rx="0.8" fill="#e2e8f0" />
-                <rect x="54" y="4" width="10" height="1.6" rx="0.8" fill="#e2e8f0" />
-              </g>
-            </svg>
-            <div class="login-brand-name">MJ TRANSPORT</div>
-            <div class="login-brand-tagline">FLEET &amp; LOGISTICS MANAGEMENT</div>
+            <div class="login-logo-badge">
+              <img :src="mjLogo" alt="MJ Transport" class="login-logo-img" />
+            </div>
 
             <h2>Welcome Back</h2>
             <p>Sign in to continue to your account</p>
@@ -99,9 +79,9 @@
       </div>
     </div>
 
-    <div class="page-footer">
+    <!-- <div class="page-footer">
       <span>SAFE</span><span class="dot">•</span><span>SMART</span><span class="dot">•</span><span>ALWAYS ON</span>
-    </div>
+    </div> -->
 
     <AppSnackbar v-model="snackbar.show" :color="snackbar.color" :timeout="4000">
       {{ snackbar.text }}
@@ -119,6 +99,7 @@ import { useAuthStore } from "@/stores/auth.store";
 import { loginSchema } from "@/utils/validators";
 import { firstAccessibleModulePath } from "@/config/moduleRegistry";
 import backgroundImage from "@/assets/login/LoginLeftPanel.png";
+import mjLogo from "@/assets/login/MJ Transport Logo.png";
 
 const router = useRouter();
 const route = useRoute();
@@ -162,7 +143,8 @@ const onSubmit = handleSubmit(async (values) => {
 <style scoped>
 .login-page {
   position: relative;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: #060b18;
@@ -184,15 +166,15 @@ const onSubmit = handleSubmit(async (values) => {
 .login-grid {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 60% 40%;
-  min-height: 100vh;
+  grid-template-columns: 65% 35%;
+  min-height: 0;
 }
 
 /* ===== LEFT PANEL ===== */
 .login-left {
   position: relative;
   background-size: cover;
-  background-position: center;
+  background-position: top center;
   background-repeat: no-repeat;
   min-height: 100%;
 }
@@ -210,6 +192,7 @@ const onSubmit = handleSubmit(async (values) => {
   align-items: center;
   justify-content: center;
   padding: 40px 32px;
+  overflow-y: auto;
   background:
     repeating-linear-gradient(135deg, transparent 0 60px, rgba(96, 165, 250, 0.035) 60px 61px),
     linear-gradient(160deg, #0a1224 0%, #060b18 100%);
@@ -232,27 +215,21 @@ const onSubmit = handleSubmit(async (values) => {
   margin-bottom: 24px;
 }
 
-.login-logo {
-  width: 92px;
-  height: 42px;
-  margin: 0 auto 6px;
+.login-logo-badge {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 18px;
+  border-radius: 18px;
+  overflow: hidden;
+  /* background: #fff; */
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(96, 165, 250, 0.2);
+}
+
+.login-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   display: block;
-  filter: drop-shadow(0 0 14px rgba(59, 130, 246, 0.35));
-}
-
-.login-brand-name {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: #f8fafc;
-}
-
-.login-brand-tagline {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  color: #60a5fa;
-  margin-bottom: 18px;
 }
 
 .login-header h2 {

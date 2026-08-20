@@ -103,6 +103,7 @@
 import { computed, onMounted } from 'vue';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { formatCurrency, formatNumber, formatRelativeTime } from '@/utils/format';
+import { useTheme } from '@/composables/useTheme';
 import StatCard from '@/components/StatCard.vue';
 import {
   AppProgressCircular,
@@ -118,6 +119,7 @@ import {
 } from '@/components/ui';
 
 const dashboardStore = useDashboardStore();
+const { isDark } = useTheme();
 
 onMounted(() => {
   dashboardStore.fetchSummary();
@@ -125,18 +127,26 @@ onMounted(() => {
 
 const cards = computed(() => dashboardStore.summary!.cards);
 
+const chartTheme = computed(() => ({
+  mode: isDark.value ? 'dark' : 'light',
+  foreColor: isDark.value ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
+  gridBorderColor: isDark.value ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)',
+}));
+
 const revenueChartSeries = computed(() => [
   { name: 'Revenue', data: dashboardStore.summary?.revenueChart.revenue || [] },
   { name: 'Expenses', data: dashboardStore.summary?.revenueChart.expenses || [] },
 ]);
 
 const revenueChartOptions = computed(() => ({
-  chart: { toolbar: { show: false } },
+  chart: { toolbar: { show: false }, foreColor: chartTheme.value.foreColor },
+  theme: { mode: chartTheme.value.mode },
   colors: ['#1E3A8A', '#F97316'],
   dataLabels: { enabled: false },
   stroke: { curve: 'smooth', width: 2 },
+  grid: { borderColor: chartTheme.value.gridBorderColor },
   xaxis: { categories: dashboardStore.summary?.revenueChart.categories || [] },
-  legend: { position: 'top' },
+  legend: { position: 'top', labels: { colors: chartTheme.value.foreColor } },
 }));
 
 const tripChartSeries = computed(() => [
@@ -144,10 +154,12 @@ const tripChartSeries = computed(() => [
 ]);
 
 const tripChartOptions = computed(() => ({
-  chart: { toolbar: { show: false } },
+  chart: { toolbar: { show: false }, foreColor: chartTheme.value.foreColor },
+  theme: { mode: chartTheme.value.mode },
   colors: ['#1E3A8A'],
   plotOptions: { bar: { borderRadius: 6, columnWidth: '45%' } },
   dataLabels: { enabled: false },
+  grid: { borderColor: chartTheme.value.gridBorderColor },
   xaxis: { categories: dashboardStore.summary?.tripChart.categories || [] },
 }));
 
@@ -169,7 +181,7 @@ function statusColor(status: string) {
 .section-title {
   font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-text);
   margin-bottom: 12px;
 }
 </style>

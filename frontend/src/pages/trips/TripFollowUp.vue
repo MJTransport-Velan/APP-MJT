@@ -1,17 +1,22 @@
 <template>
   <div v-if="trip" class="d-flex flex-column ga-4">
-    <div class="d-flex flex-wrap align-center justify-space-between ga-2">
-      <div>
-        <div class="d-flex align-center ga-2">
-          <AppBtn icon="mdi-arrow-left" variant="text" size="small" @click="router.push('/trips/list')" />
-          <h2 class="text-h6">Trip {{ trip.tripNumber }}</h2>
-          <TripStatusChip :status="trip.status" />
-        </div>
-        <div class="text-caption text-medium-emphasis ml-8">
-          {{ trip.fromLocation.name }} &rarr; {{ trip.toLocation.name }}
+    <div class="trip-header">
+      <div class="trip-header__top">
+        <AppBtn icon="mdi-arrow-left" variant="text" size="small" class="trip-header__back" @click="router.push('/trips/list')" />
+        <div class="trip-header__title-block">
+          <div class="trip-header__title-row">
+            <h2 class="text-h6">Trip {{ trip.tripNumber }}</h2>
+            <TripStatusChip :status="trip.status" />
+          </div>
+          <div class="trip-header__route">
+            <AppIcon icon="mdi-map-marker-outline" size="small" />
+            <span>{{ trip.fromLocation.name }}</span>
+            <AppIcon icon="mdi-arrow-right-thin" size="small" />
+            <span>{{ trip.toLocation.name }}</span>
+          </div>
         </div>
       </div>
-      <div class="d-flex ga-2">
+      <div class="trip-header__actions">
         <AppBtn variant="outlined" prepend-icon="mdi-share-variant-outline" @click="onShare">Share Trip</AppBtn>
         <AppMenu>
           <template #activator>
@@ -29,6 +34,7 @@
         <AppBtn
           v-if="nextStatus"
           color="primary"
+          class="trip-header__primary-action"
           :loading="updatingStatus"
           @click="onMarkAsClick"
         >
@@ -117,22 +123,21 @@
     <div class="bottom-grid">
       <AppCard variant="outlined" class="pa-4">
         <div class="text-subtitle-2 font-weight-medium mb-2">Trip Information</div>
-        <div class="d-flex flex-column ga-2 text-caption">
-          <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Load Type</span><span class="font-weight-medium">{{ trip.intent.loadMode === 'PART' ? 'Part Load' : 'Full Load' }}</span></div>
-          <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Material</span><span class="font-weight-medium">{{ trip.intent.material?.name || '-' }}</span></div>
-          <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Weight</span><span class="font-weight-medium">{{ trip.loadWeight ?? trip.intent.quantityTon ?? '-' }} MT</span></div>
-          <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Truck Type</span><span class="font-weight-medium">{{ trip.intent.vehicleType?.name || '-' }}</span></div>
+        <div class="d-flex flex-column detail-rows text-caption">
+          <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Load Type</span><span class="font-weight-medium">{{ trip.intent.loadMode === 'PART' ? 'Part Load' : 'Full Load' }}</span></div>
+          <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Material</span><span class="font-weight-medium">{{ trip.intent.material?.name || '-' }}</span></div>
+          <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Weight</span><span class="font-weight-medium">{{ trip.loadWeight ?? trip.intent.quantityTon ?? '-' }} MT</span></div>
+          <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Truck Type</span><span class="font-weight-medium">{{ trip.intent.vehicleType?.name || '-' }}</span></div>
         </div>
       </AppCard>
 
       <AppCard variant="outlined" class="pa-4">
         <div class="text-subtitle-2 font-weight-medium mb-2">Financial Summary</div>
-        <div class="d-flex flex-column ga-2 text-caption">
-          <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Client Amount</span><span class="font-weight-medium">{{ trip.freightAmount ? formatCurrency(trip.freightAmount) : '-' }}</span></div>
+        <div class="d-flex flex-column detail-rows text-caption">
+          <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Client Amount</span><span class="font-weight-medium">{{ trip.freightAmount ? formatCurrency(trip.freightAmount) : '-' }}</span></div>
           <template v-if="trip.supplierRate">
-            <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Supplier Payout</span><span class="font-weight-medium">{{ formatCurrency(trip.supplierRate) }}</span></div>
-            <AppDivider />
-            <div class="d-flex justify-space-between"><span class="text-medium-emphasis">Profit</span><span class="font-weight-bold text-primary">{{ formatCurrency(profit) }}</span></div>
+            <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Supplier Payout</span><span class="font-weight-medium">{{ formatCurrency(trip.supplierRate) }}</span></div>
+            <div class="d-flex justify-space-between detail-row"><span class="text-medium-emphasis">Profit</span><span class="font-weight-bold text-primary">{{ formatCurrency(profit) }}</span></div>
           </template>
         </div>
       </AppCard>
@@ -473,6 +478,86 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.trip-header {
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-1);
+}
+.trip-header__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.trip-header__back {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.trip-header__title-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.trip-header__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.trip-header__title-row h2 {
+  word-break: break-word;
+}
+.trip-header__route {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  color: var(--color-text-medium);
+  flex-wrap: wrap;
+}
+.trip-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+.trip-header__primary-action {
+  margin-left: auto;
+}
+@media (max-width: 600px) {
+  .trip-header__actions {
+    flex-direction: column;
+  }
+  .trip-header__actions > * {
+    width: 100%;
+    margin-left: 0;
+  }
+  .trip-header__actions :deep(.app-menu) {
+    width: 100%;
+  }
+  .trip-header__actions :deep(.app-menu .app-btn) {
+    width: 100%;
+  }
+}
+
+.detail-rows {
+  gap: 0;
+}
+.detail-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.detail-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.detail-row:first-child {
+  padding-top: 0;
+}
+
 .info-stack {
   display: flex;
   flex-direction: column;

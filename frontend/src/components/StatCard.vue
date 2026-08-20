@@ -50,14 +50,14 @@ withDefaults(
 
 .stat-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-medium);
   margin: 0 0 4px;
 }
 
 .stat-value {
   font-size: 22px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--color-text);
   margin: 0;
 }
 </style>

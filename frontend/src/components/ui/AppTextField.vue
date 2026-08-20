@@ -1,5 +1,5 @@
 <template>
-  <div class="app-field" :class="{ 'app-field--disabled': disabled, 'app-field--error': hasError }">
+  <div class="app-field" :class="[{ 'app-field--disabled': disabled, 'app-field--error': hasError }, $attrs.class]" :style="$attrs.style">
     <label v-if="label" class="app-field__label">{{ label }}<span v-if="required" class="app-field__required">*</span></label>
     <div class="app-field__control">
       <AppIcon v-if="prependInnerIcon" :icon="prependInnerIcon" size="small" class="app-field__icon" />
@@ -10,7 +10,7 @@
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
-        v-bind="$attrs"
+        v-bind="inputAttrs"
         @input="onInput"
       />
       <button
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, useAttrs } from 'vue';
 import AppIcon from './AppIcon.vue';
 
 const props = withDefaults(
@@ -53,6 +53,15 @@ const props = withDefaults(
 );
 
 defineOptions({ inheritAttrs: false });
+
+// class/style size the field itself (call sites do `style="max-width: 160px"`),
+// so they stay on the wrapper; every other attr — min, max, step, maxlength —
+// belongs on the input.
+const attrs = useAttrs();
+const inputAttrs = computed(() => {
+  const { class: _class, style: _style, ...rest } = attrs;
+  return rest;
+});
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];

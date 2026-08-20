@@ -39,3 +39,5 @@ export { default as AppStepperHeader } from './AppStepperHeader.vue';
 export { default as AppStepperItem } from './AppStepperItem.vue';
 export { default as AppBtnToggle } from './AppBtnToggle.vue';
 export { default as AppSkeletonLoader } from './AppSkeletonLoader.vue';
+export { default as ExcelIcon } from './ExcelIcon.vue';
+export { default as ExcelExportButton } from './ExcelExportButton.vue';

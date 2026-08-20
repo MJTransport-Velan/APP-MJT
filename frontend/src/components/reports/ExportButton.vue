@@ -5,7 +5,9 @@
         <AppBtn v-bind="props" variant="tonal" prepend-icon="mdi-download" :loading="exporting">Export</AppBtn>
       </template>
       <AppList density="compact">
-        <AppListItem prepend-icon="mdi-file-excel-outline" title="Excel (.xlsx)" @click="$emit('export', 'xlsx')" />
+        <AppListItem title="Excel (.xlsx)" @click="$emit('export', 'xlsx')">
+          <template #prepend><ExcelIcon :size="20" /></template>
+        </AppListItem>
         <AppListItem prepend-icon="mdi-file-pdf-box" title="PDF" @click="$emit('export', 'pdf')" />
         <AppListItem prepend-icon="mdi-file-delimited-outline" title="CSV" @click="$emit('export', 'csv')" />
       </AppList>
@@ -15,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { AppMenu, AppBtn, AppList, AppListItem } from '@/components/ui';
+import { AppMenu, AppBtn, AppList, AppListItem, ExcelIcon } from '@/components/ui';
 
 withDefaults(defineProps<{ exporting?: boolean }>(), { exporting: false });
 defineEmits<{ export: [format: 'xlsx' | 'pdf' | 'csv']; print: [] }>();

@@ -58,6 +58,10 @@ const currentIndex = computed(() => steps.indexOf(props.status));
 .trip-progress {
   display: flex;
   align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
 .trip-progress__step {
   display: flex;

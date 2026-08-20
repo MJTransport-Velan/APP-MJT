@@ -250,9 +250,13 @@
             truck, date/time and amount, or a reference number seen before — is rejected as a duplicate, so a
             statement is safe to re-upload.
           </p>
-          <AppBtn variant="text" size="small" prepend-icon="mdi-download-outline" class="mb-3 px-0" @click="downloadFastTagSample">
-            Download Sample Excel
-          </AppBtn>
+          <ExcelExportButton
+            variant="text"
+            size="small"
+            label="Download Sample Excel"
+            class="mb-3 px-0"
+            @click="downloadFastTagSample"
+          />
           <AppFileInput v-model="importFile" label="File" accept=".xlsx" />
           <div v-if="importResult" class="mt-3 text-body-2">
             <div>Total rows: {{ importResult.totalRows }}</div>
@@ -288,6 +292,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import {
   AppTabs, AppTab, AppWindow, AppWindowItem, AppBtn, AppSelect, AppTextField, AppChip,
   AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput, AppMenu,
+  ExcelExportButton,
 } from '@/components/ui';
 import type { FastTagWalletSummary, FastTagTransaction } from '@/types/phase6.types';
 

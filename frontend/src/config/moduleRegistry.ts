@@ -49,6 +49,21 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'POD Management', icon: 'mdi-file-check-outline', to: '/operations/pod' },
     ],
   },
+  // Parcel bookings taken on the public MJ Express website, worked through to
+  // a Lorry Receipt. Deliberately its own top-level entry rather than a page
+  // inside Operations: it is a distinct intake-to-LR workflow with its own
+  // permissions, and the brief calls for it to stay off the dashboard.
+  {
+    key: 'booking-lr',
+    title: 'Booking & LR',
+    icon: 'mdi-package-variant-closed',
+    path: '/bookings',
+    permission: 'booking.view',
+    quickLinks: [
+      { title: 'Booking List', icon: 'mdi-format-list-bulleted', to: '/bookings/list' },
+      { title: 'New Booking', icon: 'mdi-plus-box-outline', to: '/bookings/create' },
+    ],
+  },
   // 'Operations' (trip execution/POD/expenses) and 'Fleet' (vehicles, fuel,
   // maintenance, spare parts) used to be two separate sidebar sections —
   // Fleet has no independent workflow of its own; every fleet page exists to

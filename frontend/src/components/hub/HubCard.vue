@@ -79,7 +79,7 @@ const backgroundImage = computed(() => {
   height: 100%;
   padding: 0;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 5px 5px 10px 3px #d1d3db78;
+  box-shadow: var(--shadow-2);
 }
 .hub-card:hover {
   transform: translateY(-3px);
@@ -175,7 +175,7 @@ const backgroundImage = computed(() => {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid var(--color-divider);
-  color: #0a1431;
+  color: var(--color-primary);
   font-size: 13px;
   font-weight: 600;
   justify-content: end;

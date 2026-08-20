@@ -338,7 +338,8 @@ onBeforeUnmount(() => {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--color-text-medium);
-  margin-bottom: 6px;
+  /* Matches AppTextField so a select and a text field line up side by side. */
+  margin-bottom: 4px;
 }
 .app-field__required {
   color: var(--color-error);

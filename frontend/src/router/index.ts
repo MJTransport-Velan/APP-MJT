@@ -15,7 +15,16 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/AdminLayout.vue'),
     meta: { requiresAuth: true },
     children: [
-      { path: '', redirect: () => firstAccessibleModulePath(useAuthStore().hasPermission) },
+      {
+        path: '',
+        redirect: () => {
+          const authStore = useAuthStore();
+          if (!authStore.isAuthenticated) {
+            return { name: 'login' };
+          }
+          return firstAccessibleModulePath(authStore.hasPermission);
+        },
+      },
       {
         path: 'dashboard',
         name: 'dashboard',
@@ -73,6 +82,40 @@ const routes: RouteRecordRaw[] = [
         name: 'trips-detail',
         component: () => import('@/pages/trips/TripFollowUp.vue'),
         meta: { breadcrumb: 'Trip Follow-up', permission: 'trip.view' },
+      },
+      {
+        path: 'bookings',
+        name: 'bookings',
+        component: RouterView,
+        meta: { breadcrumb: 'Booking & LR', permission: 'booking.view' },
+        children: [
+          {
+            path: '',
+            name: 'bookings-hub',
+            component: () => import('@/pages/bookings/BookingList.vue'),
+            meta: { breadcrumb: 'Booking & LR' },
+          },
+          {
+            path: 'list',
+            name: 'bookings-list',
+            component: () => import('@/pages/bookings/BookingList.vue'),
+            meta: { breadcrumb: 'Booking List' },
+          },
+          {
+            path: 'create',
+            name: 'bookings-create',
+            component: () => import('@/pages/bookings/CreateBooking.vue'),
+            meta: { breadcrumb: 'New Booking', permission: 'booking.create' },
+          },
+        ],
+      },
+      // Sibling rather than a child of 'bookings', so the detail URL stays
+      // /bookings/:id and does not collide with the 'list' child route.
+      {
+        path: 'bookings/:id',
+        name: 'bookings-detail',
+        component: () => import('@/pages/bookings/BookingDetails.vue'),
+        meta: { breadcrumb: 'Booking Details', permission: 'booking.view' },
       },
       {
         path: 'operations',

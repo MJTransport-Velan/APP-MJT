@@ -252,9 +252,13 @@
             odometerReading, entryDate, tripNumber, fuelType, billingMethod, invoiceNumber, referenceNumber, remarks.
             Driver is auto-derived from the trip, never taken from the file.
           </p>
-          <AppBtn variant="text" size="small" prepend-icon="mdi-download-outline" class="mb-3 px-0" @click="downloadFuelSample">
-            Download Sample Excel
-          </AppBtn>
+          <ExcelExportButton
+            variant="text"
+            size="small"
+            label="Download Sample Excel"
+            class="mb-3 px-0"
+            @click="downloadFuelSample"
+          />
           <AppFileInput v-model="importFile" label="File" accept=".xlsx" />
           <div v-if="importResult" class="mt-3 text-body-2">
             <div>Total rows: {{ importResult.totalRows }}</div>
@@ -301,6 +305,7 @@ import FuelSummaryCard from '@/components/fleet/FuelSummaryCard.vue';
 import {
   AppTabs, AppTab, AppWindow, AppWindowItem, AppBtn, AppSelect, AppTextField, AppChip,
   AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput,
+  ExcelExportButton,
 } from '@/components/ui';
 import type { VehicleFuelSummary } from '@/types/fleet.types';
 

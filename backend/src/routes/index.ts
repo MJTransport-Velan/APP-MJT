@@ -105,6 +105,8 @@ import aiInsightRoutes from './ai-insight.routes';
 import kpiRoutes from './kpi.routes';
 import automationRuleRoutes from './automation-rule.routes';
 import systemDashboardRoutes from './system-dashboard.routes';
+import bookingRoutes from './booking.routes';
+import publicRoutes from './public.routes';
 
 const router = Router();
 
@@ -265,5 +267,11 @@ router.use('/system/ai-insights', aiInsightRoutes);
 router.use('/system/kpi', kpiRoutes);
 router.use('/system/automation-rules', automationRuleRoutes);
 router.use('/system', systemDashboardRoutes);
+
+// Phase 16 — Booking & LR. `/public/*` is unauthenticated by design: it is the
+// booking, tracking and contact intake surface for the MJ Express website,
+// which has no backend of its own. Everything else sits behind auth.
+router.use('/bookings', bookingRoutes);
+router.use('/public', publicRoutes);
 
 export default router;

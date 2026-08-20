@@ -20,7 +20,7 @@
         <AppTextField v-model="asOfDate" type="date" label="As of Date" density="compact" hide-details style="max-width: 160px" :max="todayStr" @update:model-value="onCustomDate" />
         <AppBtn variant="outlined" size="small" @click="setToday">Today</AppBtn>
         <AppBtn variant="outlined" size="small" prepend-icon="mdi-refresh" :loading="loading" @click="load">Refresh</AppBtn>
-        <AppBtn variant="outlined" size="small" prepend-icon="mdi-file-excel-outline" :loading="exporting" :disabled="!result" @click="onExport">Export</AppBtn>
+        <ExcelExportButton variant="outlined" size="small" :loading="exporting" :disabled="!result" @click="onExport" />
       </div>
     </div>
 
@@ -203,7 +203,7 @@ import { formatCurrency, localDateStr } from '@/utils/format';
 import { exportRowsToExcel } from '@/utils/exportExcel';
 import { useSnackbar } from '@/composables/useSnackbar';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
-import { AppCard, AppCardTitle, AppCardText, AppProgressCircular, AppAlert, AppBtn, AppTextField, AppSelect, AppDialog, AppTable, AppIcon } from '@/components/ui';
+import { AppCard, AppCardTitle, AppCardText, AppProgressCircular, AppAlert, AppBtn, AppTextField, AppSelect, AppDialog, AppTable, AppIcon, ExcelExportButton } from '@/components/ui';
 import type { BalanceSheetResult, NamedAmountRow, BalanceSheetAssets, BalanceSheetLiabilities } from '@/types/balanceSheet.types';
 
 type PartyType = 'customer' | 'supplier' | 'driver' | 'employee' | 'capitalPartner';

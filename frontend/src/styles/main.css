@@ -281,9 +281,13 @@ a {
 /* .d-flex.ga-2 rows that rely on the viewport being wide enough for      */
 /* every child to fit; on a phone that silently clips instead of         */
 /* wrapping. Force wrapping below 600px so nothing gets cut off.          */
+/* Excludes .flex-column: forcing flex-wrap on a column-direction flex    */
+/* container flips it to shrink-to-fit/max-content sizing instead of      */
+/* filling the viewport width, which made whole pages grow wider than     */
+/* the screen and defeated the safety net it was meant to be.             */
 /* ---------------------------------------------------------------------- */
 @media (max-width: 600px) {
-  .d-flex {
+  .d-flex:not(.flex-column) {
     flex-wrap: wrap;
   }
 }
