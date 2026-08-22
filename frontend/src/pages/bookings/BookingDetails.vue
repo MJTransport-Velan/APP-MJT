@@ -109,13 +109,6 @@
       </AppCardText>
     </AppCard>
 
-    <!-- Operations linkage, once the trip exists -->
-    <AppAlert v-if="booking.trip" type="info" variant="tonal" class="mb-4">
-      Raised in Operations as trip
-      <RouterLink :to="`/trips/${booking.trip.id}`" class="trip-link">{{ booking.trip.tripNumber }}</RouterLink>
-      for customer MJ Express — currently {{ booking.trip.status.replace(/_/g, ' ').toLowerCase() }}.
-    </AppAlert>
-
     <div class="detail-grid">
       <AppCard variant="outlined">
         <AppCardTitle class="text-subtitle-1">Customer Details</AppCardTitle>
@@ -327,7 +320,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, h } from 'vue';
-import { useRoute, useRouter, RouterLink } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useBookingStore } from '@/stores/bookings';
 import { bookingApi } from '@/services/bookings';
 import { locationApi } from '@/services/masters';
@@ -345,6 +338,8 @@ import {
   AppCardActions,
   AppChip,
   AppDialog,
+  AppSelect,
+  AppTextField,
   AppTextarea,
   AppAlert,
   AppTimeline,
@@ -524,11 +519,7 @@ async function onSaveRoute() {
       routeForm.toLocationId
     );
     booking.value = response.data.data;
-    success(
-      booking.value.trip
-        ? `Route saved — trip ${booking.value.trip.tripNumber} created for MJ Express`
-        : 'Route saved'
-    );
+    success('Route saved');
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to save route'));
   } finally {
@@ -538,14 +529,25 @@ async function onSaveRoute() {
 
 async function onConfirm() {
   if (!booking.value) return;
-  if (!validateRoute()) {
-    error('Map both places to a location before confirming');
-    return;
+
+  // Only website bookings need mapping here — the route card (and routeForm)
+  // only exists when needsRoute is true. A counter booking already carries a
+  // mapped route from creation, so fall back to that instead of validating a
+  // form that was never shown.
+  let fromLocationId = booking.value.fromLocation?.id ?? '';
+  let toLocationId = booking.value.toLocation?.id ?? '';
+  if (needsRoute.value) {
+    if (!validateRoute()) {
+      error('Map both places to a location before confirming');
+      return;
+    }
+    fromLocationId = routeForm.fromLocationId;
+    toLocationId = routeForm.toLocationId;
   }
 
   confirming.value = true;
   try {
-    booking.value = await store.confirm(booking.value.id, routeForm.fromLocationId, routeForm.toLocationId);
+    booking.value = await store.confirm(booking.value.id, fromLocationId, toLocationId);
     success(`Booking confirmed — LR ${booking.value.lrNumber} issued`);
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to confirm booking'));
@@ -573,11 +575,7 @@ async function onAssignVehicle(payload: AssignVehiclePayload) {
   assigning.value = true;
   try {
     booking.value = await store.assignVehicle(booking.value.id, payload);
-    success(
-      booking.value.trip
-        ? `Vehicle saved — trip ${booking.value.trip.tripNumber} created for MJ Express`
-        : 'Vehicle details saved'
-    );
+    success('Vehicle details saved');
   } catch (err) {
     const fieldErrors = (err as any)?.response?.data?.errors;
     if (fieldErrors && typeof fieldErrors === 'object') {
@@ -677,10 +675,6 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
-}
-.trip-link {
-  font-weight: 600;
-  color: inherit;
 }
 .generate-lr-row {
   display: flex;

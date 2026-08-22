@@ -27,13 +27,20 @@ export const env = {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  // Per authenticated user (see app.ts), not per IP. 200 was far too low for
+  // real use — that is ~13 requests a minute for an app whose hub pages issue
+  // several calls each, so an ordinary session could exhaust it.
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-    max: parseInt(process.env.RATE_LIMIT_MAX || '200', 10),
+    max: parseInt(process.env.RATE_LIMIT_MAX || '5000', 10),
   },
-  // Booking & LR: the Company that website bookings are raised against, so
-  // their trips show up in Operations under a single recognisable customer.
-  mjExpressCompanyCode: process.env.MJEXPRESS_COMPANY_CODE || 'CUST-MJEXPRESS',
+  // Sign-in attempts, per IP. Deliberately tight: this is the brute-force
+  // control, and successful logins are not counted, so a legitimate user
+  // never meets it.
+  loginRateLimit: {
+    windowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || '900000', 10),
+    max: parseInt(process.env.LOGIN_RATE_LIMIT_MAX || '10', 10),
+  },
   // Limits for the unauthenticated /api/public/* routes, tighter than the
   // global limiter above because those endpoints write rows and burn document
   // numbers. Configurable for the same reason the global one is — staging and

@@ -1,5 +1,6 @@
 import { Prisma, ApprovalStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const advanceWithRelations = Prisma.validator<Prisma.EmployeeAdvanceInclude>()({
   employee: true,
@@ -45,9 +46,13 @@ export const employeeAdvanceRepository = {
   },
 
   async nextAdvanceNumber() {
-    const count = await prisma.employeeAdvance.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `EAV-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('EAV', 4, async (stamp) => {
+      const rows = await prisma.employeeAdvance.findMany({
+        where: { advanceNumber: { startsWith: `EAV-${stamp}-` } },
+        select: { advanceNumber: true },
+      });
+      return highestSequenceToday(rows, 'advanceNumber', 'EAV', stamp);
+    });
   },
 
   create(data: Prisma.EmployeeAdvanceUncheckedCreateInput) {

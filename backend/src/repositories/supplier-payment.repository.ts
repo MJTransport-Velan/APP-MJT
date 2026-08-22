@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 import { dateRangeWhere } from '../utils/reportFilters';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const paymentWithRelations = Prisma.validator<Prisma.SupplierPaymentInclude>()({
   supplier: true,
@@ -63,9 +64,13 @@ export const supplierPaymentRepository = {
   },
 
   async nextPaymentNumber() {
-    const count = await prisma.supplierPayment.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `SPY-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('SPY', 4, async (stamp) => {
+      const rows = await prisma.supplierPayment.findMany({
+        where: { paymentNumber: { startsWith: `SPY-${stamp}-` } },
+        select: { paymentNumber: true },
+      });
+      return highestSequenceToday(rows, 'paymentNumber', 'SPY', stamp);
+    });
   },
 
   create(data: Prisma.SupplierPaymentUncheckedCreateInput) {

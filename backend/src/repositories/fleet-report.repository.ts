@@ -266,23 +266,23 @@ const fuelVehicleWiseReport: ReportDefinition = {
   run: async (filters) => {
     const where: Prisma.FuelEntryWhereInput = { deletedAt: null, AND: [dateRangeWhere('entryDate', filters)] };
     const entries = await prisma.fuelEntry.findMany({ where, include: { vehicle: true } });
-    const byVehicle = new Map<string, { registrationNumber: string; liters: number; cost: number; rateSum: number; km: number; mileageSum: number; mileageCount: number }>();
+    const byVehicle = new Map<string, { registrationNumber: string; liters: number; cost: number; rateSum: number; rateCount: number; km: number; mileageSum: number; mileageCount: number }>();
     for (const e of entries) {
-      const existing = byVehicle.get(e.vehicleId) || { registrationNumber: e.vehicle.registrationNumber, liters: 0, cost: 0, rateSum: 0, km: 0, mileageSum: 0, mileageCount: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
-      existing.rateSum += Number(e.ratePerLiter);
+      const existing = byVehicle.get(e.vehicleId) || { registrationNumber: e.vehicle.registrationNumber, liters: 0, cost: 0, rateSum: 0, rateCount: 0, km: 0, mileageSum: 0, mileageCount: 0 };
+      existing.liters += Number(e.quantityLiters ?? 0);
+      existing.cost += Number(e.totalAmount ?? 0);
+      // Entries booked as a plain amount carry no rate, and averaging them
+      // in as zero would drag every vehicle's average rate down.
+      if (e.ratePerLiter != null) { existing.rateSum += Number(e.ratePerLiter); existing.rateCount += 1; }
       existing.km += Number(e.distanceCovered || 0);
       if (e.mileageKmpl != null) { existing.mileageSum += Number(e.mileageKmpl); existing.mileageCount += 1; }
       byVehicle.set(e.vehicleId, existing);
     }
-    const counts = new Map<string, number>();
-    for (const e of entries) counts.set(e.vehicleId, (counts.get(e.vehicleId) || 0) + 1);
-    const rows = Array.from(byVehicle.entries()).map(([vehicleId, v]) => ({
+    const rows = Array.from(byVehicle.values()).map((v) => ({
       vehicle: v.registrationNumber,
       totalLiters: Number(v.liters.toFixed(2)),
       totalCost: Number(v.cost.toFixed(2)),
-      avgRate: Number((v.rateSum / (counts.get(vehicleId) || 1)).toFixed(2)),
+      avgRate: v.rateCount ? Number((v.rateSum / v.rateCount).toFixed(2)) : null,
       totalKM: v.km,
       avgMileageKmpl: v.mileageCount ? Number((v.mileageSum / v.mileageCount).toFixed(2)) : null,
     }));
@@ -306,8 +306,8 @@ const fuelTripWiseReport: ReportDefinition = {
     for (const e of entries) {
       if (!e.tripId || !e.trip) continue;
       const existing = byTrip.get(e.tripId) || { tripNumber: e.trip.tripNumber, vehicle: e.vehicle.registrationNumber, liters: 0, cost: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
+      existing.liters += Number(e.quantityLiters ?? 0);
+      existing.cost += Number(e.totalAmount ?? 0);
       byTrip.set(e.tripId, existing);
     }
     const rows = Array.from(byTrip.values()).map((v) => ({ trip: v.tripNumber, vehicle: v.vehicle, totalLiters: Number(v.liters.toFixed(2)), totalCost: Number(v.cost.toFixed(2)) }));
@@ -322,19 +322,32 @@ const fuelDriverWiseReport: ReportDefinition = {
     { key: 'driver', label: 'Driver' },
     { key: 'totalLiters', label: 'Total Litres' },
     { key: 'totalCost', label: 'Total Cost' },
+    { key: 'totalKM', label: 'Total KM' },
+    { key: 'avgMileageKmpl', label: 'Mileage (km/l)' },
+    { key: 'costPerKm', label: 'Cost / KM' },
   ],
   run: async (filters) => {
     const where: Prisma.FuelEntryWhereInput = { deletedAt: null, driverId: { not: null }, AND: [dateRangeWhere('entryDate', filters)] };
     const entries = await prisma.fuelEntry.findMany({ where, include: { driver: true } });
-    const byDriver = new Map<string, { name: string; liters: number; cost: number }>();
+    const byDriver = new Map<string, { name: string; liters: number; cost: number; km: number; mileageSum: number; mileageCount: number }>();
     for (const e of entries) {
       if (!e.driverId || !e.driver) continue;
-      const existing = byDriver.get(e.driverId) || { name: e.driver.name, liters: 0, cost: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
+      const existing = byDriver.get(e.driverId) || { name: e.driver.name, liters: 0, cost: 0, km: 0, mileageSum: 0, mileageCount: 0 };
+      existing.liters += Number(e.quantityLiters ?? 0);
+      existing.cost += Number(e.totalAmount ?? 0);
+      existing.km += Number(e.distanceCovered ?? 0);
+      // Only fills that recorded their litres produce a km/l figure.
+      if (e.mileageKmpl != null) { existing.mileageSum += Number(e.mileageKmpl); existing.mileageCount += 1; }
       byDriver.set(e.driverId, existing);
     }
-    const rows = Array.from(byDriver.values()).map((v) => ({ driver: v.name, totalLiters: Number(v.liters.toFixed(2)), totalCost: Number(v.cost.toFixed(2)) }));
+    const rows = Array.from(byDriver.values()).map((v) => ({
+      driver: v.name,
+      totalLiters: Number(v.liters.toFixed(2)),
+      totalCost: Number(v.cost.toFixed(2)),
+      totalKM: v.km,
+      avgMileageKmpl: v.mileageCount ? Number((v.mileageSum / v.mileageCount).toFixed(2)) : null,
+      costPerKm: v.km > 0 ? Number((v.cost / v.km).toFixed(2)) : null,
+    }));
     return { rows, total: rows.length };
   },
 };
@@ -354,8 +367,8 @@ const fuelDateWiseReport: ReportDefinition = {
     for (const e of entries) {
       const key = e.entryDate.toISOString().slice(0, 10);
       const existing = byDate.get(key) || { liters: 0, cost: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
+      existing.liters += Number(e.quantityLiters ?? 0);
+      existing.cost += Number(e.totalAmount ?? 0);
       byDate.set(key, existing);
     }
     const rows = Array.from(byDate.entries())
@@ -377,19 +390,24 @@ const fuelMonthlySummaryReport: ReportDefinition = {
   run: async (filters) => {
     const where: Prisma.FuelEntryWhereInput = { deletedAt: null, AND: [dateRangeWhere('entryDate', filters)] };
     const entries = await prisma.fuelEntry.findMany({ where });
-    const byMonth = new Map<string, { liters: number; cost: number; rateSum: number; count: number }>();
+    const byMonth = new Map<string, { liters: number; cost: number; rateSum: number; rateCount: number }>();
     for (const e of entries) {
       const key = e.entryDate.toISOString().slice(0, 7);
-      const existing = byMonth.get(key) || { liters: 0, cost: 0, rateSum: 0, count: 0 };
-      existing.liters += Number(e.quantityLiters);
-      existing.cost += Number(e.totalAmount);
-      existing.rateSum += Number(e.ratePerLiter);
-      existing.count += 1;
+      const existing = byMonth.get(key) || { liters: 0, cost: 0, rateSum: 0, rateCount: 0 };
+      existing.liters += Number(e.quantityLiters ?? 0);
+      existing.cost += Number(e.totalAmount ?? 0);
+      // Only entries that actually carry a rate feed the average.
+      if (e.ratePerLiter != null) { existing.rateSum += Number(e.ratePerLiter); existing.rateCount += 1; }
       byMonth.set(key, existing);
     }
     const rows = Array.from(byMonth.entries())
       .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([month, v]) => ({ month, totalLiters: Number(v.liters.toFixed(2)), totalCost: Number(v.cost.toFixed(2)), avgRate: Number((v.rateSum / v.count).toFixed(2)) }));
+      .map(([month, v]) => ({
+        month,
+        totalLiters: Number(v.liters.toFixed(2)),
+        totalCost: Number(v.cost.toFixed(2)),
+        avgRate: v.rateCount ? Number((v.rateSum / v.rateCount).toFixed(2)) : null,
+      }));
     return { rows, total: rows.length };
   },
 };

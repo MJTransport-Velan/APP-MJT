@@ -1,6 +1,7 @@
 import { Prisma, TripStatus } from '@prisma/client';
 import { prisma } from '../config/db';
 import { dateRangeWhere } from '../utils/reportFilters';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const tripWithRelations = Prisma.validator<Prisma.TripInclude>()({
   intent: { include: { company: true, material: true, vehicleType: true } },
@@ -41,6 +42,32 @@ function ownershipWhere(ownership: 'OWN' | 'MARKET'): Prisma.TripWhereInput {
     ],
   };
 }
+
+export type TripUpdateData = Partial<{
+  freightAmount: number;
+  loadingCharges: number;
+  unloadingCharges: number;
+  loadWeight: number;
+  loadDescription: string;
+  scheduledStartDate: Date;
+  expectedDeliveryDate: Date;
+  podRequired: boolean;
+  vehicleId: string | null;
+  driverId: string | null;
+  supplierId: string;
+  supplierRate: number;
+  marketVehicleNumber: string;
+  marketDriverName: string;
+  marketDriverContact: string;
+  status: TripStatus;
+  actualStartDate: Date;
+  actualEndDate: Date;
+  podStatus: 'PENDING' | 'UPLOADED' | 'VERIFIED';
+  cancelReason: string;
+  isActive: boolean;
+  updatedById: string;
+  assignedById: string | null;
+}>;
 
 export const tripRepository = {
   async findManyPaginated(params: {
@@ -249,9 +276,13 @@ export const tripRepository = {
   },
 
   async nextTripNumber() {
-    const count = await prisma.trip.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `TRP-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('TRP', 4, async (stamp) => {
+      const rows = await prisma.trip.findMany({
+        where: { tripNumber: { startsWith: `TRP-${stamp}-` } },
+        select: { tripNumber: true },
+      });
+      return highestSequenceToday(rows, 'tripNumber', 'TRP', stamp);
+    });
   },
 
   create(data: {
@@ -273,35 +304,28 @@ export const tripRepository = {
     return prisma.trip.create({ data });
   },
 
-  update(
-    id: string,
-    data: Partial<{
-      freightAmount: number;
-      loadingCharges: number;
-      unloadingCharges: number;
-      loadWeight: number;
-      loadDescription: string;
-      scheduledStartDate: Date;
-      expectedDeliveryDate: Date;
-      podRequired: boolean;
-      vehicleId: string | null;
-      driverId: string | null;
-      supplierId: string;
-      supplierRate: number;
-      marketVehicleNumber: string;
-      marketDriverName: string;
-      marketDriverContact: string;
-      status: TripStatus;
-      actualStartDate: Date;
-      actualEndDate: Date;
-      podStatus: 'PENDING' | 'UPLOADED' | 'VERIFIED';
-      cancelReason: string;
-      isActive: boolean;
-      updatedById: string;
-      assignedById: string | null;
-    }>
-  ) {
+  update(id: string, data: TripUpdateData) {
     return prisma.trip.update({ where: { id }, data });
+  },
+
+  /**
+   * Applies an update only while the trip is still in `expectedStatus`, and
+   * returns how many rows that moved — 1 when this caller won the transition,
+   * 0 when someone else had already moved the trip. Putting the current
+   * status in the WHERE clause is what makes simultaneous transitions
+   * mutually exclusive; validating first and then writing cannot, because
+   * every racing caller validates against the same status before any writes.
+   */
+  async updateIfStatus(
+    id: string,
+    expectedStatus: TripStatus,
+    data: TripUpdateData
+  ): Promise<number> {
+    const result = await prisma.trip.updateMany({
+      where: { id, status: expectedStatus, deletedAt: null },
+      data: data as Prisma.TripUpdateManyMutationInput,
+    });
+    return result.count;
   },
 
   addStatusHistory(tripId: string, status: TripStatus, notes: string | undefined, createdById: string) {

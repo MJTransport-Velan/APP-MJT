@@ -1,5 +1,6 @@
 import { Prisma, ApprovalStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const advanceWithRelations = Prisma.validator<Prisma.DriverAdvanceInclude>()({
   driver: true,
@@ -43,9 +44,13 @@ export const driverAdvanceRepository = {
   },
 
   async nextAdvanceNumber() {
-    const count = await prisma.driverAdvance.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DAV-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('DAV', 4, async (stamp) => {
+      const rows = await prisma.driverAdvance.findMany({
+        where: { advanceNumber: { startsWith: `DAV-${stamp}-` } },
+        select: { advanceNumber: true },
+      });
+      return highestSequenceToday(rows, 'advanceNumber', 'DAV', stamp);
+    });
   },
 
   create(data: Prisma.DriverAdvanceUncheckedCreateInput) {

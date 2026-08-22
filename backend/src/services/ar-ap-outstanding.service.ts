@@ -46,8 +46,8 @@ export const arApOutstandingService = {
     }));
   },
 
-  /** Customer-wise + Route-wise grouping available today; Branch-wise deferred (Intent.branchId gap, §12/§21). */
-  async customerAging(query: { branchId?: string }) {
+  /** Customer-wise + Route-wise grouping. */
+  async customerAging() {
     const today = new Date();
     const invoices = await prisma.invoice.findMany({
       where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },

@@ -1,5 +1,6 @@
 import { Prisma, ApprovalStatus, DriverEarningCategory } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const earningWithRelations = Prisma.validator<Prisma.DriverEarningInclude>()({
   driver: true,
@@ -51,9 +52,13 @@ export const driverEarningRepository = {
   },
 
   async nextEarningNumber() {
-    const count = await prisma.driverEarning.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DEN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('DEN', 4, async (stamp) => {
+      const rows = await prisma.driverEarning.findMany({
+        where: { earningNumber: { startsWith: `DEN-${stamp}-` } },
+        select: { earningNumber: true },
+      });
+      return highestSequenceToday(rows, 'earningNumber', 'DEN', stamp);
+    });
   },
 
   create(data: Prisma.DriverEarningUncheckedCreateInput) {

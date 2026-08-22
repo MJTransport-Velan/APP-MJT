@@ -1,5 +1,6 @@
 import { Prisma, IntentStatus, LoadMode, VehicleOwnership } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const intentWithRelations = Prisma.validator<Prisma.IntentInclude>()({
   company: true,
@@ -67,9 +68,13 @@ export const intentRepository = {
   },
 
   async nextIntentNumber() {
-    const count = await prisma.intent.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `INT-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('INT', 4, async (stamp) => {
+      const rows = await prisma.intent.findMany({
+        where: { intentNumber: { startsWith: `INT-${stamp}-` } },
+        select: { intentNumber: true },
+      });
+      return highestSequenceToday(rows, 'intentNumber', 'INT', stamp);
+    });
   },
 
   create(data: {

@@ -37,7 +37,7 @@ export const createCapitalTransactionSchema = z.object({
     fundAccountType: fundAccountTypeEnum,
     fundAccountId: z.string().uuid('A valid Bank/Cash account is required'),
     remarks: z.string().optional(),
-  }),
+  }).strict(),
 });
 
 export type CreateCapitalTransactionInput = z.infer<typeof createCapitalTransactionSchema>['body'];

@@ -16,10 +16,31 @@ interface RowError {
   error: string;
 }
 
-function readRows(buffer: Buffer): Promise<Record<string, unknown>[]> {
+/**
+ * Loads an uploaded spreadsheet, turning a parse failure into a message the
+ * uploader can act on.
+ *
+ * exceljs throws its own low-level error when handed anything that is not a
+ * real .xlsx (a CSV renamed, a PDF picked by mistake, a truncated upload).
+ * That error is not an AppError, so it reached the generic handler and the
+ * user was told only "Internal Server Error" — which reads as a broken system
+ * rather than the wrong file.
+ */
+async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exceljs's Buffer type and this project's @types/node Buffer type are structurally identical but nominally distinct copies; `any` sidesteps the false-positive mismatch.
-  return workbook.xlsx.load(buffer as any).then((wb) => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exceljs's Buffer type and this project's @types/node Buffer type are structurally identical but nominally distinct copies; `any` sidesteps the false-positive mismatch.
+    return await workbook.xlsx.load(buffer as any);
+  } catch {
+    throw new AppError(
+      'That file could not be read as an Excel workbook. Save it as .xlsx (Excel 2007 or later) and upload it again — a .csv or a renamed file will not work.',
+      422
+    );
+  }
+}
+
+function readRows(buffer: Buffer): Promise<Record<string, unknown>[]> {
+  return loadWorkbook(buffer).then((wb) => {
     const sheet = wb.worksheets[0];
     if (!sheet) throw new AppError('The uploaded file has no worksheet', 422);
 
@@ -79,9 +100,7 @@ function parseStatementDateTime(value: unknown): Date | null {
  * block without needing to special-case it.
  */
 function readFastTagStatementRows(buffer: Buffer): Promise<Record<string, unknown>[]> {
-  const workbook = new ExcelJS.Workbook();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see readRows() above.
-  return workbook.xlsx.load(buffer as any).then((wb) => {
+  return loadWorkbook(buffer).then((wb) => {
     const sheet = wb.worksheets[0];
     if (!sheet) throw new AppError('The uploaded file has no worksheet', 422);
 
@@ -179,11 +198,15 @@ async function importDriverRow(row: Record<string, unknown>, actorId: string) {
 
 async function importFuelEntryRow(row: Record<string, unknown>, actorId: string) {
   const registrationNumber = String(row.vehicleRegistrationNumber ?? row.registrationNumber ?? '').trim();
-  const quantityLiters = Number(row.quantityLiters ?? row.litres ?? row.liters);
-  const ratePerLiter = Number(row.ratePerLiter ?? row.rate);
+  // Litres, rate and amount are each optional on their own -- a statement
+  // row may carry only what was paid. The service derives whichever of the
+  // three it can from the others.
+  const quantityLiters = Number(row.quantityLiters ?? row.litres ?? row.liters) || undefined;
+  const ratePerLiter = Number(row.ratePerLiter ?? row.rate) || undefined;
+  const totalAmount = Number(row.totalAmount ?? row.amount) || undefined;
   const odometerReading = Number(row.odometerReading ?? row.odometer);
-  if (!registrationNumber || !quantityLiters || !ratePerLiter || !odometerReading) {
-    throw new Error('vehicleRegistrationNumber, quantityLiters, ratePerLiter and odometerReading are required');
+  if (!registrationNumber || !odometerReading || (!quantityLiters && !totalAmount)) {
+    throw new Error('vehicleRegistrationNumber, odometerReading and either quantityLiters or totalAmount are required');
   }
 
   const vehicle = await prisma.vehicle.findFirst({ where: { registrationNumber, deletedAt: null } });
@@ -213,6 +236,7 @@ async function importFuelEntryRow(row: Record<string, unknown>, actorId: string)
       vehicleId: vehicle.id,
       quantityLiters,
       ratePerLiter,
+      totalAmount,
       odometerReading,
       tripId,
       fuelType: row.fuelType ? (String(row.fuelType).toUpperCase() as never) : undefined,

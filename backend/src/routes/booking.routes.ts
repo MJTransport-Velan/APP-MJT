@@ -28,6 +28,7 @@ router.get('/stats', authorize('booking.view'), bookingController.stats);
 router.get('/:id', authorize('booking.view'), validate(bookingIdParamSchema), bookingController.getById);
 
 router.patch('/:id/confirm', authorize('booking.confirm'), validate(confirmBookingSchema), bookingController.confirm);
+
 router.patch('/:id/route', authorize('booking.confirm'), validate(updateBookingRouteSchema), bookingController.updateRoute);
 router.patch('/:id/reject', authorize('booking.reject'), validate(rejectBookingSchema), bookingController.reject);
 router.patch('/:id/vehicle', authorize('booking.assign_vehicle'), validate(assignVehicleSchema), bookingController.assignVehicle);

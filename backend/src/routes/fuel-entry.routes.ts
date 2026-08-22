@@ -10,11 +10,16 @@ import {
   fuelEntryIdParamSchema,
   listFuelEntriesSchema,
   vehicleFuelSummaryQuerySchema,
+  fuelSummaryQuerySchema,
+  driverMileageQuerySchema,
 } from '../validators/fuel-entry.validator';
 
 const router = Router();
 router.use(authenticate);
 
+// Static dashboard paths stay above '/:id' so they are not read as an id.
+router.get('/summary', authorize('fuel_entry.view'), validate(fuelSummaryQuerySchema), fuelEntryController.summary);
+router.get('/driver-mileage', authorize('fuel_entry.view'), validate(driverMileageQuerySchema), fuelEntryController.driverMileage);
 router.get('/vehicle-summary/:vehicleId', authorize('fuel_entry.view'), validate(vehicleFuelSummaryQuerySchema), fuelEntryController.vehicleSummary);
 router.get('/advance-balance/:advanceId', authorize('fuel_entry.view'), fuelEntryController.advanceBalance);
 router.get('/', authorize('fuel_entry.view'), validate(listFuelEntriesSchema), fuelEntryController.list);

@@ -176,6 +176,77 @@ async function retireSourceDocument(sourceDocumentType: string, sourceDocumentId
 }
 
 /**
+ * Retires the record a delegate created, WITHOUT touching balances — the
+ * caller has already replayed the cash effect via reverseGenericBalanceEffect,
+ * so going through each document's own service would undo the money twice.
+ *
+ * Only Receipt and SupplierPayment (the FIFO settlement path) used to be
+ * retired at all. Everything a delegate produced simply survived: cancelling a
+ * salary payment returned the money but left the EmployeeSalaryPayment row, so
+ * the employee stayed marked paid for that month and could never be paid for
+ * it again; a cancelled advance stayed APPROVED and kept showing as
+ * recoverable on the Balance Sheet.
+ */
+async function retireDelegateDocument(sourceDocumentType: string, sourceDocumentId: string, actorId: string) {
+  switch (sourceDocumentType) {
+    case 'EmployeeSalaryPayment': {
+      const payment = await prisma.employeeSalaryPayment.findUnique({ where: { id: sourceDocumentId } });
+      if (!payment) return;
+      await prisma.employeeSalaryPayment.delete({ where: { id: sourceDocumentId } });
+      // Re-open the advances this payment auto-settled. The forward path
+      // settles every approved, unsettled advance raised in the salary month,
+      // so the inverse reopens that same month-scoped set. Only one salary
+      // payment can exist per employee per month (unique constraint), so no
+      // other payment's settlements can be caught here.
+      const { monthStart, monthEnd } = salaryMonthBounds(payment.year, payment.month);
+      await prisma.employeeAdvance.updateMany({
+        where: { employeeId: payment.employeeId, approvalStatus: 'APPROVED', isSettled: true, deletedAt: null, createdAt: { gte: monthStart, lte: monthEnd } },
+        data: { isSettled: false, updatedById: actorId },
+      });
+      return;
+    }
+    case 'DriverSalaryPayment': {
+      const payment = await prisma.driverSalaryPayment.findUnique({ where: { id: sourceDocumentId } });
+      if (!payment) return;
+      await prisma.driverSalaryPayment.delete({ where: { id: sourceDocumentId } });
+      const { monthStart, monthEnd } = salaryMonthBounds(payment.year, payment.month);
+      await prisma.driverAdvance.updateMany({
+        where: { driverId: payment.driverId, approvalStatus: 'APPROVED', isSettled: true, deletedAt: null, createdAt: { gte: monthStart, lte: monthEnd } },
+        data: { isSettled: false, updatedById: actorId },
+      });
+      return;
+    }
+    case 'EmployeeAdvance':
+      await prisma.employeeAdvance.updateMany({
+        where: { id: sourceDocumentId, deletedAt: null },
+        data: { deletedAt: new Date(), updatedById: actorId },
+      });
+      return;
+    case 'DriverAdvance':
+      await prisma.driverAdvance.updateMany({
+        where: { id: sourceDocumentId, deletedAt: null },
+        data: { deletedAt: new Date(), updatedById: actorId },
+      });
+      return;
+    case 'BankTransfer':
+      await prisma.bankTransfer.updateMany({
+        where: { id: sourceDocumentId, deletedAt: null },
+        data: { deletedAt: new Date(), updatedById: actorId },
+      });
+      return;
+    default:
+      return;
+  }
+}
+
+function salaryMonthBounds(year: number, month: number) {
+  return {
+    monthStart: new Date(Date.UTC(year, month - 1, 1)),
+    monthEnd: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+  };
+}
+
+/**
  * Every non-FIFO entry's actual cash effect is always "destination gets the
  * money if it's a fund account, source loses it if it's a fund account" —
  * true whether it went through postGenericFundMovement directly or one of
@@ -566,6 +637,13 @@ export const financialEntryService = {
     let fastTagTransactionId: string | undefined;
     let recoveredNote = '';
 
+    // The entry row above is written before any money moves, so that the
+    // delegates below can reference a real entry number. If any of them
+    // rejects — a duplicate salary month, an inactive account, an
+    // insufficient cash balance — the caller sees the error but the DRAFT
+    // row would otherwise survive as a phantom entry that never posted.
+    // Retire it on the way out so a rejected call leaves nothing behind.
+    try {
     if (input.entryType === 'MONEY_RECEIVED' && input.sourceType === 'CUSTOMER' && isFundType(input.destinationType)) {
       settlementPlan = await settleCustomerFIFO(input, actorId);
     } else if (input.entryType === 'MONEY_PAID' && input.destinationType === 'SUPPLIER' && isFundType(input.sourceType)) {
@@ -607,6 +685,13 @@ export const financialEntryService = {
       fastTagTransactionId,
       updatedById: actorId,
     });
+    } catch (err) {
+      await financialEntryRepository.hardDelete(entry.id).catch(() => {
+        // If even the cleanup fails the original error is still the useful
+        // one — leave the DRAFT row rather than masking why the post failed.
+      });
+      throw err;
+    }
 
     await auditService.record({
       userId: actorId,
@@ -633,6 +718,12 @@ export const financialEntryService = {
       }
     } else {
       await reverseGenericBalanceEffect(entry);
+      // The cash is undone above; this retires the record the delegate
+      // created so it stops counting (a salary month staying "paid", an
+      // advance staying recoverable).
+      if (entry.sourceDocumentType && entry.sourceDocumentId) {
+        await retireDelegateDocument(entry.sourceDocumentType, entry.sourceDocumentId, actorId);
+      }
     }
 
     await financialEntryRepository.update(id, {
@@ -659,6 +750,13 @@ export const financialEntryService = {
     if (!entry) throw new AppError('Financial Entry not found', 404);
     if (entry.status === 'CANCELLED' || entry.status === 'REVERSED') throw new AppError(`Entry is ${entry.status} and cannot be reversed`, 409);
 
+    // Claim the reversal's document number BEFORE touching any balance. When
+    // this ran afterwards, a failure here (a clashing number, a dead
+    // connection) left the money already restored while the original entry
+    // stayed COMPLETED — so it could be reversed or cancelled a second time
+    // and the amount was credited twice.
+    const entryNumber = await financialEntryRepository.nextEntryNumber();
+
     const plan = (entry.settlementPlan as unknown as ExecutedSettlementItem[] | null) ?? null;
     if (plan && plan.length > 0) {
       for (const item of plan) {
@@ -666,9 +764,14 @@ export const financialEntryService = {
       }
     } else {
       await reverseGenericBalanceEffect(entry);
+      // The cash is undone above; this retires the record the delegate
+      // created so it stops counting (a salary month staying "paid", an
+      // advance staying recoverable).
+      if (entry.sourceDocumentType && entry.sourceDocumentId) {
+        await retireDelegateDocument(entry.sourceDocumentType, entry.sourceDocumentId, actorId);
+      }
     }
 
-    const entryNumber = await financialEntryRepository.nextEntryNumber();
     const reversalEntry = await financialEntryRepository.create({
       organizationId: entry.organizationId,
       entryNumber,

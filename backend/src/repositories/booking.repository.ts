@@ -6,8 +6,6 @@ const bookingWithRelations = Prisma.validator<Prisma.BookingInclude>()({
   driver: true,
   fromLocation: true,
   toLocation: true,
-  trip: { select: { id: true, tripNumber: true, status: true } },
-  intent: { select: { id: true, intentNumber: true } },
   statusHistory: { orderBy: { createdAt: 'asc' } },
 });
 
@@ -170,8 +168,6 @@ export const bookingRepository = {
       driverMobile: string | null;
       fromLocationId: string;
       toLocationId: string;
-      intentId: string;
-      tripId: string;
       rejectionReason: string;
       lrGeneratedAt: Date;
       deliveredAt: Date;
@@ -195,11 +191,6 @@ export const bookingRepository = {
     return prisma.location.findFirst({
       where: { deletedAt: null, isActive: true, name: { equals: name.trim(), mode: 'insensitive' } },
     });
-  },
-
-  /** The Company that all website bookings are billed to. */
-  findCompanyByCode(code: string) {
-    return prisma.company.findFirst({ where: { code, deletedAt: null } });
   },
 
   addStatusHistory(data: { bookingId: string; status: BookingStatus; note?: string; createdById?: string }) {

@@ -47,7 +47,7 @@ export const createSupplierPaymentSchema = z.object({
     fundAccountId: z.string().uuid().optional(),
     chequeId: z.string().uuid().optional(),
     isRetentionRelease: z.boolean().optional(),
-  }),
+  }).strict(),
 });
 
 export const updateSupplierPaymentSchema = z.object({
@@ -59,7 +59,7 @@ export const updateSupplierPaymentSchema = z.object({
     paymentModeId: z.string().uuid().optional(),
     referenceNumber: z.string().optional(),
     remarks: z.string().optional(),
-  }),
+  }).strict(),
 });
 
 export const allocateSupplierPaymentSchema = z.object({

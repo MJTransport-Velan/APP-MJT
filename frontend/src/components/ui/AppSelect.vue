@@ -125,20 +125,41 @@ const inputRef = ref<HTMLInputElement | null>(null);
 const open = ref(false);
 const query = ref('');
 const activeIndex = ref(-1);
-const panelStyle = ref<{ top: string; left: string; width: string }>({ top: '0px', left: '0px', width: '0px' });
+const panelStyle = ref<Record<string, string>>({ top: '0px', left: '0px', width: '0px' });
+
+const PANEL_MARGIN = 6;
+const PANEL_MAX_HEIGHT = 264;
+const VIEWPORT_MARGIN = 8;
 
 // The panel is teleported to <body> so it can't be clipped by an ancestor
 // dialog/card's overflow:hidden or overflow:auto — it's positioned via a
 // fixed-position rect computed from the control instead of CSS anchoring.
+// A field low on the page may not have PANEL_MAX_HEIGHT of room below it, so
+// the panel flips above the control (and either way clamps its own height to
+// whatever space actually exists) rather than running off the viewport edge.
 function updatePanelPosition() {
   const control = controlRef.value;
   if (!control) return;
   const rect = control.getBoundingClientRect();
-  panelStyle.value = {
-    top: `${rect.bottom + 6}px`,
-    left: `${rect.left}px`,
-    width: `${rect.width}px`,
-  };
+  const spaceBelow = window.innerHeight - rect.bottom - PANEL_MARGIN - VIEWPORT_MARGIN;
+  const spaceAbove = rect.top - PANEL_MARGIN - VIEWPORT_MARGIN;
+
+  const openUpward = spaceBelow < PANEL_MAX_HEIGHT && spaceAbove > spaceBelow;
+  const maxHeight = Math.max(120, Math.min(PANEL_MAX_HEIGHT, openUpward ? spaceAbove : spaceBelow));
+
+  panelStyle.value = openUpward
+    ? {
+        bottom: `${window.innerHeight - rect.top + PANEL_MARGIN}px`,
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+        maxHeight: `${maxHeight}px`,
+      }
+    : {
+        top: `${rect.bottom + PANEL_MARGIN}px`,
+        left: `${rect.left}px`,
+        width: `${rect.width}px`,
+        maxHeight: `${maxHeight}px`,
+      };
 }
 
 function onReposition() {

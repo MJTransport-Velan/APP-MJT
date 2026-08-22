@@ -1,6 +1,18 @@
 import { z } from 'zod';
 
-const categoryEnum = z.enum(['GENERAL', 'ACCOUNTING', 'NOTIFICATION', 'WORKFLOW', 'BACKUP', 'SECURITY', 'API']);
+// Must stay in step with SystemSettingCategory in schema.prisma. INTEGRATION
+// was added there when IntegrationConnector was folded into settings, but was
+// never mirrored here — which 422'd every request the Integration Center makes.
+const categoryEnum = z.enum([
+  'GENERAL',
+  'ACCOUNTING',
+  'NOTIFICATION',
+  'WORKFLOW',
+  'BACKUP',
+  'SECURITY',
+  'API',
+  'INTEGRATION',
+]);
 
 export const listSystemSettingsSchema = z.object({
   body: z.object({}).optional(),

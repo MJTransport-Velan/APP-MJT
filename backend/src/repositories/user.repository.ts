@@ -64,6 +64,19 @@ export const userRepository = {
     return prisma.user.update({ where: { id }, data: { refreshToken } });
   },
 
+  /**
+   * Invalidates every access token already issued to this user, by moving
+   * the version their tokens were signed against. Call this from anywhere
+   * that must end a session immediately: logout, deactivate, delete,
+   * password change, and role/team reassignment.
+   */
+  bumpTokenVersion(id: string) {
+    return prisma.user.update({
+      where: { id },
+      data: { tokenVersion: { increment: 1 } },
+    });
+  },
+
   setRoles(userId: string, roleIds: string[]) {
     return prisma.$transaction([
       prisma.userRole.deleteMany({ where: { userId } }),

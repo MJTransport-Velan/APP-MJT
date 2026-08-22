@@ -120,12 +120,14 @@ import { bookingApi } from '@/services/bookings';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import BookingStatusChip from '@/components/bookings/BookingStatusChip.vue';
 import { useAuthStore } from '@/stores/auth.store';
-import { AppCard, AppIcon, AppBtn, AppSelect, AppTextField, AppChip } from '@/components/ui';
+import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
+import { AppCard, AppCardText, AppIcon, AppBtn, AppSelect, AppTextField, AppChip } from '@/components/ui';
 import type { Booking } from '@/types/bookings.types';
 
 const router = useRouter();
 const store = useBookingStore();
 const authStore = useAuthStore();
+const { success, error } = useSnackbar();
 
 const canCreate = computed(() => authStore.hasPermission('booking.create'));
 

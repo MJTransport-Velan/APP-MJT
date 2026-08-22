@@ -210,7 +210,7 @@ export const vehicleFleetService = {
       ...fuelEntries.map((f) => ({
         type: 'FUEL' as const,
         date: f.entryDate,
-        description: `Fuel entry: ${f.quantityLiters}L for ${f.totalAmount}`,
+        description: `Fuel entry: ${f.quantityLiters != null ? `${f.quantityLiters}L` : 'quantity not recorded'}${f.totalAmount != null ? ` for ${f.totalAmount}` : ''}`,
       })),
       ...maintenanceRecords.map((m) => ({
         type: 'MAINTENANCE' as const,

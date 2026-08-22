@@ -1,6 +1,8 @@
 import { Prisma, InvoiceStatus } from '@prisma/client';
 import { prisma } from '../config/db';
 import { dateRangeWhere } from '../utils/reportFilters';
+import { AppError } from '../middlewares/error.middleware';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const invoiceWithRelations = Prisma.validator<Prisma.InvoiceInclude>()({
   company: true,
@@ -70,9 +72,13 @@ export const invoiceRepository = {
   },
 
   async nextInvoiceNumber() {
-    const count = await prisma.invoice.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `INV-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('INV', 4, async (stamp) => {
+      const rows = await prisma.invoice.findMany({
+        where: { invoiceNumber: { startsWith: `INV-${stamp}-` } },
+        select: { invoiceNumber: true },
+      });
+      return highestSequenceToday(rows, 'invoiceNumber', 'INV', stamp);
+    });
   },
 
   async createWithTrips(data: {
@@ -120,10 +126,22 @@ export const invoiceRepository = {
         },
       });
 
-      await tx.trip.updateMany({
-        where: { id: { in: data.tripIds } },
+      // Claim only trips that are still uninvoiced, and insist on claiming
+      // every one asked for. The service checks `trip.invoiceId` before
+      // getting here, but that check is decided before it is acted on — four
+      // simultaneous requests all saw an uninvoiced trip and all generated an
+      // invoice for it, leaving three phantom receivables and the trip
+      // pointing at whichever finished last. Making the claim conditional and
+      // throwing on a short count rolls the whole invoice back inside this
+      // transaction, so exactly one caller can win.
+      const claimed = await tx.trip.updateMany({
+        where: { id: { in: data.tripIds }, invoiceId: null, deletedAt: null },
         data: { invoiceId: invoice.id },
       });
+
+      if (claimed.count !== data.tripIds.length) {
+        throw new AppError('One of these trips was invoiced by another user a moment ago — reload and try again', 409);
+      }
 
       return invoice;
     });
@@ -166,9 +184,13 @@ export const invoiceRepository = {
   },
 
   async nextCreditNoteNumber() {
-    const count = await prisma.creditNote.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `CN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('CN', 4, async (stamp) => {
+      const rows = await prisma.creditNote.findMany({
+        where: { creditNoteNumber: { startsWith: `CN-${stamp}-` } },
+        select: { creditNoteNumber: true },
+      });
+      return highestSequenceToday(rows, 'creditNoteNumber', 'CN', stamp);
+    });
   },
 
   createDebitNote(data: {
@@ -185,9 +207,13 @@ export const invoiceRepository = {
   },
 
   async nextDebitNoteNumber() {
-    const count = await prisma.customerDebitNote.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `CDN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('CDN', 4, async (stamp) => {
+      const rows = await prisma.customerDebitNote.findMany({
+        where: { debitNoteNumber: { startsWith: `CDN-${stamp}-` } },
+        select: { debitNoteNumber: true },
+      });
+      return highestSequenceToday(rows, 'debitNoteNumber', 'CDN', stamp);
+    });
   },
 
   sumReceiptsForInvoice(invoiceId: string) {

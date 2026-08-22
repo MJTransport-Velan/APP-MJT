@@ -44,6 +44,7 @@ export const authService = {
       username: user.username,
       roles,
       permissions,
+      tokenVersion: user.tokenVersion,
     });
 
     const refreshToken = signRefreshToken({ userId: user.id });
@@ -66,6 +67,9 @@ export const authService = {
 
   async logout(userId: string) {
     await userRepository.setRefreshToken(userId, null);
+    // Clearing the refresh token alone would leave the access token usable
+    // for the rest of its lifetime; bumping the version ends it now.
+    await userRepository.bumpTokenVersion(userId);
     await auditService.record({ userId, action: 'LOGOUT', entityType: 'User', entityId: userId, description: 'User logged out' });
   },
 
@@ -84,6 +88,12 @@ export const authService = {
       throw new AppError('Invalid refresh token', 401);
     }
 
+    // A refresh token outlives an access token by days, so the account
+    // behind it must be re-checked before a new one is minted.
+    if (user.deletedAt !== null || !user.isActive) {
+      throw new AppError('This account is no longer active', 401);
+    }
+
     const { roles, permissions } = extractRolesAndPermissions(user);
 
     const accessToken = signAccessToken({
@@ -91,6 +101,7 @@ export const authService = {
       username: user.username,
       roles,
       permissions,
+      tokenVersion: user.tokenVersion,
     });
 
     const newRefreshToken = signRefreshToken({ userId: user.id });
@@ -149,9 +160,16 @@ export const authService = {
     await enforcePasswordPolicy(newPassword);
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // Changing a password signs every other session out, so tokens issued
+    // against the old password must stop working immediately.
     await prisma.user.update({
       where: { id: userId },
-      data: { password: hashedPassword, refreshToken: null, passwordChangedAt: new Date() },
+      data: {
+        password: hashedPassword,
+        refreshToken: null,
+        passwordChangedAt: new Date(),
+        tokenVersion: { increment: 1 },
+      },
     });
   },
 

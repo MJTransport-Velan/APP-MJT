@@ -13,7 +13,6 @@ import {
   UpdateBookingRouteInput,
 } from '../validators/booking.validator';
 import { AuthRequest } from '../middlewares/auth.middleware';
-import { bookingTripService } from './booking-trip.service';
 
 /**
  * The ladder shown to the customer on the public tracking page. LR_GENERATED is
@@ -102,14 +101,9 @@ function serialize(booking: BookingWithRelations) {
       : null,
     driver: booking.driver ? { id: booking.driver.id, name: booking.driver.name, phone: booking.driver.phone } : null,
 
-    // Route mapped onto the Location master at confirmation, and the Operations
-    // records raised from it once a vehicle was allocated.
+    // Route mapped onto the Location master at confirmation.
     fromLocation: booking.fromLocation ? { id: booking.fromLocation.id, name: booking.fromLocation.name } : null,
     toLocation: booking.toLocation ? { id: booking.toLocation.id, name: booking.toLocation.name } : null,
-    trip: booking.trip
-      ? { id: booking.trip.id, tripNumber: booking.trip.tripNumber, status: booking.trip.status }
-      : null,
-    intent: booking.intent ? { id: booking.intent.id, intentNumber: booking.intent.intentNumber } : null,
 
     statusHistory: booking.statusHistory.map((h) => ({
       id: h.id,
@@ -147,6 +141,26 @@ async function loadOrFail(id: string) {
   return booking;
 }
 
+/**
+ * `new Date(string)` parses far more leniently than a date picker ever
+ * produces — a stray keystroke in a native `<input type="date">`'s year
+ * segment can submit a 5-digit year, which JS still turns into a "valid"
+ * (if absurd) Date rather than NaN. Prisma then rejects it deep inside a
+ * raw driver call, surfacing as an uncaught 500 instead of a clean 400. This
+ * requires the exact `YYYY-MM-DD` shape a date input actually emits, with a
+ * year in a plausible business range.
+ */
+function parseDateStrict(value: string, label: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new AppError(`Enter a valid ${label}`, 400);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() < 1900 || parsed.getUTCFullYear() > 2200) {
+    throw new AppError(`Enter a valid ${label}`, 400);
+  }
+  return parsed;
+}
+
 export const bookingService = {
   // ----- Public (no authentication) -------------------------------------
 
@@ -156,17 +170,11 @@ export const bookingService = {
    * and must not be trusted to allocate identifiers.
    */
   async createPublic(input: CreateBookingInput) {
-    const pickupDate = new Date(input.pickupDate);
-    if (Number.isNaN(pickupDate.getTime())) {
-      throw new AppError('Enter a valid pickup date', 400);
-    }
+    const pickupDate = parseDateStrict(input.pickupDate, 'pickup date');
 
     let expectedDeliveryDate: Date | undefined;
     if (input.expectedDeliveryDate) {
-      const parsed = new Date(input.expectedDeliveryDate);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new AppError('Enter a valid expected delivery date', 400);
-      }
+      const parsed = parseDateStrict(input.expectedDeliveryDate, 'expected delivery date');
       if (parsed < pickupDate) {
         throw new AppError('Expected delivery date cannot be before the pickup date', 400);
       }
@@ -216,22 +224,16 @@ export const bookingService = {
    * A booking keyed in by staff for a walk-in or phone customer. Differs from
    * the public intake in that the route is chosen from the Location master up
    * front — so no mapping step is needed at confirmation — and an agreed price
-   * can be recorded, which the resulting Intent and Trip inherit.
+   * can be recorded.
    */
   async createCounter(input: CreateCounterBookingInput, req: AuthRequest) {
     const actorId = req.user!.userId;
 
-    const pickupDate = new Date(input.pickupDate);
-    if (Number.isNaN(pickupDate.getTime())) {
-      throw new AppError('Enter a valid pickup date', 400);
-    }
+    const pickupDate = parseDateStrict(input.pickupDate, 'pickup date');
 
     let expectedDeliveryDate: Date | undefined;
     if (input.expectedDeliveryDate) {
-      const parsed = new Date(input.expectedDeliveryDate);
-      if (Number.isNaN(parsed.getTime())) {
-        throw new AppError('Enter a valid expected delivery date', 400);
-      }
+      const parsed = parseDateStrict(input.expectedDeliveryDate, 'expected delivery date');
       if (parsed < pickupDate) {
         throw new AppError('Expected delivery date cannot be before the pickup date', 400);
       }
@@ -475,8 +477,6 @@ export const bookingService = {
   /**
    * Sets or corrects the route after confirmation. Needed for bookings
    * confirmed before route mapping existed, and to fix a mis-mapped location.
-   * If the booking already has a vehicle but no trip, mapping the route is what
-   * finally lets the trip be raised.
    */
   async updateRoute(id: string, input: UpdateBookingRouteInput, req: AuthRequest) {
     const actorId = req.user!.userId;
@@ -500,13 +500,6 @@ export const bookingService = {
       toLocationId: toLocation.id,
       updatedById: actorId,
     });
-
-    // A vehicle already allocated but no trip means the earlier allocation was
-    // skipped for want of a route — raise it now.
-    const updated = await loadOrFail(id);
-    if (!updated.tripId && updated.fleetType && updated.vehicleNumber) {
-      await bookingTripService.syncOnVehicleAssigned(updated, actorId);
-    }
 
     await auditService.record({
       userId: actorId,
@@ -613,12 +606,6 @@ export const bookingService = {
       });
     }
 
-    // Allocation is the point the job becomes real work, so this is where it
-    // joins Operations as a trip. Re-reading first so the bridge sees the
-    // vehicle values that were just written.
-    const allocated = await loadOrFail(id);
-    await bookingTripService.syncOnVehicleAssigned(allocated, actorId);
-
     await auditService.record({
       userId: actorId,
       action: 'UPDATE',
@@ -633,6 +620,17 @@ export const bookingService = {
   async generateLr(id: string, req: AuthRequest) {
     const actorId = req.user!.userId;
     const existing = await loadOrFail(id);
+    // Check the already-generated case first. The lrNumber itself is issued
+    // at confirmation, so it is not the signal here — lrGeneratedAt is.
+    // Without this branch the generic message below described the wrong
+    // problem: it told the user to save vehicle details that were in fact
+    // already saved.
+    if (existing.lrGeneratedAt) {
+      throw new AppError(
+        `An LR has already been generated for this booking (${existing.lrNumber})`,
+        409
+      );
+    }
     if (existing.status !== 'VEHICLE_ASSIGNED') {
       throw new AppError(
         `Vehicle details must be saved before the LR can be generated (this booking is ${existing.status})`,
@@ -694,10 +692,6 @@ export const bookingService = {
       note: input.note || undefined,
       createdById: actorId,
     });
-
-    // Keep the linked trip in step, so Operations does not show MJ Express
-    // jobs frozen at ASSIGNED while the parcel is already delivered.
-    await bookingTripService.syncStatus(existing, input.status, actorId);
 
     await auditService.record({
       userId: actorId,

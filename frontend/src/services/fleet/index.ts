@@ -8,6 +8,8 @@ import type {
   VehicleAssignment,
   FuelEntry,
   VehicleFuelSummary,
+  FuelSummary,
+  DriverMileageRow,
   FuelAdvanceBalance,
   MaintenanceRecord,
   SparePartUsage,
@@ -111,8 +113,14 @@ export const fuelEntryApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  vehicleSummary(vehicleId: string) {
-    return api.get<ApiResponse<VehicleFuelSummary>>(`/fleet/fuel-entries/vehicle-summary/${vehicleId}`);
+  vehicleSummary(vehicleId: string, params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<VehicleFuelSummary>>(`/fleet/fuel-entries/vehicle-summary/${vehicleId}`, { params });
+  },
+  summary(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<FuelSummary>>('/fleet/fuel-entries/summary', { params });
+  },
+  driverMileage(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<DriverMileageRow[]>>('/fleet/fuel-entries/driver-mileage', { params });
   },
   advanceBalance(advanceId: string) {
     return api.get<ApiResponse<FuelAdvanceBalance>>(`/fleet/fuel-entries/advance-balance/${advanceId}`);

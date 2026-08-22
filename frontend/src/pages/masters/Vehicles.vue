@@ -7,6 +7,8 @@
       :items="store.items"
       :items-length="store.meta?.total || 0"
       :loading="store.loading"
+      :error="store.error"
+      @retry="fetchData"
       :search="search"
       :page="page"
       :page-size="pageSize"

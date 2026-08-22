@@ -142,7 +142,8 @@ export const moduleRegistry: ModuleDef[] = [
     path: '/masters',
     permission: 'masters.view',
     quickLinks: [
-      { title: 'Branches', icon: 'mdi-source-branch', to: '/masters/branches' },
+      { title: 'Companies', icon: 'mdi-domain', to: '/masters/companies' },
+      { title: 'Groups', icon: 'mdi-account-multiple-outline', to: '/masters/groups' },
       { title: 'Vehicles', icon: 'mdi-truck', to: '/masters/vehicles' },
       { title: 'Drivers', icon: 'mdi-card-account-details-outline', to: '/masters/drivers' },
       { title: 'Suppliers', icon: 'mdi-account-tie-outline', to: '/masters/suppliers' },
@@ -160,8 +161,6 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Permissions', icon: 'mdi-lock-check-outline', to: '/administration/permissions' },
       { title: 'Departments', icon: 'mdi-office-building-outline', to: '/administration/departments' },
       { title: 'Teams', icon: 'mdi-account-group-outline', to: '/administration/teams' },
-      { title: 'Companies', icon: 'mdi-domain', to: '/administration/companies' },
-      { title: 'Groups', icon: 'mdi-account-multiple-outline', to: '/administration/groups' },
       { title: 'Audit Logs', icon: 'mdi-history', to: '/administration/audit-logs' },
     ],
   },

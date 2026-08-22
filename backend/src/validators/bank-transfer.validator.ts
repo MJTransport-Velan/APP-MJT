@@ -35,7 +35,7 @@ export const createBankTransferSchema = z.object({
     paymentModeId: z.string().uuid().optional(),
     referenceNumber: z.string().optional(),
     narration: z.string().optional(),
-  }),
+  }).strict(),
 });
 
 export type CreateBankTransferInput = z.infer<typeof createBankTransferSchema>['body'];

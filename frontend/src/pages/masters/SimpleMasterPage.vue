@@ -7,12 +7,14 @@
       :items="store.items"
       :items-length="store.meta?.total || 0"
       :loading="store.loading"
+      :error="store.error"
       :search="search"
       :page="page"
       :page-size="pageSize"
       @update:search="onSearchUpdate"
       @update:page="onPageUpdate"
       @update:page-size="onPageSizeUpdate"
+      @retry="fetchData"
     >
       <template #item.isActive="{ item }">
         <StatusChip :is-active="(item as any).isActive" />
@@ -122,6 +124,22 @@
       @confirm="submitDelete"
     />
   </div>
+
+  <!--
+    An unknown :module (a retired master, or a stale bookmark) previously
+    rendered nothing at all — a blank page with no explanation. Say what
+    happened and offer a way back instead.
+  -->
+  <AppCard v-else class="simple-master-missing">
+    <AppCardText>
+      <h2>This master is no longer available</h2>
+      <p>
+        The page you followed refers to a master list that has been retired.
+        Pick another from the Masters area.
+      </p>
+      <AppBtn color="primary" to="/masters">Go to Masters</AppBtn>
+    </AppCardText>
+  </AppCard>
 </template>
 
 <script setup lang="ts">
@@ -136,7 +154,7 @@ import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import StatusChip from '@/components/masters/StatusChip.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { AppBtn, AppTextField, AppTextarea, AppSelect, AppCheckbox } from '@/components/ui';
+import { AppBtn, AppTextField, AppTextarea, AppSelect, AppCheckbox, AppCard, AppCardText } from '@/components/ui';
 
 const route = useRoute();
 const authStore = useAuthStore();

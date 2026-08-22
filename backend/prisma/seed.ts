@@ -6,37 +6,19 @@ const prisma = new PrismaClient();
 const ROLES = [
   { name: 'SUPER_ADMIN', description: 'Super Administrator with full access' },
   { name: 'ADMIN', description: 'Administrator' },
-  { name: 'OPERATIONS', description: 'Operations Staff' },
-  { name: 'ACCOUNTS', description: 'Accounts Staff' },
-  { name: 'FLEET_MANAGER', description: 'Fleet Manager' },
   { name: 'DRIVER', description: 'Driver' },
   { name: 'CUSTOMER', description: 'Customer' },
-  // Phase 2 — Administration module role hierarchy
-  { name: 'MANAGER', description: 'Manager' },
   { name: 'OPERATION_MANAGER', description: 'Operation Manager (oversees Intent + Vehicle Operation teams)' },
   { name: 'ACCOUNTING_MANAGER', description: 'Accounting Manager (oversees Accounts team)' },
   { name: 'INTENT_CREATOR', description: 'Intent Creation Team member' },
   { name: 'OWN_FLEET_OPERATOR', description: 'Vehicle Operations — Own Fleet Team member' },
   { name: 'MARKET_FLEET_OPERATOR', description: 'Vehicle Operations — Market Fleet Team member' },
   { name: 'ACCOUNTS_EXECUTIVE', description: 'Accounts Team member' },
-  // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
-  { name: 'HR_MANAGER', description: 'HR Manager (Employee master, salary structures, payroll verification)' },
-  { name: 'PAYROLL_EXECUTIVE', description: 'Payroll Executive (day-to-day driver advances, payroll processing/disbursal)' },
-  // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
-  { name: 'MAINTENANCE_MANAGER', description: 'Maintenance Manager (dedicated workshop lead — repair/service expenses, tyres, batteries)' },
-  { name: 'PURCHASE_MANAGER', description: 'Purchase Manager (files asset purchase and vehicle loan requests, does not approve them)' },
-  // Phase 13 — GST, Taxation, Financial Reporting & Financial Closing (docs
-  // Phase 7). "Management" from the design brief's role list is the
-  // existing generic MANAGER role (Phase 2) — not duplicated here.
-  { name: 'FINANCE_MANAGER', description: 'Finance Manager (GST/TDS compliance, financial statements, budgets, Year-End Closing)' },
-  { name: 'AUDITOR', description: 'Auditor (read-only access to every financial report and audit trail, no posting rights)' },
-  { name: 'VIEWER', description: 'Viewer (read-only access across the Accounting module)' },
 ];
 
 // Phase 3 — Masters. Each prefix gets .view/.create/.edit/.delete permissions.
 // (company.* already existed from Phase 2 and is intentionally excluded here.)
 const MASTER_MODULE_LABELS: Record<string, string> = {
-  branch: 'Branches',
   location: 'Locations',
   vehicle_type: 'Vehicle Types',
   vehicle: 'Vehicles',
@@ -47,10 +29,8 @@ const MASTER_MODULE_LABELS: Record<string, string> = {
   payment_mode: 'Payment Modes',
   tyre: 'Tyres',
   service_category: 'Service Categories',
-  trailer_type: 'Trailer Types',
   designation: 'Designations',
   gst_master: 'GST Masters',
-  // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase 5).
   employee: 'Employees',
 };
 const MASTER_MODULE_PREFIXES = Object.keys(MASTER_MODULE_LABELS);
@@ -314,7 +294,7 @@ const VEHICLE_ASSET_PERMISSIONS = [
 // Voucher/Ledger double-entry engine they depended on; the reports below
 // read directly from Invoice/SupplierBill/Driver/Vehicle/Loan data instead.
 const FINANCIAL_REPORTING_PERMISSIONS = [
-  { name: 'profitability_report.view', description: 'View Customer/Supplier/Vehicle/Driver/Branch Profitability' },
+  { name: 'profitability_report.view', description: 'View Customer/Supplier/Vehicle/Driver Profitability' },
   { name: 'outstanding_report.view', description: 'View Driver/Employee Outstanding Reports' },
   { name: 'loan_report.view', description: 'View the consolidated Driver/Employee/Vehicle Loan Report' },
   { name: 'expense_analysis.view', description: 'View category-wise Expense Analysis' },
@@ -484,6 +464,13 @@ async function main() {
     });
   }
 
+  // Sweep up the permissions of removed modules — Branches and Trailer
+  // Types — which earlier runs of this seed created (role_permissions
+  // cascade with them).
+  await prisma.permission.deleteMany({
+    where: { OR: [{ name: { startsWith: 'branch.' } }, { name: { startsWith: 'trailer_type.' } }] },
+  });
+
   console.log('Assigning all permissions to SUPER_ADMIN...');
   const superAdminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'SUPER_ADMIN' } });
   const allPermissions = await prisma.permission.findMany();
@@ -534,6 +521,10 @@ async function main() {
     'audit.view',
     'profile.view', 'profile.update',
     'menu.manage',
+    // Companies/Groups now live under Masters, so ADMIN needs the module
+    // gate to reach them from the Masters hub. Each master page still
+    // enforces its own permission on top of this.
+    'masters.view',
   ];
   const phase2AdminPermissions = await prisma.permission.findMany({
     where: { name: { in: phase2AdminPermissionNames } },
@@ -567,7 +558,7 @@ async function main() {
   console.log('Assigning fleet-relevant Masters permissions to FLEET_MANAGER...');
   const fleetManagerRole = await prisma.role.findUnique({ where: { name: 'FLEET_MANAGER' } });
   if (fleetManagerRole) {
-    const fleetPrefixes = ['vehicle_type', 'vehicle', 'driver', 'tyre', 'trailer_type', 'supplier'];
+    const fleetPrefixes = ['vehicle_type', 'vehicle', 'driver', 'tyre', 'supplier'];
     const fleetPermissionNames = [
       ...fleetPrefixes.flatMap((prefix) => [`${prefix}.view`, `${prefix}.create`, `${prefix}.edit`]),
       // Fleet Manager owns the vehicle master end-to-end (unlike the other
@@ -1403,11 +1394,18 @@ async function main() {
     { label: 'Permissions', icon: 'mdi-lock-check-outline', routePath: '/administration/permissions', order: 3, permission: 'permission.view' },
     { label: 'Departments', icon: 'mdi-office-building-outline', routePath: '/administration/departments', order: 4, permission: 'department.view' },
     { label: 'Teams', icon: 'mdi-account-group-outline', routePath: '/administration/teams', order: 5, permission: 'team.view' },
-    { label: 'Companies', icon: 'mdi-domain', routePath: '/administration/companies', order: 6, permission: 'company.view' },
-    { label: 'Groups', icon: 'mdi-account-multiple-outline', routePath: '/administration/groups', order: 7, permission: 'group.view' },
-    { label: 'Audit Logs', icon: 'mdi-history', routePath: '/administration/audit-logs', order: 8, permission: 'audit.view' },
-    { label: 'Profile', icon: 'mdi-account-circle-outline', routePath: '/administration/profile', order: 9, permission: 'profile.view' },
+    // Companies and Groups moved to the Masters module — they are reached
+    // from the Masters hub (see frontend config/masterCategories.ts), the
+    // same way Vehicles/Locations are, so they get no menu row of their own.
+    { label: 'Audit Logs', icon: 'mdi-history', routePath: '/administration/audit-logs', order: 6, permission: 'audit.view' },
+    { label: 'Profile', icon: 'mdi-account-circle-outline', routePath: '/administration/profile', order: 7, permission: 'profile.view' },
   ];
+
+  // Drop the menu rows left behind by the earlier Administration placement
+  // (role_menu_permissions cascade with them).
+  await prisma.menu.deleteMany({
+    where: { routePath: { in: ['/administration/companies', '/administration/groups'] } },
+  });
 
   const administrationParentId = topMenuMap.get('Administration')!;
   for (const child of administrationChildren) {
@@ -1454,7 +1452,8 @@ async function main() {
   }
 
   // ADMIN sees Dashboard + Administration (and all its children) + System.
-  const adminVisibleLabels = new Set(['Dashboard', 'Administration', ...administrationChildren.map((c) => c.label), 'System']);
+  // Masters is in the set for Companies/Groups, which moved there.
+  const adminVisibleLabels = new Set(['Dashboard', 'Masters', 'Administration', ...administrationChildren.map((c) => c.label), 'System']);
   for (const menu of allMenus) {
     if (adminVisibleLabels.has(menu.label)) {
       await prisma.roleMenuPermission.upsert({

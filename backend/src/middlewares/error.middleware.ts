@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { logger } from '../config/logger';
 import { sendError } from '../utils/response';
 import { systemExceptionService } from '../services/system-exception.service';
@@ -39,6 +40,25 @@ export function errorHandler(err: Error, req: Request, res: Response, next: Next
 
   if (err instanceof AppError) {
     return sendError(res, err.statusCode, err.message, err.errors);
+  }
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    const target = err.meta?.target;
+    const fields = Array.isArray(target) ? target.join(', ') : String(target ?? 'field');
+
+    // Named constraints carry business meaning the generic wording loses —
+    // "a record with this vehicleId already exists" tells a dispatcher
+    // nothing about what actually went wrong.
+    const BY_CONSTRAINT: Record<string, string> = {
+      trips_active_vehicle_unique: 'That vehicle is already on another live trip — someone allocated it a moment ago.',
+      trips_active_driver_unique: 'That driver is already on another live trip — someone allocated them a moment ago.',
+      supplier_bills_one_live_per_trip: 'That trip has already been billed — cancel the existing bill before raising another.',
+    };
+    if (BY_CONSTRAINT[fields]) {
+      return sendError(res, 409, BY_CONSTRAINT[fields]);
+    }
+
+    return sendError(res, 409, `A record with this ${fields} already exists`);
   }
 
   return sendError(res, 500, 'Internal Server Error');

@@ -7,6 +7,7 @@ import { auditService } from './audit.service';
 import { organizationService } from './organization.service';
 import { resolveOrDefaultFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
+import { assertNotFutureDate, todayStr } from '../utils/businessDate.util';
 import { CreateSupplierPaymentInput, UpdateSupplierPaymentInput } from '../validators/supplier-payment.validator';
 
 function serialize(payment: SupplierPaymentWithRelations) {
@@ -88,7 +89,8 @@ export const supplierPaymentService = {
     const fundAccount = await resolveOrDefaultFundAccount(organizationId, input.fundAccountType, input.fundAccountId);
     if (!fundAccount.isActive) throw new AppError('The selected Bank/Cash account is inactive', 409);
 
-    const paymentDate = input.paymentDate ? input.paymentDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const paymentDate = input.paymentDate ? input.paymentDate.slice(0, 10) : todayStr();
+    assertNotFutureDate(paymentDate, 'Payment date');
     const paymentNumber = await supplierPaymentRepository.nextPaymentNumber();
 
     const payment = await supplierPaymentRepository.create({

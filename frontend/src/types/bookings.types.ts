@@ -93,9 +93,6 @@ export interface Booking {
   /** Route mapped onto the Location master when the booking was confirmed. */
   fromLocation: { id: string; name: string } | null;
   toLocation: { id: string; name: string } | null;
-  /** Operations records raised once a vehicle was allocated. */
-  trip: { id: string; tripNumber: string; status: string } | null;
-  intent: { id: string; intentNumber: string } | null;
   /** Name-match hints used to pre-select the confirm screen's route dropdowns. */
   suggestedFromLocationId?: string | null;
   suggestedToLocationId?: string | null;

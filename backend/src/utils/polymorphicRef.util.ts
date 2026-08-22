@@ -22,9 +22,8 @@ const LEDGER_PARTY_TARGETS: Partial<Record<string, PolymorphicTarget>> = {
   VEHICLE: { label: 'Vehicle', findActive: (id) => prisma.vehicle.findFirst({ where: { id, deletedAt: null } }) },
 };
 
-// BRANCH is deliberately absent — the existing Branch model belongs to a
-// customer Company, not to MJ Transport itself (see schema.prisma PHASE 7
-// comment) — branch-style cost centers stay unlinked (OTHER) for now.
+// BRANCH is deliberately absent — there is no Branch model any more, so
+// branch-style cost centers stay unlinked (OTHER).
 const COST_CENTER_REF_TARGETS: Partial<Record<string, PolymorphicTarget>> = {
   VEHICLE: { label: 'Vehicle', findActive: (id) => prisma.vehicle.findFirst({ where: { id, deletedAt: null } }) },
   DRIVER: { label: 'Driver', findActive: (id) => prisma.driver.findFirst({ where: { id, deletedAt: null } }) },

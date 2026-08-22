@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const entryWithRelations = Prisma.validator<Prisma.FinancialEntryInclude>()({
   paymentMode: { select: { id: true, name: true, code: true } },
@@ -72,9 +73,13 @@ export const financialEntryRepository = {
   },
 
   async nextEntryNumber() {
-    const count = await prisma.financialEntry.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `FE-${datePart}-${String(count + 1).padStart(5, '0')}`;
+    return nextDocumentNumber('FE', 5, async (stamp) => {
+      const rows = await prisma.financialEntry.findMany({
+        where: { entryNumber: { startsWith: `FE-${stamp}-` } },
+        select: { entryNumber: true },
+      });
+      return highestSequenceToday(rows, 'entryNumber', 'FE', stamp);
+    });
   },
 
   create(data: Prisma.FinancialEntryUncheckedCreateInput) {
@@ -83,6 +88,16 @@ export const financialEntryRepository = {
 
   update(id: string, data: Prisma.FinancialEntryUncheckedUpdateInput) {
     return prisma.financialEntry.update({ where: { id }, data, include: entryWithRelations });
+  },
+
+  /**
+   * Removes the row outright. Only for an entry that never finished posting —
+   * financial-entry.service.ts's create() uses it to clean up the DRAFT row it
+   * wrote before the money moved, when the posting is then rejected. A live
+   * entry is always retired with softDelete instead, so its history survives.
+   */
+  hardDelete(id: string) {
+    return prisma.financialEntry.delete({ where: { id } });
   },
 
   softDelete(id: string, actorId: string) {

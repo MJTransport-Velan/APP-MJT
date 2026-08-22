@@ -67,6 +67,14 @@
             <AppChip v-if="(item as any).billingMethod" size="small" variant="outlined">{{ billingMethodLabel((item as any).billingMethod) }}</AppChip>
             <span v-else class="text-medium-emphasis">-</span>
           </template>
+          <template #item.quantityLiters="{ item }">
+            <span v-if="(item as any).quantityLiters != null">{{ (item as any).quantityLiters }}</span>
+            <span v-else class="text-medium-emphasis">-</span>
+          </template>
+          <template #item.totalAmount="{ item }">
+            <span v-if="(item as any).totalAmount != null">{{ formatCurrency(Number((item as any).totalAmount)) }}</span>
+            <span v-else class="text-medium-emphasis">-</span>
+          </template>
           <template #item.trip="{ item }">{{ (item as any).trip?.tripNumber || '-' }}</template>
           <template #item.driver="{ item }">{{ (item as any).driver?.name || '-' }}</template>
           <template #item.entryDate="{ item }">{{ new Date((item as any).entryDate).toLocaleDateString() }}</template>
@@ -106,20 +114,68 @@
 
       <!-- Consumption -->
       <AppWindowItem value="consumption">
+        <AppCard variant="outlined" class="pa-4 mb-4">
+          <div class="row row-dense align-end">
+            <div class="col-12 col-sm-4 col-md-3">
+              <AppTextField v-model="mileageFilters.from" type="date" label="From" />
+            </div>
+            <div class="col-12 col-sm-4 col-md-3">
+              <AppTextField v-model="mileageFilters.to" type="date" label="To" />
+            </div>
+            <div class="col-12 col-sm-4 col-md-3 d-flex ga-2">
+              <AppBtn color="primary" variant="flat" :loading="mileageLoading" @click="fetchMileage">Apply</AppBtn>
+              <AppBtn variant="text" :disabled="!mileageFilters.from && !mileageFilters.to" @click="clearMileageFilters">Clear</AppBtn>
+            </div>
+          </div>
+        </AppCard>
+
         <div class="row">
           <div class="col-12 col-sm-6 col-md-3">
-            <FuelSummaryCard label="Total Fuel Cost (page)" :value="formatCurrency(totalFuelCost)" icon="mdi-cash" color="success" />
+            <FuelSummaryCard label="Total Fuel Cost" :value="formatCurrency(fuelSummary?.totalFuelCost || 0)" icon="mdi-cash" color="success" />
           </div>
           <div class="col-12 col-sm-6 col-md-3">
-            <FuelSummaryCard label="Total Liters (page)" :value="`${totalLiters.toFixed(1)} L`" icon="mdi-gas-station" color="info" />
+            <FuelSummaryCard label="Total Liters" :value="`${(fuelSummary?.totalLiters || 0).toFixed(1)} L`" icon="mdi-gas-station" color="info" />
           </div>
           <div class="col-12 col-sm-6 col-md-3">
-            <FuelSummaryCard label="Average Mileage (page)" :value="`${averageMileage.toFixed(2)} km/l`" icon="mdi-speedometer" color="primary" />
+            <FuelSummaryCard label="Average Mileage" :value="fuelSummary?.mileageKmpl ? `${fuelSummary.mileageKmpl} km/l` : '-'" icon="mdi-speedometer" color="primary" />
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <FuelSummaryCard label="Cost / KM" :value="fuelSummary?.costPerKm ? formatCurrency(fuelSummary.costPerKm) : '-'" icon="mdi-chart-line" color="warning" />
           </div>
         </div>
-        <p class="text-caption text-medium-emphasis mt-2 mb-6">
-          Figures above are calculated from the fuel entries currently loaded on the Fuel Entries tab.
-        </p>
+        <p class="text-caption text-medium-emphasis mt-2 mb-6">{{ mileageRangeCaption }}</p>
+
+        <div class="text-subtitle-2 font-weight-medium mb-2">Driver-wise Mileage</div>
+        <div class="mb-6">
+          <MasterDataTable
+            :headers="driverMileageHeaders"
+            :items="filteredDriverMileage"
+            :items-length="filteredDriverMileage.length"
+            :loading="mileageLoading"
+            :search="driverSearch"
+            :page="1"
+            :page-size="100"
+            item-label="Driver Mileage"
+            export-filename="driver-mileage"
+            @update:search="(v: string) => (driverSearch = v)"
+          >
+            <template #item.driverName="{ item }">
+              <div class="font-weight-medium">{{ (item as any).driverName }}</div>
+              <div v-if="(item as any).driverCode" class="text-caption text-medium-emphasis">{{ (item as any).driverCode }}</div>
+            </template>
+            <template #item.totalLiters="{ item }">{{ (item as any).totalLiters.toFixed(1) }} L</template>
+            <template #item.totalFuelCost="{ item }">{{ formatCurrency((item as any).totalFuelCost) }}</template>
+            <template #item.totalKM="{ item }">{{ (item as any).totalKM }} km</template>
+            <template #item.mileageKmpl="{ item }">
+              <span v-if="(item as any).mileageKmpl">{{ (item as any).mileageKmpl }} km/l</span>
+              <span v-else class="text-medium-emphasis">-</span>
+            </template>
+            <template #item.costPerKm="{ item }">
+              <span v-if="(item as any).costPerKm">{{ formatCurrency((item as any).costPerKm) }}</span>
+              <span v-else class="text-medium-emphasis">-</span>
+            </template>
+          </MasterDataTable>
+        </div>
 
         <AppCard variant="outlined" class="pa-4">
           <div class="text-subtitle-2 font-weight-medium mb-3">Vehicle Fuel Tracking</div>
@@ -180,14 +236,21 @@
         clearable
         class="mb-2"
       />
+      <AppTextField
+        v-model.number="entryForm.totalAmount"
+        type="number"
+        label="Amount Paid"
+        :error-messages="entryErrors.totalAmount"
+      />
       <div class="row row-dense">
         <div class="col-6">
-          <AppTextField v-model.number="entryForm.quantityLiters" type="number" label="Quantity (L)" :error-messages="entryErrors.quantityLiters" />
+          <AppTextField v-model.number="entryForm.quantityLiters" type="number" label="Quantity (L) — optional" />
         </div>
         <div class="col-6">
-          <AppTextField v-model.number="entryForm.ratePerLiter" type="number" label="Rate / Liter" :error-messages="entryErrors.ratePerLiter" />
+          <AppTextField v-model.number="entryForm.ratePerLiter" type="number" label="Rate / Liter — optional" />
         </div>
       </div>
+      <div class="text-caption text-medium-emphasis mb-2">{{ fillHint }}</div>
       <AppTextField v-model.number="entryForm.odometerReading" type="number" label="Odometer Reading" :error-messages="entryErrors.odometerReading" class="mb-2" />
       <AppTextField v-model="entryForm.location" label="Location (optional)" class="mb-2" />
       <AppSelect
@@ -216,9 +279,7 @@
         </div>
       </div>
       <AppTextField v-model="entryForm.remarks" label="Remarks (optional)" class="mb-2" />
-      <div class="text-caption text-medium-emphasis mt-2">
-        Total: {{ formatCurrency((entryForm.quantityLiters || 0) * (entryForm.ratePerLiter || 0)) }} (calculated automatically)
-      </div>
+      <div class="text-caption text-medium-emphasis mt-2">{{ fillSummary }}</div>
     </MasterFormDialog>
 
     <!-- Fuel Card Dialog -->
@@ -248,9 +309,10 @@
         <AppCardTitle class="text-h6">Import Fuel Entries</AppCardTitle>
         <AppCardText>
           <p class="text-caption text-medium-emphasis mb-2">
-            Excel (.xlsx) columns: vehicleRegistrationNumber, quantityLiters, ratePerLiter,
+            Excel (.xlsx) columns: vehicleRegistrationNumber, quantityLiters, ratePerLiter, totalAmount,
             odometerReading, entryDate, tripNumber, fuelType, billingMethod, invoiceNumber, referenceNumber, remarks.
-            Driver is auto-derived from the trip, never taken from the file.
+            A row needs the amount or the quantity (or both) — not all three. Driver is auto-derived from the
+            trip, never taken from the file.
           </p>
           <ExcelExportButton
             variant="text"
@@ -307,7 +369,7 @@ import {
   AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput,
   ExcelExportButton,
 } from '@/components/ui';
-import type { VehicleFuelSummary } from '@/types/fleet.types';
+import type { VehicleFuelSummary, FuelSummary, DriverMileageRow } from '@/types/fleet.types';
 
 const entryStore = useFuelEntryStore();
 const cardStore = useFuelCardStore();
@@ -375,14 +437,73 @@ async function fetchEntries() {
   });
 }
 
-const totalFuelCost = computed(() => entryStore.items.reduce((sum, e: any) => sum + Number(e.totalAmount || 0), 0));
-const totalLiters = computed(() => entryStore.items.reduce((sum, e: any) => sum + Number(e.quantityLiters || 0), 0));
-const averageMileage = computed(() => {
-  const withMileage = entryStore.items.filter((e: any) => e.mileageKmpl);
-  if (withMileage.length === 0) return 0;
-  const sum = withMileage.reduce((acc, e: any) => acc + Number(e.mileageKmpl), 0);
-  return sum / withMileage.length;
+// --- Mileage & Consumption tab -------------------------------------------
+// Its own date range, independent of the Fuel Entries tab's filters: the
+// figures come from server-side aggregates over every matching entry, not
+// from the page of rows the list happens to have loaded.
+const mileageFilters = reactive({ from: '', to: '' });
+const mileageLoading = ref(false);
+const fuelSummary = ref<FuelSummary | null>(null);
+const driverMileage = ref<DriverMileageRow[]>([]);
+
+// The table's own search box filters the loaded rows — there is no
+// server-side driver search on this aggregate.
+const driverSearch = ref('');
+const filteredDriverMileage = computed(() => {
+  const q = driverSearch.value.trim().toLowerCase();
+  if (!q) return driverMileage.value;
+  return driverMileage.value.filter(
+    (row) => row.driverName.toLowerCase().includes(q) || (row.driverCode || '').toLowerCase().includes(q)
+  );
 });
+
+const driverMileageHeaders = [
+  { title: 'Driver', key: 'driverName', sortable: false },
+  { title: 'Fills', key: 'entryCount', sortable: false },
+  { title: 'Total Litres', key: 'totalLiters', sortable: false },
+  { title: 'Total Cost', key: 'totalFuelCost', sortable: false },
+  { title: 'Total KM', key: 'totalKM', sortable: false },
+  { title: 'Mileage', key: 'mileageKmpl', sortable: false },
+  { title: 'Cost / KM', key: 'costPerKm', sortable: false },
+];
+
+const mileageRangeCaption = computed(() => {
+  const { from, to } = mileageFilters;
+  const entries = fuelSummary.value?.entryCount ?? 0;
+  if (!from && !to) return `Across all ${entries} fuel entries on record.`;
+  const period = from && to ? `${from} to ${to}` : from ? `on or after ${from}` : `up to ${to}`;
+  return `Across ${entries} fuel entries ${period}.`;
+});
+
+function mileageParams() {
+  return {
+    ...(mileageFilters.from ? { from: mileageFilters.from } : {}),
+    ...(mileageFilters.to ? { to: mileageFilters.to } : {}),
+  };
+}
+
+async function fetchMileage() {
+  mileageLoading.value = true;
+  try {
+    const [summary, drivers] = await Promise.all([
+      entryStore.summary(mileageParams()),
+      entryStore.driverMileage(mileageParams()),
+    ]);
+    fuelSummary.value = summary;
+    driverMileage.value = drivers;
+    if (summaryVehicleId.value) await fetchVehicleSummary();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to load mileage figures'));
+  } finally {
+    mileageLoading.value = false;
+  }
+}
+
+function clearMileageFilters() {
+  mileageFilters.from = '';
+  mileageFilters.to = '';
+  fetchMileage();
+}
 
 const entryDialog = ref(false);
 const submittingEntry = ref(false);
@@ -393,6 +514,7 @@ const entryForm = reactive<{
   fuelCardId: string;
   quantityLiters: number | undefined;
   ratePerLiter: number | undefined;
+  totalAmount: number | undefined;
   odometerReading: number | undefined;
   entryDate: string;
   location: string;
@@ -407,6 +529,7 @@ const entryForm = reactive<{
   fuelCardId: '',
   quantityLiters: undefined,
   ratePerLiter: undefined,
+  totalAmount: undefined,
   odometerReading: undefined,
   entryDate: new Date().toISOString().substring(0, 10),
   location: '',
@@ -415,7 +538,40 @@ const entryForm = reactive<{
   referenceNumber: '',
   remarks: '',
 });
-const entryErrors = reactive({ vehicleId: '', quantityLiters: '', ratePerLiter: '', odometerReading: '' });
+const entryErrors = reactive({ vehicleId: '', totalAmount: '', odometerReading: '' });
+
+/**
+ * Whichever two of amount/quantity/rate are filled in decide the third —
+ * mirrors resolveFuelFigures() on the server, so what the dialog previews is
+ * what gets stored.
+ */
+const fillFigures = computed(() => {
+  const quantity = entryForm.quantityLiters || null;
+  const rate = entryForm.ratePerLiter || null;
+  const amount = entryForm.totalAmount || null;
+  const round2 = (n: number) => Number(n.toFixed(2));
+  if (amount != null) {
+    if (quantity != null && rate == null) return { quantity, rate: round2(amount / quantity), amount };
+    if (rate != null && quantity == null) return { quantity: round2(amount / rate), rate, amount };
+    return { quantity, rate, amount };
+  }
+  if (quantity != null && rate != null) return { quantity, rate, amount: round2(quantity * rate) };
+  return { quantity, rate, amount };
+});
+
+const fillHint =
+  'Fill in whichever you have: the amount paid, the quantity, or the quantity and rate. The rest is worked out for you.';
+
+const fillSummary = computed(() => {
+  const { quantity, rate, amount } = fillFigures.value;
+  if (amount == null && quantity == null) return 'Enter the amount paid or the quantity to record this fill.';
+  const parts: string[] = [];
+  if (amount != null) parts.push(`Total ${formatCurrency(amount)}`);
+  if (quantity != null) parts.push(`${quantity} L`);
+  if (rate != null) parts.push(`${formatCurrency(rate)} / L`);
+  const tail = quantity == null ? ' — quantity not recorded, so this fill has no mileage.' : '';
+  return `${parts.join(' · ')}${tail}`;
+});
 
 function openEntryDialog() {
   Object.assign(entryForm, {
@@ -425,6 +581,7 @@ function openEntryDialog() {
     fuelCardId: '',
     quantityLiters: undefined,
     ratePerLiter: undefined,
+    totalAmount: undefined,
     odometerReading: undefined,
     entryDate: new Date().toISOString().substring(0, 10),
     location: '',
@@ -433,7 +590,7 @@ function openEntryDialog() {
     referenceNumber: '',
     remarks: '',
   });
-  Object.assign(entryErrors, { vehicleId: '', quantityLiters: '', ratePerLiter: '', odometerReading: '' });
+  Object.assign(entryErrors, { vehicleId: '', totalAmount: '', odometerReading: '' });
   autoTrip.value = null;
   entryDialog.value = true;
 }
@@ -469,8 +626,11 @@ watch(
 
 function validateEntry(): boolean {
   entryErrors.vehicleId = entryForm.vehicleId ? '' : 'Vehicle is required';
-  entryErrors.quantityLiters = !entryForm.quantityLiters || entryForm.quantityLiters <= 0 ? 'Quantity must be greater than 0' : '';
-  entryErrors.ratePerLiter = !entryForm.ratePerLiter || entryForm.ratePerLiter <= 0 ? 'Rate must be greater than 0' : '';
+  // Rate alone says nothing about the size of the fill, so the amount or the
+  // quantity has to be there — same rule the API enforces.
+  const hasAmount = !!entryForm.totalAmount && entryForm.totalAmount > 0;
+  const hasQuantity = !!entryForm.quantityLiters && entryForm.quantityLiters > 0;
+  entryErrors.totalAmount = hasAmount || hasQuantity ? '' : 'Enter the amount paid, the quantity, or both';
   entryErrors.odometerReading = !entryForm.odometerReading || entryForm.odometerReading <= 0 ? 'Meter reading is required' : '';
   return !Object.values(entryErrors).some(Boolean);
 }
@@ -484,8 +644,9 @@ async function onSubmitEntry() {
       fuelType: entryForm.fuelType,
       billingMethod: entryForm.billingMethod || undefined,
       fuelCardId: entryForm.fuelCardId || undefined,
-      quantityLiters: entryForm.quantityLiters,
-      ratePerLiter: entryForm.ratePerLiter,
+      quantityLiters: entryForm.quantityLiters || undefined,
+      ratePerLiter: entryForm.ratePerLiter || undefined,
+      totalAmount: entryForm.totalAmount || undefined,
       odometerReading: entryForm.odometerReading,
       entryDate: entryForm.entryDate,
       location: entryForm.location || undefined,
@@ -604,7 +765,7 @@ async function fetchVehicleSummary() {
   vehicleSummary.value = null;
   if (!summaryVehicleId.value) return;
   try {
-    vehicleSummary.value = await entryStore.vehicleSummary(summaryVehicleId.value);
+    vehicleSummary.value = await entryStore.vehicleSummary(summaryVehicleId.value, mileageParams());
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to fetch vehicle fuel summary'));
   }
@@ -670,5 +831,6 @@ onMounted(async () => {
   void tripsRes;
   fetchEntries();
   fetchCards();
+  fetchMileage();
 });
 </script>

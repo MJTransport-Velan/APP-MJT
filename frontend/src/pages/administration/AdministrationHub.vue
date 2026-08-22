@@ -30,8 +30,6 @@ const cards = [
   { icon: 'mdi-lock-check-outline', title: 'Permissions', description: 'Manage permissions and access control across the system', to: '/administration/permissions' },
   { icon: 'mdi-office-building-outline', title: 'Departments', description: 'Create and manage departments and their structure', to: '/administration/departments' },
   { icon: 'mdi-account-group-outline', title: 'Teams', description: 'Organize users into teams for better collaboration', to: '/administration/teams' },
-  { icon: 'mdi-domain', title: 'Companies', description: 'Manage company profiles and their group', to: '/administration/companies' },
-  { icon: 'mdi-account-multiple-outline', title: 'Groups', description: 'Manage groups of companies and their assigned team', to: '/administration/groups' },
   { icon: 'mdi-history', title: 'Audit Logs', description: 'View system activities and audit trail logs', to: '/administration/audit-logs' },
   { icon: 'mdi-account-circle-outline', title: 'Profile', description: 'View and update your own account details', to: '/administration/profile' },
 ];

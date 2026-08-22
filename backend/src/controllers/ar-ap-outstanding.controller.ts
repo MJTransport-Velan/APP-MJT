@@ -13,7 +13,7 @@ export const arApOutstandingController = {
     return sendSuccess(res, 200, { message: 'Supplier outstanding fetched', data: rows });
   }),
   customerAging: asyncHandler(async (req, res: Response) => {
-    const rows = await arApOutstandingService.customerAging({ branchId: req.query.branchId as string | undefined });
+    const rows = await arApOutstandingService.customerAging();
     return sendSuccess(res, 200, { message: 'Customer aging fetched', data: rows });
   }),
   supplierAging: asyncHandler(async (req, res: Response) => {

@@ -16,12 +16,6 @@ const configs: MasterModuleConfig[] = [
     fields: [{ key: 'description', zod: z.string() }],
   },
   {
-    modelName: 'trailerType',
-    entityLabel: 'Trailer Type',
-    permissionPrefix: 'trailer_type',
-    fields: [{ key: 'description', zod: z.string() }],
-  },
-  {
     modelName: 'material',
     entityLabel: 'Material',
     permissionPrefix: 'material',
@@ -102,20 +96,6 @@ const configs: MasterModuleConfig[] = [
       { key: 'isReverseCharge', zod: z.boolean() },
     ],
   },
-  // Phase 13 — GST, Taxation, Financial Reporting & Financial Closing
-  // (docs Phase 7). Fits the same generic { name/description, code, isActive } shape.
-  {
-    modelName: 'tdsSection',
-    entityLabel: 'TDS Section',
-    permissionPrefix: 'tds_section',
-    nameFieldKey: 'description',
-    codeFieldKey: 'sectionCode',
-    fields: [
-      { key: 'ratePercent', zod: z.number().min(0, 'TDS rate cannot be negative').max(100, 'TDS rate cannot exceed 100'), requiredOnCreate: true },
-      { key: 'thresholdAmount', zod: z.number().min(0) },
-      { key: 'applicableTo', zod: z.enum(['CONTRACTOR', 'PROFESSIONAL', 'RENT', 'COMMISSION', 'TRANSPORT', 'SALARY', 'OTHER']), requiredOnCreate: true },
-    ],
-  },
   // Phase 11 — Driver Accounts, Employee Payroll & Settlements (docs Phase
   // 5). Employee did not exist anywhere in the schema before this phase —
   // fits the same { name, code, ...extras, isActive } shape as every
@@ -151,16 +131,6 @@ const configs: MasterModuleConfig[] = [
     ],
   },
   {
-    modelName: 'costCategory',
-    entityLabel: 'Cost Category',
-    permissionPrefix: 'cost_category',
-    fields: [{ key: 'description', zod: z.string() }],
-    // Seeded categories (Vehicle/Branch/Department/Project/Trip/Driver) are
-    // protected — deleting one would silently orphan every Cost Center
-    // already tagged under it.
-    systemFlagField: 'isSystemCategory',
-  },
-  {
     // Capital partners/proprietors — a simple named master. codeFieldKey
     // set to nameFieldKey (same as FuelCard.cardNumber) since a person's
     // name doubles as their own unique identifier here; no separate code.
@@ -177,7 +147,6 @@ const configs: MasterModuleConfig[] = [
 // read better as hyphens in a URL — e.g. /masters/vehicle-types).
 const routePaths: Record<string, string> = {
   vehicle_type: 'vehicle-types',
-  trailer_type: 'trailer-types',
   material: 'materials',
   expense_category: 'expense-categories',
   payment_mode: 'payment-modes',
@@ -186,9 +155,7 @@ const routePaths: Record<string, string> = {
   designation: 'designations',
   gst_master: 'gst-masters',
   currency: 'currencies',
-  cost_category: 'cost-categories',
   employee: 'employees',
-  tds_section: 'tds-sections',
   capital_partner: 'capital-partners',
 };
 

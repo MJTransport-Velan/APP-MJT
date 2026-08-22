@@ -81,7 +81,11 @@ const routes: RouteRecordRaw[] = [
         path: 'trips/:id',
         name: 'trips-detail',
         component: () => import('@/pages/trips/TripFollowUp.vue'),
-        meta: { breadcrumb: 'Trip Follow-up', permission: 'trip.view' },
+        meta: {
+          breadcrumb: 'Trip Follow-up',
+          parentBreadcrumb: { title: 'Trip List', to: '/trips/list' },
+          permission: 'trip.view',
+        },
       },
       {
         path: 'bookings',
@@ -115,7 +119,11 @@ const routes: RouteRecordRaw[] = [
         path: 'bookings/:id',
         name: 'bookings-detail',
         component: () => import('@/pages/bookings/BookingDetails.vue'),
-        meta: { breadcrumb: 'Booking Details', permission: 'booking.view' },
+        meta: {
+          breadcrumb: 'Booking Details',
+          parentBreadcrumb: { title: 'Booking List', to: '/bookings/list' },
+          permission: 'booking.view',
+        },
       },
       {
         path: 'operations',
@@ -150,13 +158,18 @@ const routes: RouteRecordRaw[] = [
         ],
       },
       {
+        // Deliberately unnamed: a named parent whose '' child is a bare
+        // redirect makes vue-router warn on every navigation, because
+        // resolving the parent name cannot render that child. The children
+        // below are all reached by their own names, so the parent never
+        // needed one.
         path: 'fleet',
-        name: 'fleet',
         component: RouterView,
         meta: { breadcrumb: 'Operations', permission: 'fleet.view' },
         children: [
           {
             path: '',
+            name: 'fleet',
             redirect: { name: 'operations-hub' },
           },
           {
@@ -706,12 +719,6 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Masters' },
           },
           {
-            path: 'branches',
-            name: 'masters-branches',
-            component: () => import('@/pages/masters/Branches.vue'),
-            meta: { breadcrumb: 'Branches' },
-          },
-          {
             path: 'vehicles',
             name: 'masters-vehicles',
             component: () => import('@/pages/masters/Vehicles.vue'),
@@ -729,9 +736,26 @@ const routes: RouteRecordRaw[] = [
             component: () => import('@/pages/masters/Suppliers.vue'),
             meta: { breadcrumb: 'Suppliers' },
           },
+          // Companies (clients) and the Groups they are bucketed into are
+          // reference data, not administration. Both keep the permission
+          // their API authorizes on, which overrides the parent's
+          // masters.view — an admin managing clients need not hold the
+          // whole Masters module.
+          {
+            path: 'companies',
+            name: 'masters-companies',
+            component: () => import('@/pages/masters/Companies.vue'),
+            meta: { breadcrumb: 'Companies', permission: 'company.view' },
+          },
+          {
+            path: 'groups',
+            name: 'masters-groups',
+            component: () => import('@/pages/masters/Groups.vue'),
+            meta: { breadcrumb: 'Groups', permission: 'group.view' },
+          },
           // Vehicle Types, Locations, Materials, Expense Categories,
-          // Payment Modes, Tyres, Service Categories, Trailer Types,
-          // Designations, GST Masters — all served by the generic
+          // Payment Modes, Tyres, Service Categories, Designations,
+          // GST Masters — all served by the generic
           // config-driven page, keyed off the :module param.
           {
             path: ':module',
@@ -782,18 +806,6 @@ const routes: RouteRecordRaw[] = [
             name: 'administration-teams',
             component: () => import('@/pages/administration/Teams.vue'),
             meta: { breadcrumb: 'Teams', permission: 'administration.view' },
-          },
-          {
-            path: 'companies',
-            name: 'administration-companies',
-            component: () => import('@/pages/administration/Companies.vue'),
-            meta: { breadcrumb: 'Companies', permission: 'administration.view' },
-          },
-          {
-            path: 'groups',
-            name: 'administration-groups',
-            component: () => import('@/pages/administration/Groups.vue'),
-            meta: { breadcrumb: 'Groups', permission: 'administration.view' },
           },
           {
             path: 'audit-logs',

@@ -1,5 +1,6 @@
 import { Prisma, DepreciationRunStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const runWithRelations = Prisma.validator<Prisma.DepreciationRunInclude>()({
   lines: { include: { asset: { include: { category: true } } } },
@@ -32,9 +33,13 @@ export const depreciationRunRepository = {
   },
 
   async nextRunNumber() {
-    const count = await prisma.depreciationRun.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DEP-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('DEP', 4, async (stamp) => {
+      const rows = await prisma.depreciationRun.findMany({
+        where: { runNumber: { startsWith: `DEP-${stamp}-` } },
+        select: { runNumber: true },
+      });
+      return highestSequenceToday(rows, 'runNumber', 'DEP', stamp);
+    });
   },
 
   create(data: Prisma.DepreciationRunUncheckedCreateInput) {

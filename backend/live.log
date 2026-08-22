@@ -1,0 +1,517 @@
+
+> mj-transport-erp-backend@1.0.0 dev
+> nodemon --watch src --exec ts-node src/server.ts
+
+[33m[nodemon] 3.1.14[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): src\**\*[39m
+[33m[nodemon] watching extensions: ts,json[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[2026-08-21T06:26:36.606Z] [INFO] Database connected successfully
+[2026-08-21T06:26:36.613Z] [INFO] MJ Transport ERP API running on http://localhost:5000
+[2026-08-21T06:26:36.639Z] [INFO] Scheduler: 1 automation rule(s) registered
+[0mGET /api/dashboard [33m401[0m 16.477 ms - 54[0m
+[2026-08-21T07:20:50.353Z] [ERROR] Invalid refresh token {
+  stack: 'Error: Invalid refresh token\n' +
+    '    at Object.refresh (D:\\MJSoftware\\backend\\src\\services\\auth.service.ts:84:13)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\auth.controller.ts:49:20'
+}
+[0mPOST /api/auth/refresh [33m401[0m 34.907 ms - 51[0m
+[0mPOST /api/auth/login [32m200[0m 92.802 ms - 22984[0m
+[0mGET /api/dashboard [32m200[0m 182.066 ms - 1879[0m
+[0mGET /api/bookings/stats [32m200[0m 6.463 ms - 210[0m
+[0mGET /api/bookings?page=1&pageSize=10 [32m200[0m 17.251 ms - 3171[0m
+[0mGET /api/masters/locations?pageSize=500 [36m304[0m 10.903 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 11.022 ms - -[0m
+prisma:error 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.
+[2026-08-21T07:21:26.851Z] [ERROR] 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue. {
+  stack: 'PrismaClientUnknownRequestError: \n' +
+    'Invalid `prisma.booking.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\booking.repository.ts:153:27\n' +
+    '\n' +
+    '  150   createdById?: string;\n' +
+    '  151   updatedById?: string;\n' +
+    '  152 }) {\n' +
+    '→ 153   return prisma.booking.create(\n' +
+    'Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7505)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.createCounter (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:244:21)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\booking.controller.ts:30:21'
+}
+[0mPOST /api/bookings [31m500[0m 18.817 ms - 51[0m
+prisma:error 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.
+[2026-08-21T07:21:33.055Z] [ERROR] 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue. {
+  stack: 'PrismaClientUnknownRequestError: \n' +
+    'Invalid `prisma.booking.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\booking.repository.ts:153:27\n' +
+    '\n' +
+    '  150   createdById?: string;\n' +
+    '  151   updatedById?: string;\n' +
+    '  152 }) {\n' +
+    '→ 153   return prisma.booking.create(\n' +
+    'Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7505)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.createCounter (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:244:21)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\booking.controller.ts:30:21'
+}
+[0mPOST /api/bookings [31m500[0m 6.213 ms - 51[0m
+prisma:error 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.
+[2026-08-21T07:21:40.847Z] [ERROR] 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue. {
+  stack: 'PrismaClientUnknownRequestError: \n' +
+    'Invalid `prisma.booking.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\booking.repository.ts:153:27\n' +
+    '\n' +
+    '  150   createdById?: string;\n' +
+    '  151   updatedById?: string;\n' +
+    '  152 }) {\n' +
+    '→ 153   return prisma.booking.create(\n' +
+    'Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7505)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.createCounter (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:244:21)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\booking.controller.ts:30:21'
+}
+[0mPOST /api/bookings [31m500[0m 5.317 ms - 51[0m
+prisma:error 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.
+[2026-08-21T07:21:56.158Z] [ERROR] 
+Invalid `prisma.booking.create()` invocation in
+D:\MJSoftware\backend\src\repositories\booking.repository.ts:153:27
+
+  150   createdById?: string;
+  151   updatedById?: string;
+  152 }) {
+→ 153   return prisma.booking.create(
+Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue. {
+  stack: 'PrismaClientUnknownRequestError: \n' +
+    'Invalid `prisma.booking.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\booking.repository.ts:153:27\n' +
+    '\n' +
+    '  150   createdById?: string;\n' +
+    '  151   updatedById?: string;\n' +
+    '  152 }) {\n' +
+    '→ 153   return prisma.booking.create(\n' +
+    'Could not convert argument value Object {"$type": String("DateTime"), "value": String("+012121-02-11T18:30:00.000Z")} to ArgumentValue.\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7505)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.createCounter (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:244:21)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\booking.controller.ts:30:21'
+}
+[0mPOST /api/bookings [31m500[0m 5.690 ms - 51[0m
+[0mPOST /api/bookings [32m201[0m 29.751 ms - 1311[0m
+[0mGET /api/bookings/b50629cc-4c7c-4f5d-a86f-03abb647a5c8 [32m200[0m 4.861 ms - 1311[0m
+[0mPATCH /api/bookings/b50629cc-4c7c-4f5d-a86f-03abb647a5c8/confirm [32m200[0m 16.814 ms - 1536[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 4.746 ms - -[0m
+[0mGET /api/masters/drivers?pageSize=200 [36m304[0m 5.385 ms - -[0m
+[0mGET /api/masters/vehicles?pageSize=200 [36m304[0m 10.256 ms - -[0m
+[0mPATCH /api/bookings/b50629cc-4c7c-4f5d-a86f-03abb647a5c8/vehicle [32m200[0m 14.285 ms - 1760[0m
+[0mPATCH /api/bookings/b50629cc-4c7c-4f5d-a86f-03abb647a5c8/generate-lr [32m200[0m 11.466 ms - 1940[0m
+[0mGET /api/bookings/stats [32m200[0m 2.166 ms - 210[0m
+[0mGET /api/bookings?page=1&pageSize=10 [32m200[0m 9.491 ms - 5003[0m
+[0mGET /api/operations/trips/stats [36m304[0m 4.496 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 5.699 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.161 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 1.828 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.396 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.131 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 7.326 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 7.024 ms - -[0m
+[0mGET /api/accounts/dashboard [36m304[0m 29.816 ms - -[0m
+[0mGET /api/accounts/dashboard [36m304[0m 13.061 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 3.914 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 1.660 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 6.662 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10&status=PENDING [32m200[0m 6.824 ms - 1331[0m
+[0mGET /api/bookings/cd6fad25-0d3c-4f67-bda4-c15afcd93d63 [32m200[0m 3.614 ms - 1331[0m
+[0mGET /api/bookings/stats [36m304[0m 2.381 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 7.793 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10&status=PENDING [36m304[0m 6.094 ms - -[0m
+[0mGET /api/bookings/cd6fad25-0d3c-4f67-bda4-c15afcd93d63 [36m304[0m 4.293 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.407 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 7.205 ms - -[0m
+[0mGET /api/bookings/cd6fad25-0d3c-4f67-bda4-c15afcd93d63 [36m304[0m 4.784 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 1.858 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 6.695 ms - -[0m
+[0mGET /api/bookings/8c67918a-f553-47e7-9fe4-7267baeb8c87 [36m304[0m 4.208 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 3.282 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 11.724 ms - -[0m
+[0mGET /api/bookings/cd6fad25-0d3c-4f67-bda4-c15afcd93d63 [36m304[0m 5.063 ms - -[0m
+[0mPATCH /api/bookings/cd6fad25-0d3c-4f67-bda4-c15afcd93d63/confirm [32m200[0m 17.292 ms - 1556[0m
+[0mGET /api/masters/drivers?pageSize=200 [36m304[0m 5.493 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 3.909 ms - -[0m
+[0mGET /api/masters/vehicles?pageSize=200 [36m304[0m 8.877 ms - -[0m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[2026-08-21T07:26:12.459Z] [INFO] Database connected successfully
+[2026-08-21T07:26:12.464Z] [INFO] MJ Transport ERP API running on http://localhost:5000
+[2026-08-21T07:26:12.489Z] [INFO] Scheduler: 1 automation rule(s) registered
+[0mPOST /api/auth/login [32m200[0m 95.148 ms - 22984[0m
+[2026-08-21T07:26:42.547Z] [ERROR] Enter a valid pickup date {
+  stack: 'Error: Enter a valid pickup date\n' +
+    '    at parseDateStrict (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:155:11)\n' +
+    '    at Object.createCounter (D:\\MJSoftware\\backend\\src\\services\\booking.service.ts:232:24)\n' +
+    '    at D:\\MJSoftware\\backend\\src\\controllers\\booking.controller.ts:30:42\n' +
+    '    at D:\\MJSoftware\\backend\\src\\utils\\asyncHandler.ts:5:21\n' +
+    '    at Layer.handle [as handle_request] (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at next (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\route.js:149:13)\n' +
+    '    at D:\\MJSoftware\\backend\\src\\middlewares\\validate.middleware.ts:21:14\n' +
+    '    at Layer.handle [as handle_request] (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at next (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\route.js:149:13)\n' +
+    '    at D:\\MJSoftware\\backend\\src\\middlewares\\authorize.middleware.ts:14:14\n' +
+    '    at Layer.handle [as handle_request] (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at next (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\route.js:149:13)\n' +
+    '    at Route.dispatch (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\route.js:119:3)\n' +
+    '    at Layer.handle [as handle_request] (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\layer.js:95:5)\n' +
+    '    at D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\index.js:284:15\n' +
+    '    at router.process_params (D:\\MJSoftware\\backend\\node_modules\\express\\lib\\router\\index.js:346:12)'
+}
+[0mPOST /api/bookings [33m400[0m 9.221 ms - 55[0m
+[0mPOST /api/bookings [32m201[0m 78.155 ms - 1323[0m
+[0mGET /api/bookings/stats [32m200[0m 4.717 ms - 210[0m
+[0mGET /api/bookings?page=1&pageSize=10 [32m200[0m 11.937 ms - 6438[0m
+[0mGET /api/masters/locations?pageSize=500 [36m304[0m 5.025 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 39.574 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.171 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 10.172 ms - -[0m
+[0mGET /api/bookings/abf85ddc-fdc1-4497-ae10-7397315cdb54 [32m200[0m 5.244 ms - 1323[0m
+[0mPATCH /api/bookings/abf85ddc-fdc1-4497-ae10-7397315cdb54/confirm [32m200[0m 14.528 ms - 1548[0m
+[0mGET /api/masters/drivers?pageSize=200 [36m304[0m 5.465 ms - -[0m
+[0mGET /api/masters/vehicles?pageSize=200 [36m304[0m 8.591 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 37.072 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 3.819 ms - -[0m
+[0mGET /api/masters/suppliers?pageSize=200 [36m304[0m 7.283 ms - -[0m
+[0mGET /api/masters/vehicles?page=1&pageSize=10 [36m304[0m 5.065 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=1&pageSize=10 [36m304[0m 1.982 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=2&pageSize=10 [32m200[0m 2.745 ms - 669[0m
+[0mGET /api/masters/vehicle-types?page=1&pageSize=10 [36m304[0m 2.248 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=2&pageSize=10 [36m304[0m 2.493 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=1&pageSize=10 [36m304[0m 2.289 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=2&pageSize=10 [36m304[0m 1.934 ms - -[0m
+[0mGET /api/masters/vehicle-types?page=1&pageSize=10 [36m304[0m 2.337 ms - -[0m
+[0mGET /api/bookings/stats [32m200[0m 3.623 ms - 210[0m
+[0mGET /api/bookings?page=1&pageSize=10 [32m200[0m 6.655 ms - 6661[0m
+[0mGET /api/operations/trips/stats [36m304[0m 6.264 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.657 ms - -[0m
+[0mGET /api/dashboard [32m200[0m 112.322 ms - 2023[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.176 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 3.244 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 9.164 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 6.698 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 3.194 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 9.104 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.731 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.291 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 6.877 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.995 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.482 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.093 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 8.135 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.055 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.525 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.584 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.225 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.633 ms - -[0m
+[0mGET /api/masters/locations?pageSize=200 [36m304[0m 3.834 ms - -[0m
+[0mGET /api/masters/vehicle-types?pageSize=200 [36m304[0m 2.888 ms - -[0m
+[0mGET /api/masters/materials?pageSize=200 [36m304[0m 39.382 ms - -[0m
+[0mGET /api/administration/companies?pageSize=200 [36m304[0m 45.619 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 3.668 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.164 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.575 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.412 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 21.261 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 2.962 ms - -[0m
+[0mGET /api/accounts/dashboard [36m304[0m 17.221 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 14.774 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.953 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 3.026 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.115 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.498 ms - -[0m
+[0mGET /api/masters/drivers?pageSize=200 [36m304[0m 4.825 ms - -[0m
+[0mGET /api/masters/vehicles?pageSize=200 [36m304[0m 9.699 ms - -[0m
+[0mGET /api/fleet/assignments?status=ACTIVE&pageSize=500 [36m304[0m 8.204 ms - -[0m
+[0mGET /api/masters/suppliers?pageSize=200 [36m304[0m 9.280 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.575 ms - -[0m
+[0mGET /api/operations/trips?page=1&pageSize=10&statusIn=DRAFT,PLANNED,APPROVED [36m304[0m 11.915 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.192 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.918 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.779 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.721 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 7.393 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 8.118 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 3.237 ms - -[0m
+[0mGET /api/dashboard [36m304[0m 5.987 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.216 ms - -[0m
+[0mPOST /api/auth/logout [32m200[0m 6.559 ms - 58[0m
+[0mPOST /api/auth/login [32m200[0m 76.291 ms - 22984[0m
+[0mGET /api/dashboard [32m200[0m 9.157 ms - 1947[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 19.841 ms - -[0m
+[0mGET /api/administration/teams?pageSize=100 [36m304[0m 14.235 ms - -[0m
+[0mGET /api/administration/roles?pageSize=100 [32m200[0m 81.521 ms - 127653[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 7.401 ms - -[0m
+[0mDELETE /api/administration/users/cf7028f9-7a70-4d1e-9e12-d2b9b24e23f1 [32m200[0m 8.761 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 4.983 ms - 4369[0m
+[0mDELETE /api/administration/users/453020f6-e05f-4645-b520-52ec37cd8962 [32m200[0m 24.090 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 6.158 ms - 4467[0m
+[0mDELETE /api/administration/users/0df8b67b-1a2b-4352-8066-d433d6640070 [32m200[0m 5.909 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 4.998 ms - 4741[0m
+[0mDELETE /api/administration/users/a0f2b629-5d24-4812-81ba-28a03336d7dc [32m200[0m 6.060 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 5.008 ms - 4747[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 59.078 ms - -[0m
+[0mGET /api/administration/roles?pageSize=100 [36m304[0m 97.307 ms - -[0m
+[0mGET /api/administration/teams?pageSize=100 [36m304[0m 97.183 ms - -[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 9.798 ms - -[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 7.742 ms - -[0m
+[0mGET /api/administration/teams?pageSize=100 [36m304[0m 6.898 ms - -[0m
+[0mGET /api/administration/roles?pageSize=100 [36m304[0m 50.652 ms - -[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 7.163 ms - -[0m
+[0mGET /api/accounts/dashboard [36m304[0m 245.589 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 5.051 ms - -[0m
+[0mGET /api/operations/trips?pageSize=200 [32m200[0m 14.922 ms - 7112[0m
+[0mGET /api/bookings/stats [36m304[0m 3.491 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 7.502 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.336 ms - -[0m
+[0mGET /api/bookings/stats [36m304[0m 2.779 ms - -[0m
+[0mGET /api/bookings?page=1&pageSize=10 [36m304[0m 5.828 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.378 ms - -[0m
+[0mGET /api/masters/vehicles?pageSize=200 [36m304[0m 6.803 ms - -[0m
+[0mGET /api/masters/drivers?pageSize=200 [36m304[0m 6.601 ms - -[0m
+[0mGET /api/fleet/assignments?status=ACTIVE&pageSize=500 [36m304[0m 5.864 ms - -[0m
+[0mGET /api/masters/suppliers?pageSize=200 [36m304[0m 6.411 ms - -[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.334 ms - -[0m
+[0mGET /api/operations/trips?page=1&pageSize=10 [32m200[0m 10.145 ms - 7111[0m
+[0mGET /api/dashboard [32m200[0m 73.896 ms - 1909[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.757 ms - -[0m
+[0mGET /api/operations/intents/stats [36m304[0m 2.377 ms - -[0m
+[0mGET /api/operations/intents?page=1&pageSize=10&status=SUBMITTED [32m200[0m 5.590 ms - 111[0m
+[0mGET /api/operations/trips/stats [36m304[0m 2.378 ms - -[0m
+[0mGET /api/operations/dashboard [36m304[0m 5.169 ms - -[0m
+[0mGET /api/accounts/dashboard [36m304[0m 24.934 ms - -[0m
+[0mGET /api/administration/teams?pageSize=100 [36m304[0m 4.863 ms - -[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 13.268 ms - -[0m
+[0mGET /api/administration/roles?pageSize=100 [36m304[0m 46.360 ms - -[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 7.058 ms - -[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [32m200[0m 28.880 ms - 76149[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [33m401[0m 1.081 ms - 54[0m
+[0mPOST /api/auth/refresh [32m200[0m 96.701 ms - 13268[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [36m304[0m 40.838 ms - -[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [33m401[0m 52.767 ms - 54[0m
+[0mPOST /api/auth/refresh [32m200[0m 310.412 ms - 13268[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [36m304[0m 79.764 ms - -[0m
+[0mGET /api/administration/roles?page=1&pageSize=10 [36m304[0m 66.523 ms - -[0m
+[2026-08-22T00:21:47.219Z] [PID: 53876] [32m[NODE-CRON][32m [33m[WARN][0m missed execution at Sat Aug 22 2026 02:00:00 GMT+0530 (India Standard Time)! Possible blocking IO or high CPU user at the same process used by node-cron.
+[0mPOST /api/auth/login [32m200[0m 289.111 ms - 22984[0m
+[0mGET /api/dashboard [32m200[0m 239.400 ms - 1909[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 52.031 ms - 4747[0m
+[0mGET /api/administration/teams?pageSize=100 [32m200[0m 47.651 ms - 1310[0m
+[0mGET /api/administration/roles?pageSize=100 [32m200[0m 84.947 ms - 127653[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [36m304[0m 9.886 ms - -[0m
+[0mDELETE /api/administration/users/f7447a02-af4c-4fe1-8218-ebc0ab0c23fc [32m200[0m 13.513 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 7.957 ms - 4136[0m
+[0mDELETE /api/administration/users/1c66a4c7-4b1b-4b30-811d-577c2755a695 [32m200[0m 8.649 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 5.303 ms - 3696[0m
+[0mDELETE /api/administration/users/8bb53e57-e9b1-4002-be3b-eb62d72a969c [32m200[0m 7.407 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 5.766 ms - 3281[0m
+[0mDELETE /api/administration/users/548ebdae-5a3e-41b1-8498-6a12d1f25d5b [32m200[0m 23.624 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 4.949 ms - 2861[0m
+[0mDELETE /api/administration/users/faaaa977-aab9-4dd7-91f0-402843c7384d [32m200[0m 8.082 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 4.953 ms - 2276[0m
+[0mDELETE /api/administration/users/fa1e00ab-a946-4ebf-bbfb-172d449ff78e [32m200[0m 8.542 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 4.909 ms - 1865[0m
+[0mDELETE /api/administration/users/6ec6ba65-7e40-4eb4-a920-398430e18d9b [32m200[0m 12.013 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 3.881 ms - 1455[0m
+[0mDELETE /api/administration/users/ea2e127f-e5c5-4a93-be5c-3cf1891f0a73 [32m200[0m 14.607 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 5.300 ms - 1038[0m
+[0mDELETE /api/administration/users/8dcf4b4c-68b1-435d-8139-e19027f87e08 [32m200[0m 6.473 ms - 53[0m
+[0mGET /api/administration/users?page=1&pageSize=10 [32m200[0m 3.139 ms - 453[0m
+prisma:error 
+Invalid `prisma.user.create()` invocation in
+D:\MJSoftware\backend\src\repositories\admin-user.repository.ts:61:24
+
+  58 },
+  59 
+  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {
+→ 61   return prisma.user.create(
+Unique constraint failed on the fields: (`email`)
+[2026-08-22T06:01:42.794Z] [ERROR] 
+Invalid `prisma.user.create()` invocation in
+D:\MJSoftware\backend\src\repositories\admin-user.repository.ts:61:24
+
+  58 },
+  59 
+  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {
+→ 61   return prisma.user.create(
+Unique constraint failed on the fields: (`email`) {
+  stack: 'PrismaClientKnownRequestError: \n' +
+    'Invalid `prisma.user.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\admin-user.repository.ts:61:24\n' +
+    '\n' +
+    '  58 },\n' +
+    '  59 \n' +
+    '  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {\n' +
+    '→ 61   return prisma.user.create(\n' +
+    'Unique constraint failed on the fields: (`email`)\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7315)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.create (D:\\MJSoftware\\backend\\src\\services\\admin-user.service.ts:68:18)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\admin-user.controller.ts:20:18'
+}
+[0mPOST /api/administration/users [31m500[0m 181.371 ms - 51[0m
+prisma:error 
+Invalid `prisma.user.create()` invocation in
+D:\MJSoftware\backend\src\repositories\admin-user.repository.ts:61:24
+
+  58 },
+  59 
+  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {
+→ 61   return prisma.user.create(
+Unique constraint failed on the fields: (`email`)
+[2026-08-22T06:02:17.555Z] [ERROR] 
+Invalid `prisma.user.create()` invocation in
+D:\MJSoftware\backend\src\repositories\admin-user.repository.ts:61:24
+
+  58 },
+  59 
+  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {
+→ 61   return prisma.user.create(
+Unique constraint failed on the fields: (`email`) {
+  stack: 'PrismaClientKnownRequestError: \n' +
+    'Invalid `prisma.user.create()` invocation in\n' +
+    'D:\\MJSoftware\\backend\\src\\repositories\\admin-user.repository.ts:61:24\n' +
+    '\n' +
+    '  58 },\n' +
+    '  59 \n' +
+    '  60 create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {\n' +
+    '→ 61   return prisma.user.create(\n' +
+    'Unique constraint failed on the fields: (`email`)\n' +
+    '    at $n.handleRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:7315)\n' +
+    '    at $n.handleAndLogRequestError (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6623)\n' +
+    '    at $n.request (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:121:6307)\n' +
+    '    at async l (D:\\MJSoftware\\backend\\node_modules\\@prisma\\client\\runtime\\library.js:130:9633)\n' +
+    '    at async Object.create (D:\\MJSoftware\\backend\\src\\services\\admin-user.service.ts:68:18)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\admin-user.controller.ts:20:18'
+}
+[0mPOST /api/administration/users [31m500[0m 81.088 ms - 51[0m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[2026-08-22T06:05:14.896Z] [INFO] Database connected successfully
+[2026-08-22T06:05:14.904Z] [INFO] MJ Transport ERP API running on http://localhost:5000
+[2026-08-22T06:05:14.996Z] [INFO] Scheduler: 1 automation rule(s) registered
+[0mGET /api/health [33m404[0m 17.383 ms - 62[0m
+[0mGET /api/health [33m404[0m 2.843 ms - 62[0m
+[0mGET / [33m404[0m 0.369 ms - 52[0m
+[0mGET /health [32m200[0m 1.105 ms - 54[0m
+[0mPOST /api/auth/login [32m200[0m 289.862 ms - 22984[0m
+[2026-08-22T06:22:29.695Z] [ERROR] Invalid username or password {
+  stack: 'Error: Invalid username or password\n' +
+    '    at Object.login (D:\\MJSoftware\\backend\\src\\services\\auth.service.ts:29:13)\n' +
+    '    at async D:\\MJSoftware\\backend\\src\\controllers\\auth.controller.ts:12:20'
+}
+[0mPOST /api/auth/login [33m401[0m 14.739 ms - 58[0m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[2026-08-22T06:23:45.015Z] [INFO] Database connected successfully
+Error: listen EADDRINUSE: address already in use :::5000
+    at Server.setupListenHandle [as _listen2] (node:net:2009:16)
+    at listenInCluster (node:net:2066:12)
+    at Server.listen (node:net:2171:7)
+    at app.listen (D:\MJSoftware\backend\node_modules\express\lib\application.js:635:24)
+    at bootstrap (D:\MJSoftware\backend\src\server.ts:12:9) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 5000
+}
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `ts-node src/server.ts`[39m
+[2026-08-22T07:06:09.800Z] [INFO] Database connected successfully
+[2026-08-22T07:06:09.807Z] [INFO] MJ Transport ERP API running on http://localhost:5000
+[2026-08-22T07:06:09.834Z] [INFO] Scheduler: 1 automation rule(s) registered
+[0mGET /health [32m200[0m 1.561 ms - 54[0m
+[0mGET /api/auth/me [33m401[0m 4.544 ms - 58[0m
+[0mPOST /api/auth/login [32m200[0m 90.418 ms - 22984[0m
+[0mGET /api/dashboard [32m200[0m 190.170 ms - 1879[0m
+[0mPOST /api/auth/login [32m200[0m 80.417 ms - 22984[0m
+[0mGET /api/dashboard [32m200[0m 8.777 ms - 1879[0m
+[0mPOST /api/auth/logout [32m200[0m 4.200 ms - 58[0m

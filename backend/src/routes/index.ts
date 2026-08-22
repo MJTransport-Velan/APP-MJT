@@ -16,7 +16,6 @@ import adminCompanyRoutes from './admin-company.routes';
 import adminGroupRoutes from './admin-group.routes';
 import adminAuditRoutes from './admin-audit.routes';
 import mastersSimpleRoutes from './masters-simple.routes';
-import branchRoutes from './branch.routes';
 import locationRoutes from './location.routes';
 import vehicleRoutes from './vehicle.routes';
 import driverRoutes from './driver.routes';
@@ -126,12 +125,11 @@ router.use('/administration/groups', adminGroupRoutes);
 router.use('/administration/audit-logs', adminAuditRoutes);
 
 // Phase 3 — Masters
-router.use('/masters/branches', branchRoutes);
 router.use('/masters/locations', locationRoutes);
 router.use('/masters/vehicles', vehicleRoutes);
 router.use('/masters/drivers', driverRoutes);
 router.use('/masters/suppliers', supplierRoutes);
-// vehicle-types, trailer-types, materials, expense-categories,
+// vehicle-types, materials, expense-categories,
 // banks, payment-modes, tyres, service-categories,
 // designations, gst-masters — all mounted inside mastersSimpleRoutes.
 router.use('/masters', mastersSimpleRoutes);

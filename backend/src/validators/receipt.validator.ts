@@ -38,7 +38,7 @@ export const createReceiptSchema = z.object({
     fundAccountType: fundAccountTypeEnum.optional(),
     fundAccountId: z.string().uuid().optional(),
     chequeId: z.string().uuid().optional(),
-  }),
+  }).strict(),
 });
 
 export const updateReceiptSchema = z.object({
@@ -50,7 +50,7 @@ export const updateReceiptSchema = z.object({
     paymentModeId: z.string().uuid().optional(),
     referenceNumber: z.string().optional(),
     remarks: z.string().optional(),
-  }),
+  }).strict(),
 });
 
 export const allocateReceiptSchema = z.object({

@@ -657,7 +657,20 @@ export const tripService = {
       historyNotes = notes ? `${notes} — ${chargeNote}` : chargeNote;
     }
 
-    await tripRepository.update(id, updateData);
+    // Move the trip only if it is still in the status this call validated
+    // against. The transition check above is decided before it is acted on,
+    // so five simultaneous "Mark as Started" clicks all passed it and all
+    // wrote — leaving five identical STARTED rows in the trip's history.
+    // Matching on the expected status makes the move a single atomic step,
+    // and whoever arrives second is told the trip has already moved.
+    const moved = await tripRepository.updateIfStatus(id, existing.status, updateData);
+    if (moved === 0) {
+      const current = await tripRepository.findById(id);
+      throw new AppError(
+        `This trip is already ${current?.status ?? 'in another status'} — someone else updated it. Reload to see the latest.`,
+        409
+      );
+    }
     await tripRepository.addStatusHistory(id, status, historyNotes, actorId);
 
     if (existing.vehicleId) {

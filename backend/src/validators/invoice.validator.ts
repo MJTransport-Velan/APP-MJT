@@ -41,7 +41,7 @@ export const generateInvoiceSchema = z.object({
         })
       )
       .optional(),
-  }),
+  }).strict(),
 });
 
 export const updateInvoiceSchema = z.object({
@@ -50,7 +50,7 @@ export const updateInvoiceSchema = z.object({
   body: z.object({
     dueDate: z.string().optional(),
     notes: z.string().optional(),
-  }),
+  }).strict(),
 });
 
 export const createCreditNoteSchema = z.object({
@@ -60,7 +60,7 @@ export const createCreditNoteSchema = z.object({
     amount: z.number().positive('Amount must be greater than 0'),
     reason: z.string().min(1, 'A reason is required'),
     category: creditNoteCategoryEnum.optional(),
-  }),
+  }).strict(),
 });
 
 export const createDebitNoteSchema = z.object({
@@ -70,7 +70,7 @@ export const createDebitNoteSchema = z.object({
     amount: z.number().positive('Amount must be greater than 0'),
     reason: z.string().min(1, 'A reason is required'),
     category: debitNoteCategoryEnum.optional(),
-  }),
+  }).strict(),
 });
 
 export type GenerateInvoiceInput = z.infer<typeof generateInvoiceSchema>['body'];

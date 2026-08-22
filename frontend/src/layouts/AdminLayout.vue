@@ -95,13 +95,20 @@
       </button>
       <!-- <span class="mj-app-bar__title text-white font-weight-medium">MJ Transport ERP</span> -->
 
+      <!--
+        This box filters the module and page list only (see
+        globalSearchResults below); it does not search business records. The
+        placeholder previously promised trips, vehicles and drivers, so
+        searching a real vehicle number returned "No matches found" and read
+        as missing data.
+      -->
       <div class="mj-app-bar__search">
         <AppIcon icon="mdi-magnify" size="small" class="mj-app-bar__search-icon" />
         <input
           ref="globalSearchInputRef"
           v-model="globalSearch"
           type="text"
-          placeholder="Search anything (Trips, Vehicles, Drivers, Branches...)"
+          placeholder="Jump to a page or module..."
           class="mj-app-bar__search-input"
           @focus="globalSearchOpen = true"
           @blur="globalSearchOpen = false"
@@ -278,7 +285,15 @@ const roleLabel = computed(() => {
 
 const breadcrumbItems = computed(() => {
   const matchedCrumbs = route.matched
-    .map((record) => ({ title: record.meta?.breadcrumb as string | undefined, to: record.path }))
+    .flatMap((record) => {
+      // Detail routes like /trips/:id are declared as siblings of their list
+      // route rather than children, so their real parent never appears in
+      // route.matched and the trail read "Home > Trip Follow-up". Such a
+      // route names its parent explicitly via meta.parentBreadcrumb.
+      const parent = record.meta?.parentBreadcrumb as { title: string; to: string } | undefined;
+      const self = { title: record.meta?.breadcrumb as string | undefined, to: record.path };
+      return parent ? [parent, self] : [self];
+    })
     .filter((crumb): crumb is { title: string; to: string } => !!crumb.title);
 
   // Adjacent hub/leaf pairs share the same meta.breadcrumb (e.g. the

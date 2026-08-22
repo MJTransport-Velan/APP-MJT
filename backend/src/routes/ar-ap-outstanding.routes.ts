@@ -13,14 +13,8 @@ const idParamSchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid id') }),
 });
-const agingQuerySchema = z.object({
-  body: z.object({}).optional(),
-  params: z.object({}).optional(),
-  query: z.object({ branchId: z.string().uuid().optional() }),
-});
-
 router.get('/customers/:id/outstanding', authorize('invoice.view'), validate(idParamSchema), arApOutstandingController.customerOutstanding);
-router.get('/customers/aging', authorize('invoice.view'), validate(agingQuerySchema), arApOutstandingController.customerAging);
+router.get('/customers/aging', authorize('invoice.view'), arApOutstandingController.customerAging);
 router.get('/suppliers/:id/outstanding', authorize('supplierBill.view'), validate(idParamSchema), arApOutstandingController.supplierOutstanding);
 router.get('/suppliers/aging', authorize('supplierBill.view'), arApOutstandingController.supplierAging);
 

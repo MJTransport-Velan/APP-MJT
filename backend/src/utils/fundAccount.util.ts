@@ -72,11 +72,47 @@ export async function assertFundAccountsDiffer(
   }
 }
 
-/** delta > 0 = money coming in (increase balance); delta < 0 = money going out (decrease balance). */
-export async function adjustFundAccountBalance(type: 'BANK' | 'CASH', id: string, delta: number): Promise<void> {
+/**
+ * delta > 0 = money coming in (increase balance); delta < 0 = money going out
+ * (decrease balance).
+ *
+ * A cash account represents physical notes in a drawer, so it cannot go
+ * below zero — an overdraw means the payment never actually happened. This
+ * was previously a bare increment with no check anywhere in this function,
+ * and individual callers were inconsistent about guarding it, which is how
+ * the MAIN cash account reached a negative balance. Bank accounts are left
+ * unguarded on purpose: a real account can be overdrawn, and blocking that
+ * here would break legitimate postings.
+ *
+ * Pass `allowNegative` for a deliberate correction (e.g. reversing an entry
+ * whose original credit has already been undone).
+ */
+export async function adjustFundAccountBalance(
+  type: 'BANK' | 'CASH',
+  id: string,
+  delta: number,
+  options: { allowNegative?: boolean } = {}
+): Promise<void> {
   if (type === 'BANK') {
     await prisma.bankAccount.update({ where: { id }, data: { currentBalance: { increment: delta } } });
-  } else {
-    await prisma.cashAccount.update({ where: { id }, data: { currentBalance: { increment: delta } } });
+    return;
   }
+
+  if (delta < 0 && !options.allowNegative) {
+    const account = await prisma.cashAccount.findUnique({
+      where: { id },
+      select: { currentBalance: true, cashAccountType: true },
+    });
+    if (account) {
+      const available = Number(account.currentBalance);
+      if (available + delta < 0) {
+        throw new AppError(
+          `The ${account.cashAccountType} cash account holds ${available.toFixed(2)}, which is not enough for this ${Math.abs(delta).toFixed(2)} payment.`,
+          409
+        );
+      }
+    }
+  }
+
+  await prisma.cashAccount.update({ where: { id }, data: { currentBalance: { increment: delta } } });
 }

@@ -15,11 +15,19 @@ export function createMasterStore<T extends { id: string }>(storeId: string, bas
       items: [] as T[],
       meta: null as PaginationMeta | null,
       loading: false,
+      /**
+       * Set when the last fetch failed. Without this the rejection escaped
+       * as an unhandled error in the calling component's mounted hook and
+       * the table simply stayed empty — a broken screen was indistinguishable
+       * from a genuinely empty master.
+       */
+      error: null as string | null,
     }),
 
     actions: {
       async fetchList(params: MasterListParams = {}) {
         this.loading = true;
+        this.error = null;
         try {
           const response = await api.list(params);
           // Pinia's options-store state() return type runs T through
@@ -28,6 +36,13 @@ export function createMasterStore<T extends { id: string }>(storeId: string, bas
           // real type hazard here since T is never a Ref.
           this.items = response.data.data as any;
           this.meta = response.data.meta;
+        } catch (err: any) {
+          this.items = [] as any;
+          this.meta = null;
+          this.error =
+            err?.response?.data?.message ||
+            err?.message ||
+            'Could not load this list. Please try again.';
         } finally {
           this.loading = false;
         }

@@ -1,5 +1,6 @@
 import { Prisma, VehicleLoanStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const loanWithRelations = Prisma.validator<Prisma.VehicleLoanInclude>()({
   vehicle: { select: { id: true, registrationNumber: true } },
@@ -42,9 +43,13 @@ export const vehicleLoanRepository = {
   },
 
   async nextLoanNumber() {
-    const count = await prisma.vehicleLoan.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `VLN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('VLN', 4, async (stamp) => {
+      const rows = await prisma.vehicleLoan.findMany({
+        where: { loanNumber: { startsWith: `VLN-${stamp}-` } },
+        select: { loanNumber: true },
+      });
+      return highestSequenceToday(rows, 'loanNumber', 'VLN', stamp);
+    });
   },
 
   create(data: Prisma.VehicleLoanUncheckedCreateInput) {

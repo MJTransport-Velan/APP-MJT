@@ -85,10 +85,15 @@ export const confirmBookingSchema = z.object({
 export const updateBookingRouteSchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid booking id') }),
-  body: z.object({
-    fromLocationId: z.string().uuid('Select the pickup location'),
-    toLocationId: z.string().uuid('Select the delivery location'),
-  }),
+  body: z
+    .object({
+      fromLocationId: z.string().uuid('Select the pickup location'),
+      toLocationId: z.string().uuid('Select the delivery location'),
+    })
+    .refine((val) => val.fromLocationId !== val.toLocationId, {
+      message: 'Pickup and delivery locations must be different',
+      path: ['toLocationId'],
+    }),
 });
 
 /**
@@ -115,6 +120,9 @@ export const createCounterBookingSchema = z.object({
     expectedDeliveryDate: z.string().optional().or(z.literal('')),
     freightAmount: z.number().nonnegative('Freight amount cannot be negative').optional(),
     instructions: z.string().trim().max(1000).optional().or(z.literal('')),
+  }).refine((val) => val.fromLocationId !== val.toLocationId, {
+    message: 'Pickup and delivery locations must be different',
+    path: ['toLocationId'],
   }),
 });
 

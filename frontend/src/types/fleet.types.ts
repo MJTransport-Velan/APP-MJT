@@ -77,9 +77,11 @@ export interface FuelEntry {
   fuelType: FuelType;
   billingMethod: FuelBillingMethod | null;
   location: string | null;
-  quantityLiters: number;
-  ratePerLiter: number;
-  totalAmount: number;
+  // Any of the three may be unknown: a fill can be recorded as an amount,
+  // as litres, or as litres + rate.
+  quantityLiters: number | null;
+  ratePerLiter: number | null;
+  totalAmount: number | null;
   odometerReading: number;
   distanceCovered: number | null;
   mileageKmpl: number | null;
@@ -99,9 +101,8 @@ export interface FuelEntry {
   updatedAt: string;
 }
 
-export interface VehicleFuelSummary {
-  vehicleId: string;
-  registrationNumber: string;
+/** The figures every fuel dashboard shows, over an optional date range. */
+export interface FuelSummary {
   totalLiters: number;
   totalFuelCost: number;
   avgRate: number | null;
@@ -109,9 +110,22 @@ export interface VehicleFuelSummary {
   mileageKmpl: number | null;
   costPerKm: number | null;
   fuelCostPerKm: number | null;
-  lastFuelEntry: string | null;
-  currentOdometer: number | null;
   entryCount: number;
+  lastFuelEntry: string | null;
+  from: string | null;
+  to: string | null;
+}
+
+export interface VehicleFuelSummary extends FuelSummary {
+  vehicleId: string;
+  registrationNumber: string;
+  currentOdometer: number | null;
+}
+
+export interface DriverMileageRow extends Omit<FuelSummary, 'from' | 'to'> {
+  driverId: string | null;
+  driverName: string;
+  driverCode: string | null;
 }
 
 export interface FuelAdvanceBalance {

@@ -6,7 +6,6 @@ import type { ApiResponse } from '@/types/api.types';
 // be managed via the existing Phase 2 admin-company service
 // (@/services/admin-company.service), not duplicated.
 
-export const branchApi = createMasterApi('/masters/branches');
 export const locationApi = createMasterApi('/masters/locations');
 export const vehicleTypeApi = createMasterApi('/masters/vehicle-types');
 export const vehicleApi = createMasterApi('/masters/vehicles');
@@ -17,7 +16,6 @@ export const expenseCategoryApi = createMasterApi('/masters/expense-categories')
 export const paymentModeApi = createMasterApi('/masters/payment-modes');
 export const tyreApi = createMasterApi('/masters/tyres');
 export const serviceCategoryApi = createMasterApi('/masters/service-categories');
-export const trailerTypeApi = createMasterApi('/masters/trailer-types');
 export const designationApi = createMasterApi('/masters/designations');
 export const gstMasterApi = createMasterApi('/masters/gst-masters');
 export const employeeApi = createMasterApi('/masters/employees');

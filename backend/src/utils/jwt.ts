@@ -6,6 +6,13 @@ export interface JwtPayload {
   username: string;
   roles: string[];
   permissions: string[];
+  /**
+   * Snapshot of User.tokenVersion at sign time. auth.middleware.ts rejects
+   * the token when it no longer matches the stored value, which is how
+   * logout / deactivate / delete / role change take effect immediately
+   * rather than at the token's natural expiry.
+   */
+  tokenVersion: number;
 }
 
 export function signAccessToken(payload: JwtPayload): string {

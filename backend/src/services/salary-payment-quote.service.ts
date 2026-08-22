@@ -1,6 +1,7 @@
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
 import { driverSalaryStructureRepository } from '../repositories/driver-salary-structure.repository';
+import { computeSalaryBreakdown } from '../utils/salaryStructure.util';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -35,9 +36,11 @@ export const salaryPaymentQuoteService = {
       where: { employeeId, isActive: true, deletedAt: null },
       include: { components: true },
     });
-    const structureAmount = structure
-      ? round2(structure.components.reduce((s, c) => s + (c.isEarning ? Number(c.value) : -Number(c.value)), 0))
-      : null;
+    // Percentages must be evaluated, not summed as rupees — see
+    // computeSalaryBreakdown. The gross/deduction split is returned too so the
+    // salary-entry screen can show how the figure was reached.
+    const breakdown = structure ? computeSalaryBreakdown(structure.components) : null;
+    const structureAmount = breakdown ? breakdown.netAmount : null;
 
     const advances = await prisma.employeeAdvance.findMany({
       where: { employeeId, approvalStatus: 'APPROVED', isSettled: false, deletedAt: null, createdAt: { gte: monthStart, lte: monthEnd } },
@@ -52,6 +55,8 @@ export const salaryPaymentQuoteService = {
     return {
       party: { id: employee.id, name: employee.name, code: employee.employeeCode, designation: employee.designation?.name ?? null },
       structureAmount,
+      grossEarnings: breakdown ? breakdown.grossEarnings : null,
+      totalDeductions: breakdown ? breakdown.totalDeductions : null,
       advances: advances.map((a) => ({ id: a.id, number: a.advanceNumber, amount: Number(a.amount), date: a.createdAt })),
       advanceTotal,
       netAmount,

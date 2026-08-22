@@ -41,14 +41,22 @@ export const createFuelEntrySchema = z.object({
     supplierId: z.string().uuid().optional(),
     paymentModeId: z.string().uuid().optional(),
     advanceId: z.string().uuid().optional(),
-    quantityLiters: z.number().positive('Fuel quantity must be greater than 0'),
-    ratePerLiter: z.number().positive('Rate per liter must be greater than 0'),
+    quantityLiters: z.number().positive('Fuel quantity must be greater than 0').optional(),
+    ratePerLiter: z.number().positive('Rate per liter must be greater than 0').optional(),
+    totalAmount: z.number().positive('Amount must be greater than 0').optional(),
     odometerReading: z.number().int().positive('Meter reading must be a positive number'),
     invoiceNumber: z.string().optional(),
     referenceNumber: z.string().optional(),
     remarks: z.string().optional(),
     entryDate: z.string().optional(),
-  }),
+  })
+    // A fill is recorded by what is actually known at the pump: the amount
+    // paid, the litres taken, or both (with or without a rate). Rate alone
+    // says nothing about the size of the fill, so it is never sufficient.
+    .refine((body) => body.totalAmount != null || body.quantityLiters != null, {
+      message: 'Enter the amount paid, the quantity, or both',
+      path: ['totalAmount'],
+    }),
 });
 
 export const updateFuelEntrySchema = z.object({
@@ -64,6 +72,7 @@ export const updateFuelEntrySchema = z.object({
     advanceId: z.string().uuid().optional(),
     quantityLiters: z.number().positive().optional(),
     ratePerLiter: z.number().positive().optional(),
+    totalAmount: z.number().positive().optional(),
     invoiceNumber: z.string().optional(),
     referenceNumber: z.string().optional(),
     remarks: z.string().optional(),
@@ -71,10 +80,27 @@ export const updateFuelEntrySchema = z.object({
   }),
 });
 
+const dateRangeQuery = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
+
 export const vehicleFuelSummaryQuerySchema = z.object({
   body: z.object({}).optional(),
   params: z.object({ vehicleId: z.string().uuid('Invalid vehicle id') }),
-  query: z.object({}).optional(),
+  query: dateRangeQuery.optional(),
+});
+
+export const fuelSummaryQuerySchema = z.object({
+  body: z.object({}).optional(),
+  params: z.object({}).optional(),
+  query: dateRangeQuery.extend({ vehicleId: z.string().uuid().optional() }),
+});
+
+export const driverMileageQuerySchema = z.object({
+  body: z.object({}).optional(),
+  params: z.object({}).optional(),
+  query: dateRangeQuery.extend({ driverId: z.string().uuid().optional() }),
 });
 
 export type CreateFuelEntryInput = z.infer<typeof createFuelEntrySchema>['body'];

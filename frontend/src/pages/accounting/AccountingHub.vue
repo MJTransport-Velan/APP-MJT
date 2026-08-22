@@ -29,7 +29,6 @@ const search = ref('');
 const cards = [
   { icon: 'mdi-file-percent-outline', title: 'GST & Taxation', description: 'GST rate masters for invoicing', to: '/accounts/gst-taxation' },
   { icon: 'mdi-currency-inr', title: 'Currencies', description: 'Base currency and forex reference data', to: '/accounting/currencies' },
-  { icon: 'mdi-shape-outline', title: 'Cost Categories', description: 'Grouping of cost centers by type', to: '/accounting/cost-categories' },
   { icon: 'mdi-domain', title: 'Organization', description: 'The legal entity these books belong to', to: '/accounting/organizations' },
 ];
 

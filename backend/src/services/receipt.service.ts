@@ -6,6 +6,7 @@ import { invoiceService } from './invoice.service';
 import { organizationService } from './organization.service';
 import { resolveOrDefaultFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
+import { assertNotFutureDate, todayStr } from '../utils/businessDate.util';
 import { CreateReceiptInput, UpdateReceiptInput } from '../validators/receipt.validator';
 import { forcedCompanyScope } from '../utils/groupAccess';
 
@@ -74,6 +75,36 @@ export const receiptService = {
       if (invoice.status === 'CANCELLED') {
         throw new AppError('Cannot receipt against a cancelled invoice', 400);
       }
+
+      // Without this, a settled invoice would keep accepting receipts: the
+      // cash reached the bank while nothing was left to clear against it,
+      // so total assets rose with no matching receivable. Anything genuinely
+      // collected beyond the invoice belongs on a customer advance (omit
+      // invoiceId) rather than against a bill that is already paid.
+      //
+      // The claim is a conditional UPDATE rather than a read-then-check,
+      // because a plain check is decided before it is acted on: four cashiers
+      // collecting the same invoice at the same instant all read the same
+      // outstanding balance and all passed, and the bank took four times the
+      // invoice. `updateMany` with the balance in its WHERE clause makes
+      // reserving the amount a single atomic step, so exactly one of those
+      // four can win. recalcInvoice below then recomputes paid/outstanding
+      // from the real receipt rows, so this reservation never has to be
+      // exact — only exclusive.
+      const claimed = await receiptRepository.claimInvoiceOutstanding(input.invoiceId, input.amount);
+      if (claimed === 0) {
+        const current = Number(invoice.outstandingAmount);
+        if (current <= 0) {
+          throw new AppError(
+            `Invoice ${invoice.invoiceNumber} is already settled in full. Record this as a customer advance instead of allocating it to this invoice.`,
+            409
+          );
+        }
+        throw new AppError(
+          `Receipt amount (${input.amount}) exceeds the ${current} still outstanding on invoice ${invoice.invoiceNumber}.`,
+          409
+        );
+      }
     }
 
     if (input.referenceNumber) {
@@ -84,7 +115,8 @@ export const receiptService = {
     const fundAccount = await resolveOrDefaultFundAccount(organizationId, input.fundAccountType, input.fundAccountId);
     if (!fundAccount.isActive) throw new AppError('The selected Bank/Cash account is inactive', 409);
 
-    const receiptDate = input.receiptDate ? input.receiptDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const receiptDate = input.receiptDate ? input.receiptDate.slice(0, 10) : todayStr();
+    assertNotFutureDate(receiptDate, 'Receipt date');
     const receiptNumber = await receiptRepository.nextReceiptNumber();
 
     const receipt = await receiptRepository.create({

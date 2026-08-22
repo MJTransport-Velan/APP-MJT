@@ -1,5 +1,6 @@
 import { Prisma, ApprovalStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const penaltyWithRelations = Prisma.validator<Prisma.DriverPenaltyInclude>()({
   driver: true,
@@ -41,9 +42,13 @@ export const driverPenaltyRepository = {
   },
 
   async nextPenaltyNumber() {
-    const count = await prisma.driverPenalty.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DPN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('DPN', 4, async (stamp) => {
+      const rows = await prisma.driverPenalty.findMany({
+        where: { penaltyNumber: { startsWith: `DPN-${stamp}-` } },
+        select: { penaltyNumber: true },
+      });
+      return highestSequenceToday(rows, 'penaltyNumber', 'DPN', stamp);
+    });
   },
 
   create(data: Prisma.DriverPenaltyUncheckedCreateInput) {

@@ -1,6 +1,7 @@
 import { Prisma, SupplierBillStatus } from '@prisma/client';
 import { prisma } from '../config/db';
 import { dateRangeWhere } from '../utils/reportFilters';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const billWithRelations = Prisma.validator<Prisma.SupplierBillInclude>()({
   supplier: true,
@@ -57,10 +58,22 @@ export const supplierBillRepository = {
     return prisma.trip.findFirst({ where: { id, deletedAt: null } });
   },
 
+  /** An existing, non-cancelled bill for this trip — the guard against billing one trip twice. */
+  findLiveBillForTrip(tripId: string) {
+    return prisma.supplierBill.findFirst({
+      where: { tripId, deletedAt: null, status: { not: 'CANCELLED' } },
+      select: { id: true, billNumber: true },
+    });
+  },
+
   async nextBillNumber() {
-    const count = await prisma.supplierBill.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `SBL-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('SBL', 4, async (stamp) => {
+      const rows = await prisma.supplierBill.findMany({
+        where: { billNumber: { startsWith: `SBL-${stamp}-` } },
+        select: { billNumber: true },
+      });
+      return highestSequenceToday(rows, 'billNumber', 'SBL', stamp);
+    });
   },
 
   create(data: Prisma.SupplierBillUncheckedCreateInput) {
@@ -96,9 +109,13 @@ export const supplierBillRepository = {
   },
 
   async nextCreditNoteNumber() {
-    const count = await prisma.supplierCreditNote.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `SCN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('SCN', 4, async (stamp) => {
+      const rows = await prisma.supplierCreditNote.findMany({
+        where: { creditNoteNumber: { startsWith: `SCN-${stamp}-` } },
+        select: { creditNoteNumber: true },
+      });
+      return highestSequenceToday(rows, 'creditNoteNumber', 'SCN', stamp);
+    });
   },
 
   createDebitNote(data: Prisma.SupplierDebitNoteUncheckedCreateInput) {
@@ -106,8 +123,12 @@ export const supplierBillRepository = {
   },
 
   async nextDebitNoteNumber() {
-    const count = await prisma.supplierDebitNote.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `SDN-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('SDN', 4, async (stamp) => {
+      const rows = await prisma.supplierDebitNote.findMany({
+        where: { debitNoteNumber: { startsWith: `SDN-${stamp}-` } },
+        select: { debitNoteNumber: true },
+      });
+      return highestSequenceToday(rows, 'debitNoteNumber', 'SDN', stamp);
+    });
   },
 };

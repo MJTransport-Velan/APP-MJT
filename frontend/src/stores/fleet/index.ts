@@ -161,8 +161,16 @@ export const useFuelEntryStore = defineStore('fleetFuelEntries', {
       const response = await fuelEntryApi.uploadBill(id, file);
       return response.data.data;
     },
-    async vehicleSummary(vehicleId: string) {
-      const response = await fuelEntryApi.vehicleSummary(vehicleId);
+    async vehicleSummary(vehicleId: string, params: Record<string, unknown> = {}) {
+      const response = await fuelEntryApi.vehicleSummary(vehicleId, params);
+      return response.data.data;
+    },
+    async summary(params: Record<string, unknown> = {}) {
+      const response = await fuelEntryApi.summary(params);
+      return response.data.data;
+    },
+    async driverMileage(params: Record<string, unknown> = {}) {
+      const response = await fuelEntryApi.driverMileage(params);
       return response.data.data;
     },
     async advanceBalance(advanceId: string) {

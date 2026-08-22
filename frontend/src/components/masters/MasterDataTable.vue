@@ -19,6 +19,11 @@
       </div>
     </AppCardText>
 
+    <!--
+      Note `:error="props.error"` below, not `:error="error"` — this component
+      already destructures an `error` toast helper from useSnackbar(), which
+      would otherwise shadow the prop and pass a function down to AppDataTable.
+    -->
     <AppDataTable
       v-model:items-per-page="pageSizeModel"
       v-model:page="pageModel"
@@ -28,8 +33,10 @@
       :loading="loading"
       :item-label="itemLabel"
       :row-border-color="rowBorderColor"
+      :error="props.error"
       item-value="id"
       @update:options="$emit('update:options', $event)"
+      @retry="$emit('retry')"
     >
       <template v-for="(_, slotName) in $slots" #[slotName]="slotProps">
         <slot :name="slotName" v-bind="slotProps ?? {}" />
@@ -65,12 +72,15 @@ const props = withDefaults(
     exportSummaryRow?: (rows: Record<string, unknown>[]) => Record<string, unknown> | null;
     /** Fetches every matching row (ignoring pagination) for a full export — falls back to exporting just the currently-loaded page when not given. */
     onExportAll?: () => Promise<Record<string, unknown>[]>;
+    /** Message from a failed load — shows an error state with a retry rather than an empty table. */
+    error?: string | null;
   }>(),
   {
     loading: false,
     search: '',
     page: 1,
     pageSize: 10,
+    error: null,
   }
 );
 
@@ -79,6 +89,7 @@ const emit = defineEmits<{
   'update:search': [value: string];
   'update:page': [value: number];
   'update:pageSize': [value: number];
+  retry: [];
 }>();
 
 const pageModel = computed({

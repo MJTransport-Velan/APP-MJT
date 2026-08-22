@@ -4,7 +4,6 @@ export interface ReportFilters {
   dateFrom?: Date;
   dateTo?: Date;
   companyId?: string;
-  branchId?: string;
   customerId?: string;
   supplierId?: string;
   vehicleId?: string;
@@ -21,7 +20,7 @@ export interface ReportFilters {
 
 /**
  * Parses the common filter set shared across every report (date range,
- * company/branch/customer/supplier/vehicle/driver/route, trip status,
+ * company/customer/supplier/vehicle/driver/route, trip status,
  * vehicle type, payment status, search, sort). Individual report
  * definitions pick whichever of these apply to their query.
  */
@@ -30,8 +29,7 @@ export function parseReportFilters(query: Request['query']): ReportFilters {
     dateFrom: query.dateFrom ? new Date(query.dateFrom as string) : undefined,
     dateTo: query.dateTo ? new Date(query.dateTo as string) : undefined,
     companyId: (query.companyId as string) || undefined,
-    branchId: (query.branchId as string) || undefined,
-    customerId: (query.customerId as string) || (query.companyId as string) || undefined,
+      customerId: (query.customerId as string) || (query.companyId as string) || undefined,
     supplierId: (query.supplierId as string) || undefined,
     vehicleId: (query.vehicleId as string) || undefined,
     driverId: (query.driverId as string) || undefined,

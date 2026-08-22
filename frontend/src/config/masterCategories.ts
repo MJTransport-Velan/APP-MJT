@@ -18,9 +18,8 @@ export const masterCategories: MasterCategory[] = [
     title: 'Organization',
     icon: 'mdi-domain',
     items: [
-      { title: 'Companies', icon: 'mdi-domain', to: '/administration/companies', description: 'Manage company profiles and their group' },
-      { title: 'Groups', icon: 'mdi-account-multiple-outline', to: '/administration/groups', description: 'Manage groups of companies and their assigned team' },
-      { title: 'Branches', icon: 'mdi-source-branch', to: '/masters/branches', description: 'Manage branch offices' },
+      { title: 'Companies', icon: 'mdi-domain', to: '/masters/companies', description: 'Manage company profiles and their group' },
+      { title: 'Groups', icon: 'mdi-account-multiple-outline', to: '/masters/groups', description: 'Manage groups of companies and their assigned team' },
     ],
   },
   {
@@ -38,7 +37,6 @@ export const masterCategories: MasterCategory[] = [
     items: [
       { title: 'Vehicles', icon: 'mdi-truck', to: '/masters/vehicles', description: 'Vehicle master records' },
       { title: 'Vehicle Types', icon: 'mdi-truck-outline', to: '/masters/vehicle-types', description: 'Categorize vehicles by type' },
-      { title: 'Trailer Types', icon: 'mdi-truck-trailer', to: '/masters/trailer-types', description: 'Manage trailer type definitions' },
     ],
   },
   {

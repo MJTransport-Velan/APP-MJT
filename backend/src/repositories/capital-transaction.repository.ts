@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
 import { dateRangeWhere } from '../utils/reportFilters';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const capitalTransactionWithRelations = Prisma.validator<Prisma.CapitalTransactionInclude>()({
   partner: true,
@@ -35,9 +36,13 @@ export const capitalTransactionRepository = {
   },
 
   async nextTransactionNumber() {
-    const count = await prisma.capitalTransaction.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `CAP-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('CAP', 4, async (stamp) => {
+      const rows = await prisma.capitalTransaction.findMany({
+        where: { transactionNumber: { startsWith: `CAP-${stamp}-` } },
+        select: { transactionNumber: true },
+      });
+      return highestSequenceToday(rows, 'transactionNumber', 'CAP', stamp);
+    });
   },
 
   create(data: Prisma.CapitalTransactionUncheckedCreateInput) {

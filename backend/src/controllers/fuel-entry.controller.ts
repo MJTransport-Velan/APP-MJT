@@ -32,8 +32,16 @@ export const fuelEntryController = {
     return sendSuccess(res, 200, { message: 'Bill document uploaded', data: entry });
   }),
   vehicleSummary: asyncHandler(async (req, res: Response) => {
-    const summary = await fuelEntryService.vehicleFuelSummary(req.params.vehicleId);
+    const summary = await fuelEntryService.vehicleFuelSummary(req.params.vehicleId, req.query);
     return sendSuccess(res, 200, { message: 'Vehicle fuel summary fetched', data: summary });
+  }),
+  summary: asyncHandler(async (req, res: Response) => {
+    const summary = await fuelEntryService.fuelSummary(req.query);
+    return sendSuccess(res, 200, { message: 'Fuel summary fetched', data: summary });
+  }),
+  driverMileage: asyncHandler(async (req, res: Response) => {
+    const result = await fuelEntryService.driverMileage(req.query);
+    return sendSuccess(res, 200, { message: 'Driver-wise mileage fetched', data: result.data, meta: { from: result.from, to: result.to } });
   }),
   advanceBalance: asyncHandler(async (req, res: Response) => {
     const balance = await fuelEntryService.advanceBalance(req.params.advanceId);

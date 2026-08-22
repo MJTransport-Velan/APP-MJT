@@ -30,6 +30,15 @@
           <tr v-if="loading">
             <td :colspan="normalizedHeaders.length" class="app-data-table__state">Loading…</td>
           </tr>
+          <!-- A failed load must never look like an empty result: show what
+               went wrong and offer a retry instead of "No data available". -->
+          <tr v-else-if="error">
+            <td :colspan="normalizedHeaders.length" class="app-data-table__state app-data-table__state--error">
+              <span class="app-data-table__error-title">This list could not be loaded</span>
+              <span class="app-data-table__error-detail">{{ error }}</span>
+              <button type="button" class="app-data-table__retry" @click="emit('retry')">Try again</button>
+            </td>
+          </tr>
           <tr v-else-if="!items.length">
             <td :colspan="normalizedHeaders.length" class="app-data-table__state">No data available</td>
           </tr>
@@ -109,8 +118,10 @@ const props = withDefaults(
     itemsPerPage?: number;
     itemLabel?: string;
     rowBorderColor?: (item: T, index: number) => string | undefined;
+    /** Message from a failed load — renders an error state with a retry in place of the empty state. */
+    error?: string | null;
   }>(),
-  { loading: false, itemValue: 'id', page: 1, itemsPerPage: 10, itemLabel: 'results' }
+  { loading: false, itemValue: 'id', page: 1, itemsPerPage: 10, itemLabel: 'results', error: null }
 );
 
 const normalizedHeaders = computed(() => props.headers as unknown as Header[]);
@@ -119,6 +130,7 @@ const emit = defineEmits<{
   'update:page': [value: number];
   'update:itemsPerPage': [value: number];
   'update:options': [options: { page: number; itemsPerPage: number; sortBy: SortItem[] }];
+  retry: [];
 }>();
 
 const sortBy = ref<SortItem[]>([]);
@@ -218,6 +230,21 @@ watch([() => props.page, () => props.itemsPerPage, sortBy], emitOptions, { deep:
 .app-data-table__sort-icon--active { opacity: 1 !important; }
 .app-data-table__sort-icon--desc { transform: rotate(180deg); }
 .app-data-table__state { text-align: center; padding: 32px; color: var(--color-text-medium); }
+.app-data-table__state--error { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.app-data-table__error-title { font-weight: 600; color: var(--color-error, #b3261e); }
+.app-data-table__error-detail { font-size: 0.875rem; color: var(--color-text-medium); }
+.app-data-table__retry {
+  margin-top: 6px;
+  padding: 6px 16px;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--color-primary, #1f5fa8);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+.app-data-table__retry:hover { background: rgba(31, 95, 168, 0.08); }
 .text-start { text-align: left; }
 .text-center { text-align: center; }
 .text-end { text-align: right; }

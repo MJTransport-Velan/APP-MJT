@@ -1,12 +1,12 @@
 /**
  * Generic CRUD factory for "simple lookup" master modules — entities whose
  * shape is uniformly { name, code, ...a few extra fields, isActive } with
- * soft delete + audit logging. Used for Vehicle Types, Trailer Types,
- * Materials, Expense Categories, Fuel Stations, Banks, Payment Modes,
- * Tyres, Service Categories, Designations, and GST Masters.
+ * soft delete + audit logging. Used for Vehicle Types, Materials,
+ * Expense Categories, Fuel Stations, Banks, Payment Modes, Tyres,
+ * Service Categories, Designations, and GST Masters.
  *
- * Modules with real relations or file uploads (Companies, Branches,
- * Locations, Transport Routes, Vehicles, Drivers, Suppliers) are NOT
+ * Modules with real relations or file uploads (Companies, Locations,
+ * Transport Routes, Vehicles, Drivers, Suppliers) are NOT
  * built with this factory — they get their own bespoke
  * controller/service/repository/validator/routes files, same as every
  * Phase 2 Administration module.

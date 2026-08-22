@@ -50,42 +50,6 @@ const companyWiseReport: ReportDefinition = {
   },
 };
 
-// Branches aren't linked to Trip/Intent in the schema (they sit under
-// Company as organizational master data only), so this reports on branch
-// master records grouped by company rather than branch-level trip
-// metrics — extending Trip/Intent with a branchId FK is a data-model
-// change outside this reports-only phase.
-const branchWiseReport: ReportDefinition = {
-  key: 'branchWiseReport',
-  label: 'Branch-wise Report',
-  columns: [
-    { key: 'branchName', label: 'Branch' },
-    { key: 'company', label: 'Company' },
-    { key: 'isActive', label: 'Active' },
-    { key: 'createdAt', label: 'Created' },
-  ],
-  run: async (filters, skip, take) => {
-    const where = {
-      deletedAt: null,
-      ...(filters.companyId ? { companyId: filters.companyId } : {}),
-      ...(filters.branchId ? { id: filters.branchId } : {}),
-    };
-    const [rows, total] = await prisma.$transaction([
-      prisma.branch.findMany({ where, include: { company: true }, orderBy: { name: 'asc' }, skip, take }),
-      prisma.branch.count({ where }),
-    ]);
-    return {
-      rows: rows.map((b) => ({
-        branchName: b.name,
-        company: b.company.name,
-        isActive: b.isActive,
-        createdAt: b.createdAt,
-      })),
-      total,
-    };
-  },
-};
-
 async function computePeriodSummary(from: Date, to: Date) {
   const [intentCount, trips, tripExpenseAgg, supplierPaymentAgg] = await Promise.all([
     prisma.intent.count({ where: { deletedAt: null, createdAt: { gte: from, lte: to } } }),
@@ -228,7 +192,6 @@ const kpiSummaryReport: ReportDefinition = {
 
 export const managementReportRepository: Record<string, ReportDefinition> = {
   companyWiseReport,
-  branchWiseReport,
   monthlyBusinessSummaryReport,
   yearlyBusinessSummaryReport,
   kpiSummaryReport,

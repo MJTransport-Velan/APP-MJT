@@ -65,7 +65,7 @@ export async function executeAutomationAction(rule: AutomationRule, triggeredBy:
     }
 
     case 'OUTSTANDING_REMINDER': {
-      const aging = await arApOutstandingService.customerAging({});
+      const aging = await arApOutstandingService.customerAging();
       const overdue = aging.filter((a) => a.total - a.buckets.CURRENT > 0);
       if (overdue.length > 0) {
         await notificationService.send({

@@ -98,6 +98,16 @@ export const supplierBillService = {
       if (!trip) throw new AppError('Trip not found', 404);
       if (trip.supplierId !== input.supplierId) throw new AppError('Trip does not belong to the selected supplier', 400);
       if (trip.status !== 'COMPLETED') throw new AppError('Supplier bills can only reference completed trips', 400);
+
+      // Nothing prevented the same trip being billed over and over: each
+      // bill carried the trip's full supplier rate, so the payable — and
+      // whatever the supplier could then be paid — multiplied with every
+      // repeat. A cancelled bill doesn't count, so a mis-raised bill can
+      // still be voided and re-issued.
+      const already = await supplierBillRepository.findLiveBillForTrip(input.tripId);
+      if (already) {
+        throw new AppError(`Trip ${trip.tripNumber} has already been billed on ${already.billNumber}`, 409);
+      }
     }
 
     const subtotal = input.subtotal ?? (trip ? Number(trip.supplierRate || 0) : undefined);

@@ -8,6 +8,89 @@ import { vehicleExpenseInternalService } from './vehicle-expense.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateFuelEntryInput, UpdateFuelEntryInput } from '../validators/fuel-entry.validator';
 
+const round2 = (value: number) => Number(value.toFixed(2));
+
+const toNumber = (value: unknown) => (value == null ? undefined : Number(value));
+
+/**
+ * Quantity, rate and amount are three views of the same fill, and an
+ * operator rarely has all three: a roadside cash fill is "2000 paid", a
+ * fuel card slip is "80 L", a proper invoice is "80 L at 94.50". Whichever
+ * two are known determine the third; whatever stays unknown is stored null
+ * rather than invented.
+ *
+ * The amount is authoritative when given -- it is the money that actually
+ * left the account -- so the rate is derived from it. Only when no amount
+ * is supplied is one computed as quantity x rate. All three supplied are
+ * stored exactly as typed, since the operator is copying a real bill.
+ */
+function resolveFuelFigures(input: { quantityLiters?: number; ratePerLiter?: number; totalAmount?: number }) {
+  let quantityLiters = input.quantityLiters ?? null;
+  let ratePerLiter = input.ratePerLiter ?? null;
+  const totalAmount = input.totalAmount ?? null;
+
+  if (totalAmount != null) {
+    if (quantityLiters != null && ratePerLiter == null) {
+      ratePerLiter = round2(totalAmount / quantityLiters);
+    } else if (ratePerLiter != null && quantityLiters == null) {
+      quantityLiters = round2(totalAmount / ratePerLiter);
+    }
+    return { quantityLiters, ratePerLiter, totalAmount };
+  }
+
+  if (quantityLiters != null && ratePerLiter != null) {
+    return { quantityLiters, ratePerLiter, totalAmount: round2(quantityLiters * ratePerLiter) };
+  }
+
+  return { quantityLiters, ratePerLiter, totalAmount };
+}
+
+/**
+ * `from`/`to` arrive as date-only strings (YYYY-MM-DD, parsed as UTC
+ * midnight); `to` is pushed to the end of its day so the whole day counts,
+ * matching how the fuel entry list already reads its filters.
+ */
+function parseEntryDateRange(query: Request['query']): { from?: Date; to?: Date } {
+  const from = query.from ? new Date(query.from as string) : undefined;
+  let to: Date | undefined;
+  if (query.to) {
+    to = new Date(query.to as string);
+    to.setUTCHours(23, 59, 59, 999);
+  }
+  return { from, to };
+}
+
+type FuelAggregate = {
+  _sum: { quantityLiters: unknown; totalAmount: unknown; distanceCovered: unknown };
+  _avg: { ratePerLiter: unknown; mileageKmpl: unknown };
+  _count: { _all: number };
+};
+
+/** The figures every fuel dashboard shows, derived from one Prisma aggregate. */
+function summarizeAggregate(agg: FuelAggregate) {
+  const totalLiters = Number(agg._sum.quantityLiters || 0);
+  const totalFuelCost = Number(agg._sum.totalAmount || 0);
+  const totalKM = Number(agg._sum.distanceCovered || 0);
+  const costPerKm = totalKM > 0 ? round2(totalFuelCost / totalKM) : null;
+  return {
+    totalLiters,
+    totalFuelCost,
+    avgRate: agg._avg.ratePerLiter != null ? Number(agg._avg.ratePerLiter) : null,
+    totalKM,
+    mileageKmpl: agg._avg.mileageKmpl != null ? round2(Number(agg._avg.mileageKmpl)) : null,
+    costPerKm,
+    fuelCostPerKm: costPerKm,
+    entryCount: agg._count._all,
+  };
+}
+
+/** How a fill reads in audit trails and mirrored expense rows, given either figure may be unknown. */
+function describeFill(figures: { quantityLiters: number | null; totalAmount: number | null }) {
+  if (figures.quantityLiters != null) return `${figures.quantityLiters}L`;
+  if (figures.totalAmount != null) return `${figures.totalAmount}`;
+  return 'quantity not recorded';
+}
+
 function serialize(entry: FuelEntryWithRelations) {
   return {
     id: entry.id,
@@ -112,10 +195,11 @@ export const fuelEntryService = {
       }
     }
 
-    const totalAmount = Number((input.quantityLiters * input.ratePerLiter).toFixed(2));
+    const figures = resolveFuelFigures(input);
 
     // Mileage calculation: derive distance/kmpl relative to the vehicle's
-    // most recent prior fuel entry, if one exists.
+    // most recent prior fuel entry, if one exists. Distance stands on its
+    // own when the litres are unknown -- only km/l needs them.
     const previousEntry = await fuelEntryRepository.findPreviousEntry(input.vehicleId, entryDate);
     let distanceCovered: number | undefined;
     let mileageKmpl: number | undefined;
@@ -125,7 +209,9 @@ export const fuelEntryService = {
         throw new AppError('Meter reading must be greater than the previous fuel entry reading', 400);
       }
       distanceCovered = input.odometerReading - previousEntry.odometerReading;
-      mileageKmpl = Number((distanceCovered / input.quantityLiters).toFixed(2));
+      if (figures.quantityLiters != null) {
+        mileageKmpl = round2(distanceCovered / figures.quantityLiters);
+      }
     }
 
     const entry = await fuelEntryRepository.create({
@@ -139,9 +225,9 @@ export const fuelEntryService = {
       supplierId: input.supplierId,
       paymentModeId: input.paymentModeId,
       advanceId: input.advanceId,
-      quantityLiters: input.quantityLiters,
-      ratePerLiter: input.ratePerLiter,
-      totalAmount,
+      quantityLiters: figures.quantityLiters,
+      ratePerLiter: figures.ratePerLiter,
+      totalAmount: figures.totalAmount,
       odometerReading: input.odometerReading,
       distanceCovered,
       mileageKmpl,
@@ -158,20 +244,25 @@ export const fuelEntryService = {
       action: 'CREATE',
       entityType: 'FuelEntry',
       entityId: entry.id,
-      description: `Recorded fuel entry for vehicle ${vehicle.registrationNumber} (${input.quantityLiters}L)`,
+      description: `Recorded fuel entry for vehicle ${vehicle.registrationNumber} (${describeFill(figures)})`,
     });
 
-    await vehicleExpenseInternalService.logFromSource({
-      vehicleId: input.vehicleId,
-      tripId,
-      category: 'FUEL',
-      amount: totalAmount,
-      expenseDate: entryDate,
-      description: `Fuel: ${input.quantityLiters}L`,
-      referenceType: 'FuelEntry',
-      referenceId: entry.id,
-      actorId,
-    });
+    // Nothing to mirror into vehicle expenses until the fill has a cost -- a
+    // litres-only entry gets its expense row when an amount is filled in
+    // later (see update below).
+    if (figures.totalAmount != null) {
+      await vehicleExpenseInternalService.logFromSource({
+        vehicleId: input.vehicleId,
+        tripId,
+        category: 'FUEL',
+        amount: figures.totalAmount,
+        expenseDate: entryDate,
+        description: `Fuel: ${describeFill(figures)}`,
+        referenceType: 'FuelEntry',
+        referenceId: entry.id,
+        actorId,
+      });
+    }
 
     return fuelEntryService.getById(entry.id);
   },
@@ -187,9 +278,16 @@ export const fuelEntryService = {
       if (!supplier) throw new AppError('Supplier not found', 404);
     }
 
-    const quantityLiters = input.quantityLiters ?? Number(existing.quantityLiters);
-    const ratePerLiter = input.ratePerLiter ?? Number(existing.ratePerLiter);
-    const totalAmount = Number((quantityLiters * ratePerLiter).toFixed(2));
+    // Whichever figure the caller just sent is the one to believe: a new
+    // amount re-derives the rate, new litres/rate re-derive the amount.
+    // Untouched figures fall back to what is already stored.
+    const figures = resolveFuelFigures({
+      quantityLiters: input.quantityLiters ?? toNumber(existing.quantityLiters),
+      ratePerLiter: input.ratePerLiter ?? (input.totalAmount != null ? undefined : toNumber(existing.ratePerLiter)),
+      totalAmount:
+        input.totalAmount ??
+        (input.quantityLiters != null || input.ratePerLiter != null ? undefined : toNumber(existing.totalAmount)),
+    });
     const entryDate = input.entryDate ? new Date(input.entryDate) : existing.entryDate;
 
     // Trip/driver are only touched when the caller explicitly names a trip,
@@ -223,9 +321,9 @@ export const fuelEntryService = {
       supplierId: input.supplierId,
       paymentModeId: input.paymentModeId,
       advanceId: input.advanceId,
-      quantityLiters: input.quantityLiters,
-      ratePerLiter: input.ratePerLiter,
-      totalAmount,
+      quantityLiters: figures.quantityLiters,
+      ratePerLiter: figures.ratePerLiter,
+      totalAmount: figures.totalAmount,
       invoiceNumber: input.invoiceNumber,
       referenceNumber: input.referenceNumber,
       remarks: input.remarks,
@@ -233,15 +331,32 @@ export const fuelEntryService = {
       updatedById: actorId,
     });
 
-    await vehicleExpenseInternalService.updateFromSource({
-      referenceType: 'FuelEntry',
-      referenceId: id,
-      tripId: tripTouched ? (tripId ?? null) : undefined,
-      amount: totalAmount,
-      expenseDate: input.entryDate ? entryDate : undefined,
-      description: `Fuel: ${quantityLiters}L`,
-      actorId,
-    });
+    // An entry recorded without a cost has no mirrored expense row yet, and
+    // updateFromSource no-ops on a missing mirror -- so once an amount lands,
+    // that row has to be created rather than updated.
+    if (figures.totalAmount != null && existing.totalAmount == null) {
+      await vehicleExpenseInternalService.logFromSource({
+        vehicleId: existing.vehicleId,
+        tripId: tripTouched ? tripId : (existing.tripId ?? undefined),
+        category: 'FUEL',
+        amount: figures.totalAmount,
+        expenseDate: entryDate,
+        description: `Fuel: ${describeFill(figures)}`,
+        referenceType: 'FuelEntry',
+        referenceId: id,
+        actorId,
+      });
+    } else if (figures.totalAmount != null) {
+      await vehicleExpenseInternalService.updateFromSource({
+        referenceType: 'FuelEntry',
+        referenceId: id,
+        tripId: tripTouched ? (tripId ?? null) : undefined,
+        amount: figures.totalAmount,
+        expenseDate: input.entryDate ? entryDate : undefined,
+        description: `Fuel: ${describeFill(figures)}`,
+        actorId,
+      });
+    }
 
     await auditService.record({
       userId: actorId,
@@ -280,33 +395,67 @@ export const fuelEntryService = {
     return fuelEntryService.getById(id);
   },
 
-  /** Vehicle Fuel Tracking dashboard: totals, average rate, mileage and cost-per-km for one vehicle. */
-  async vehicleFuelSummary(vehicleId: string) {
+  /** Vehicle Fuel Tracking dashboard: totals, average rate, mileage and cost-per-km for one vehicle, over an optional date range. */
+  async vehicleFuelSummary(vehicleId: string, query: Request['query'] = {}) {
     const vehicle = await fuelEntryRepository.findVehicleById(vehicleId);
     if (!vehicle) throw new AppError('Vehicle not found', 404);
 
-    const { agg, latest } = await fuelEntryRepository.vehicleAggregate(vehicleId);
-    const totalLiters = Number(agg._sum.quantityLiters || 0);
-    const totalFuelCost = Number(agg._sum.totalAmount || 0);
-    const totalKM = Number(agg._sum.distanceCovered || 0);
-    const avgRate = agg._avg.ratePerLiter != null ? Number(agg._avg.ratePerLiter) : null;
-    const avgMileageKmpl = agg._avg.mileageKmpl != null ? Number(agg._avg.mileageKmpl) : null;
-    const costPerKm = totalKM > 0 ? Number((totalFuelCost / totalKM).toFixed(2)) : null;
+    const range = parseEntryDateRange(query);
+    const { agg, latest } = await fuelEntryRepository.fuelAggregate({ vehicleId, ...range });
 
     return {
       vehicleId,
       registrationNumber: vehicle.registrationNumber,
-      totalLiters,
-      totalFuelCost,
-      avgRate,
-      totalKM,
-      mileageKmpl: avgMileageKmpl,
-      costPerKm,
-      fuelCostPerKm: costPerKm,
+      ...summarizeAggregate(agg),
       lastFuelEntry: latest?.entryDate ?? null,
       currentOdometer: latest?.odometerReading ?? null,
-      entryCount: agg._count._all,
+      from: range.from ?? null,
+      to: range.to ?? null,
     };
+  },
+
+  /** The Mileage & Consumption tab's headline figures — the same shape as the per-vehicle summary, across every vehicle in the range. */
+  async fuelSummary(query: Request['query']) {
+    const range = parseEntryDateRange(query);
+    const { agg, latest } = await fuelEntryRepository.fuelAggregate({
+      vehicleId: (query.vehicleId as string) || undefined,
+      ...range,
+    });
+
+    return {
+      ...summarizeAggregate(agg),
+      lastFuelEntry: latest?.entryDate ?? null,
+      from: range.from ?? null,
+      to: range.to ?? null,
+    };
+  },
+
+  /**
+   * Driver-wise mileage: what each driver burnt, covered and cost over the
+   * range. Mileage is the average of the per-fill km/l figures, the same
+   * measure the vehicle summary reports, so the two read alike; fills whose
+   * litres were never recorded simply carry no km/l and sit out of it.
+   */
+  async driverMileage(query: Request['query']) {
+    const range = parseEntryDateRange(query);
+    const { grouped, drivers } = await fuelEntryRepository.driverMileageAggregate({
+      driverId: (query.driverId as string) || undefined,
+      ...range,
+    });
+    const driverById = new Map(drivers.map((d) => [d.id, d]));
+
+    const rows = grouped.map((g) => {
+      const driver = g.driverId ? driverById.get(g.driverId) : undefined;
+      return {
+        driverId: g.driverId,
+        driverName: driver?.name ?? 'Unknown driver',
+        driverCode: driver?.code ?? null,
+        ...summarizeAggregate(g),
+      };
+    });
+
+    rows.sort((a, b) => b.totalFuelCost - a.totalFuelCost);
+    return { data: rows, from: range.from ?? null, to: range.to ?? null };
   },
 
   /** Fuel Advance vs Fuel Payment: how much of a driver's fuel advance has actually been drawn down by fuel purchases. */
@@ -329,13 +478,14 @@ export const fuelEntryService = {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Fuel Entries');
     const columns = [
-      'vehicleRegistrationNumber', 'quantityLiters', 'ratePerLiter', 'odometerReading',
+      'vehicleRegistrationNumber', 'quantityLiters', 'ratePerLiter', 'totalAmount', 'odometerReading',
       'entryDate', 'tripNumber', 'fuelType', 'billingMethod', 'invoiceNumber', 'referenceNumber', 'remarks',
     ];
     sheet.addRow(columns);
     sheet.getRow(1).font = { bold: true };
-    sheet.addRow(['TN38AZ1001', 150, 94.5, 51200, '2026-08-10', '', 'DIESEL', 'FUEL_CARD', 'INV-1001', 'REF-1001', 'Example row — trip and billingMethod are optional; driver is auto-derived from the trip, never entered directly']);
-    sheet.addRow(['TN38AZ1002', 40, 96, 30500, '2026-08-10', '', 'DIESEL', 'DIRECT_PAYMENT', '', '', 'Example row — direct cash payment at a roadside pump']);
+    sheet.addRow(['TN38AZ1001', 150, 94.5, '', 51200, '2026-08-10', '', 'DIESEL', 'FUEL_CARD', 'INV-1001', 'REF-1001', 'Example row — litres and rate; the amount is calculated']);
+    sheet.addRow(['TN38AZ1002', 40, '', '', 30500, '2026-08-10', '', 'DIESEL', 'DIRECT_PAYMENT', '', '', 'Example row — litres only, rate unknown']);
+    sheet.addRow(['TN38AZ1003', '', '', 2000, 30800, '2026-08-10', '', 'DIESEL', 'DIRECT_PAYMENT', '', '', 'Example row — a flat ₹2,000 cash fill; litres not on the slip']);
     sheet.columns.forEach((col) => { col.width = 22; });
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);

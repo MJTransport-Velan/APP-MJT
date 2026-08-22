@@ -1,5 +1,6 @@
 import { Prisma, DriverSettlementStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const settlementWithRelations = Prisma.validator<Prisma.DriverSettlementInclude>()({
   driver: true,
@@ -40,9 +41,13 @@ export const driverSettlementRepository = {
   },
 
   async nextSettlementNumber() {
-    const count = await prisma.driverSettlement.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `DST-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    return nextDocumentNumber('DST', 4, async (stamp) => {
+      const rows = await prisma.driverSettlement.findMany({
+        where: { settlementNumber: { startsWith: `DST-${stamp}-` } },
+        select: { settlementNumber: true },
+      });
+      return highestSequenceToday(rows, 'settlementNumber', 'DST', stamp);
+    });
   },
 
   create(data: Prisma.DriverSettlementUncheckedCreateInput) {

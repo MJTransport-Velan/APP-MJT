@@ -119,6 +119,9 @@ export const createFinancialEntrySchema = z.object({
       ratePerLiter: z.number().positive().optional(),
       odometerReading: z.number().int().positive().optional(),
     })
+    // .strict() must come before .refine() — refine returns a ZodEffects,
+    // which no longer exposes the object-level strictness setting.
+    .strict()
     .refine((v) => v.sourceId || v.sourceLabel, { message: 'A source must be selected or named', path: ['sourceId'] })
     .refine((v) => v.destinationId || v.destinationLabel, { message: 'A destination must be selected or named', path: ['destinationId'] }),
 });
@@ -126,7 +129,7 @@ export const createFinancialEntrySchema = z.object({
 export const cancelFinancialEntrySchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid entry id') }),
-  body: z.object({ reason: z.string().min(1, 'A cancellation reason is required') }),
+  body: z.object({ reason: z.string().min(1, 'A cancellation reason is required') }).strict(),
 });
 
 export const reverseFinancialEntrySchema = z.object({

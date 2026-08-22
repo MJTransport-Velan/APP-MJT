@@ -57,6 +57,10 @@ export const adminUserRepository = {
     return prisma.user.findUnique({ where: { username } });
   },
 
+  findByEmail(email: string) {
+    return prisma.user.findFirst({ where: { email } });
+  },
+
   create(data: { username: string; email?: string; phone?: string; fullName: string; password: string }) {
     return prisma.user.create({ data });
   },
@@ -69,12 +73,21 @@ export const adminUserRepository = {
     return prisma.user.update({ where: { id }, data: { isActive } });
   },
 
+  // Both of these end every session the user currently holds, so they also
+  // retire the access tokens already issued (see auth.middleware.ts) rather
+  // than only clearing the refresh token.
   softDelete(id: string) {
-    return prisma.user.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, refreshToken: null } });
+    return prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date(), isActive: false, refreshToken: null, tokenVersion: { increment: 1 } },
+    });
   },
 
   setPassword(id: string, password: string) {
-    return prisma.user.update({ where: { id }, data: { password, refreshToken: null } });
+    return prisma.user.update({
+      where: { id },
+      data: { password, refreshToken: null, tokenVersion: { increment: 1 } },
+    });
   },
 
   setProfilePhoto(id: string, profilePhoto: string) {
