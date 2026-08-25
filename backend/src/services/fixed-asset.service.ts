@@ -6,7 +6,7 @@ import { organizationService } from './organization.service';
 import { resolveFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { prisma } from '../config/db';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
-import { CreateFixedAssetInput, ApproveFixedAssetInput } from '../validators/fixed-asset.validator';
+import { CreateFixedAssetInput, UpdateFixedAssetInput, ApproveFixedAssetInput } from '../validators/fixed-asset.validator';
 
 function serialize(a: FixedAssetWithRelations) {
   return {
@@ -27,7 +27,6 @@ function serialize(a: FixedAssetWithRelations) {
     locationText: a.locationText,
     status: a.status,
     approvalStatus: a.approvalStatus,
-    vehicleLoans: a.vehicleLoans,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -53,7 +52,7 @@ export const fixedAssetService = {
     return serialize(asset);
   },
 
-  /** Registers the asset — no Voucher yet, until approve() records how the purchase was funded (design doc §6.1/§6.2). */
+  /** Registers the asset — no funding is recorded yet, until approve() records how the purchase was paid for. */
   async register(input: CreateFixedAssetInput, actorId: string) {
     const category = await fixedAssetRepository.findCategoryById(input.categoryId);
     if (!category) throw new AppError('Asset Category not found', 404);
@@ -80,7 +79,7 @@ export const fixedAssetService = {
       residualValue,
       usefulLifeMonths,
       depreciationMethod,
-      currentValue: input.purchaseValue,
+      currentValue: input.currentValue ?? input.purchaseValue,
       departmentId: input.departmentId,
       locationText: input.locationText,
       responsiblePersonId: input.responsiblePersonId,
@@ -93,12 +92,57 @@ export const fixedAssetService = {
   },
 
   /**
+   * Edits a register entry. Purchase value is frozen once the purchase has
+   * been approved — the Bank/Cash balances were already adjusted for it, so
+   * changing it afterwards would silently desync those balances.
+   */
+  async update(id: string, input: UpdateFixedAssetInput, actorId: string) {
+    const existing = await fixedAssetRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Fixed Asset not found', 404);
+
+    if (input.categoryId && input.categoryId !== existing.categoryId) {
+      const category = await fixedAssetRepository.findCategoryById(input.categoryId);
+      if (!category) throw new AppError('Asset Category not found', 404);
+    }
+
+    if (input.vehicleId && input.vehicleId !== existing.vehicleId) {
+      const existingForVehicle = await prisma.fixedAsset.findFirst({ where: { vehicleId: input.vehicleId, deletedAt: null, id: { not: id } } });
+      if (existingForVehicle) throw new AppError('This vehicle already has a Fixed Asset record', 409);
+    }
+
+    if (input.purchaseValue !== undefined && Number(input.purchaseValue) !== Number(existing.purchaseValue) && existing.approvalStatus === 'APPROVED') {
+      throw new AppError('Purchase value cannot be changed after the purchase has been approved and funded', 409);
+    }
+
+    await fixedAssetRepository.update(id, {
+      assetName: input.assetName,
+      categoryId: input.categoryId,
+      vehicleId: input.vehicleId,
+      supplierId: input.supplierId,
+      purchaseDate: input.purchaseDate ? new Date(input.purchaseDate) : undefined,
+      capitalizationDate: input.capitalizationDate ? new Date(input.capitalizationDate) : undefined,
+      purchaseValue: input.purchaseValue,
+      residualValue: input.residualValue,
+      usefulLifeMonths: input.usefulLifeMonths,
+      depreciationMethod: input.depreciationMethod,
+      currentValue: input.currentValue,
+      departmentId: input.departmentId,
+      locationText: input.locationText,
+      responsiblePersonId: input.responsiblePersonId,
+      status: input.status,
+      updatedById: actorId,
+    });
+
+    await auditService.record({ userId: actorId, action: 'UPDATE', entityType: 'FixedAsset', entityId: id, description: `Updated fixed asset ${existing.assetCode}` });
+    return fixedAssetService.getById(id);
+  },
+
+  /**
    * Approving a purchase directly debits each Bank/Cash funding line's
-   * currentBalance for its share of the purchase value. LOAN and SUPPLIER
-   * funding lines are validated (loan must be ACTIVE / supplier must
-   * exist) but don't touch any stored balance — a VehicleLoan's principal
-   * is fixed at creation and supplier payables aren't tracked as a ledger
-   * anymore, so there is nothing further to post for those lines.
+   * currentBalance for its share of the purchase value. SUPPLIER funding
+   * lines are validated (the supplier must exist) but don't touch any
+   * stored balance — supplier payables aren't tracked as a ledger anymore,
+   * so there is nothing further to post for those lines.
    */
   async approve(id: string, input: ApproveFixedAssetInput, actorId: string) {
     const existing = await fixedAssetRepository.findByIdBasic(id);
@@ -121,11 +165,6 @@ export const fixedAssetService = {
         const fundAccount = await resolveFundAccount(organizationId, line.type, line.fundAccountId);
         if (!fundAccount.isActive) throw new AppError('The selected Bank/Cash account is inactive', 409);
         fundAccountAdjustments.push({ type: fundAccount.type, id: fundAccount.id, amount: line.amount });
-      } else if (line.type === 'LOAN') {
-        if (!line.vehicleLoanId) throw new AppError('vehicleLoanId is required for a Loan funding line', 422);
-        const loan = await prisma.vehicleLoan.findFirst({ where: { id: line.vehicleLoanId, deletedAt: null } });
-        if (!loan) throw new AppError('Vehicle Loan not found', 404);
-        if (loan.status !== 'ACTIVE') throw new AppError('Vehicle Loan must be approved (ACTIVE) before it can fund a purchase', 409);
       } else {
         if (!existing.supplierId) throw new AppError('This asset has no purchase vendor set — cannot use a Supplier funding line', 422);
         const supplier = await prisma.supplier.findFirst({ where: { id: existing.supplierId, deletedAt: null } });
@@ -165,14 +204,5 @@ export const fixedAssetService = {
 
     await fixedAssetRepository.softDelete(id, actorId);
     await auditService.record({ userId: actorId, action: 'DELETE', entityType: 'FixedAsset', entityId: id, description: `Deleted fixed asset ${existing.assetCode}` });
-  },
-
-  /** Recomputes and caches currentValue — called after every depreciation run / disposal (design doc §7.2). */
-  async recalcCurrentValue(assetId: string) {
-    const asset = await fixedAssetRepository.findByIdBasic(assetId);
-    if (!asset) return;
-    const depreciated = await fixedAssetRepository.sumDepreciation(assetId);
-    const currentValue = Math.max(Number(asset.purchaseValue) - Number(depreciated._sum.depreciationAmount || 0), Number(asset.residualValue));
-    await prisma.fixedAsset.update({ where: { id: assetId }, data: { currentValue } });
   },
 };

@@ -28,7 +28,7 @@ const search = ref('');
 const cards = [
   { icon: 'mdi-chart-line', title: 'Trip Financials', description: 'Vehicle, supplier and customer profit reports', to: '/accounts/trip-financials' },
   { icon: 'mdi-chart-areaspline', title: 'Profitability Reports', description: 'Customer, Supplier, Vehicle, Driver and Route profitability', to: '/accounts/profitability-reports' },
-  { icon: 'mdi-scale-balance', title: 'Outstanding, Loan & Expense Reports', description: 'Driver/Employee outstanding, Vehicle Loan Report and Expense Analysis', to: '/accounts/operational-reports' },
+  { icon: 'mdi-scale-balance', title: 'Outstanding & Expense Reports', description: 'Driver/Employee outstanding and Expense Analysis', to: '/accounts/operational-reports' },
   { icon: 'mdi-view-dashboard-outline', title: 'MIS Dashboard', description: 'Outstanding, vehicle/driver cost and top customers/suppliers at a glance', to: '/accounts/mis-dashboard' },
   { icon: 'mdi-book-open-page-variant-outline', title: 'Balance Sheet', description: 'What MJ Transport owns and owes, and its net financial position, as of any date', to: '/accounts/balance-sheet' },
   { icon: 'mdi-chart-bell-curve-cumulative', title: 'Profit & Loss', description: 'Income vs Expenses and Net Profit for a selected period', to: '/accounts/profit-loss' },

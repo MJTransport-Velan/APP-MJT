@@ -1,10 +1,8 @@
 <template>
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
-      <h2 class="text-h6">Vehicle Asset Register</h2>
+      <h2 class="text-h6">Asset Register</h2>
       <div class="d-flex ga-2">
-        <AppBtn variant="outlined" prepend-icon="mdi-swap-horizontal" to="/accounts/asset-transfers">Transfers</AppBtn>
-        <AppBtn variant="outlined" prepend-icon="mdi-trash-can-outline" to="/accounts/asset-disposals">Disposals</AppBtn>
         <AppBtn color="primary" prepend-icon="mdi-plus" @click="openRegisterDialog">Register Asset</AppBtn>
       </div>
     </div>
@@ -22,22 +20,27 @@
       <template #item.status="{ item }"><AppChip size="small" variant="outlined">{{ (item as any).status }}</AppChip></template>
       <template #item.actions="{ item }">
         <AppBtn icon="mdi-chart-box-outline" variant="text" size="small" @click="openCostSummary(item as any)" />
+        <AppBtn icon="mdi-pencil-outline" variant="text" size="small" @click="openEditDialog(item as any)" />
         <template v-if="(item as any).approvalStatus === 'PENDING'">
           <AppBtn icon="mdi-check-circle-outline" variant="text" size="small" color="success" @click="openApproveDialog(item as any)" />
           <AppBtn icon="mdi-close-circle-outline" variant="text" size="small" color="error" @click="onReject(item as any)" />
-          <AppBtn icon="mdi-delete-outline" variant="text" size="small" @click="onDelete(item as any)" />
         </template>
+        <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" @click="onDelete(item as any)" />
       </template>
     </MasterDataTable>
 
-    <MasterFormDialog v-model="registerDialog" title="Register Fixed Asset" :loading="submitting" @submit="onRegister">
+    <MasterFormDialog v-model="formDialog" :title="editTarget ? 'Edit Fixed Asset' : 'Register Fixed Asset'" :loading="submitting" @submit="onSubmit">
       <AppTextField v-model="form.assetName" label="Asset Name" :error-messages="errors.assetName" class="mb-2" />
       <AppSelect v-model="form.categoryId" :items="categoryOptions" item-title="name" item-value="id" label="Asset Category" :error-messages="errors.categoryId" class="mb-2" />
       <AppSelect v-model="form.vehicleId" :items="vehicleOptions" item-title="registrationNumber" item-value="id" label="Vehicle (if a vehicle asset)" clearable class="mb-2" />
       <AppSelect v-model="form.supplierId" :items="supplierOptions" item-title="name" item-value="id" label="Vendor / Supplier" clearable class="mb-2" />
       <div class="d-flex ga-2">
         <AppTextField v-model="form.purchaseDate" type="date" label="Purchase Date" class="mb-2 flex-1-1" />
-        <AppTextField v-model.number="form.purchaseValue" type="number" label="Purchase Value" :error-messages="errors.purchaseValue" class="mb-2 flex-1-1" />
+        <AppTextField v-model.number="form.purchaseValue" type="number" label="Purchase Value" :error-messages="errors.purchaseValue" :disabled="purchaseValueLocked" :hint="purchaseValueLocked ? 'Locked — the purchase was already approved and funded' : undefined" persistent-hint class="mb-2 flex-1-1" />
+      </div>
+      <div v-if="editTarget" class="d-flex ga-2">
+        <AppTextField v-model.number="form.currentValue" type="number" label="Current Value" class="mb-2 flex-1-1" />
+        <AppSelect v-model="form.status" :items="statusOptions" label="Status" class="mb-2 flex-1-1" />
       </div>
       <AppTextField v-model="form.locationText" label="Location" class="mb-2" />
     </MasterFormDialog>
@@ -46,17 +49,6 @@
       <p class="text-caption text-medium-emphasis mb-3">Funding lines must total {{ formatCurrency(approveTarget?.purchaseValue || 0) }}</p>
       <div v-for="(line, idx) in fundingLines" :key="idx" class="d-flex ga-2 align-center mb-2">
         <AppSelect v-model="line.type" :items="fundingTypeOptions" label="Funding Type" density="compact" hide-details style="flex: 1" />
-        <AppSelect
-          v-if="line.type === 'LOAN'"
-          v-model="line.vehicleLoanId"
-          :items="activeLoanOptions"
-          item-title="loanNumber"
-          item-value="id"
-          label="Loan"
-          density="compact"
-          hide-details
-          style="flex: 1"
-        />
         <AppSelect
           v-if="line.type === 'BANK' || line.type === 'CASH'"
           v-model="line.fundAccountKey"
@@ -84,12 +76,6 @@
           <div class="row row-dense">
             <div class="col-6 text-body-2">Purchase Cost</div>
             <div class="col-6 text-body-2 text-right">{{ formatCurrency(costSummary.purchaseCost) }}</div>
-            <div class="col-6 text-body-2">Loan Principal Repaid</div>
-            <div class="col-6 text-body-2 text-right">{{ formatCurrency(costSummary.loanPrincipalRepaid) }}</div>
-            <div class="col-6 text-body-2">Loan Interest Paid</div>
-            <div class="col-6 text-body-2 text-right">{{ formatCurrency(costSummary.loanInterestPaid) }}</div>
-            <div class="col-6 text-body-2">Depreciation to Date</div>
-            <div class="col-6 text-body-2 text-right">{{ formatCurrency(costSummary.depreciationToDate) }}</div>
             <div class="col-6 text-body-2">Vehicle Expenses</div>
             <div class="col-6 text-body-2 text-right">{{ formatCurrency(costSummary.totalExpenses) }}</div>
             <div class="col-6 text-body-2">Driver Cost</div>
@@ -107,7 +93,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
-import { useFixedAssetStore, useAssetCategoryStore, useVehicleLoanStore } from '@/stores/accounts/vehicleAssets';
+import { useFixedAssetStore, useAssetCategoryStore } from '@/stores/accounts/vehicleAssets';
 import { fixedAssetApi } from '@/services/accounts/vehicleAssets';
 import { useVehicleStore, useSupplierStore } from '@/stores/masters';
 import { useBankAccountStore, useCashAccountStore } from '@/stores/banking';
@@ -120,7 +106,6 @@ import type { FixedAsset, VehicleCostSummary, FundingLine } from '@/types/phase6
 
 const store = useFixedAssetStore();
 const categoryStore = useAssetCategoryStore();
-const loanStore = useVehicleLoanStore();
 const vehicleStore = useVehicleStore();
 const supplierStore = useSupplierStore();
 const bankAccountStore = useBankAccountStore();
@@ -132,13 +117,12 @@ const pageSize = ref(10);
 const approvalStatusFilter = ref<string | null>(null);
 const statusFilter = ref<string | null>(null);
 const approvalStatusOptions = ['PENDING', 'APPROVED', 'REJECTED'];
-const statusOptions = ['ACTIVE', 'UNDER_TRANSFER', 'DISPOSED', 'WRITTEN_OFF'];
-const fundingTypeOptions = ['BANK', 'CASH', 'LOAN', 'SUPPLIER'];
+const statusOptions = ['ACTIVE', 'WRITTEN_OFF'];
+const fundingTypeOptions = ['BANK', 'CASH', 'SUPPLIER'];
 
 const categoryOptions = computed(() => categoryStore.items);
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
 const supplierOptions = ref<{ id: string; name: string }[]>([]);
-const activeLoanOptions = computed(() => loanStore.items.filter((l) => l.status === 'ACTIVE'));
 
 function approvalColor(status: string) {
   return ({ PENDING: 'warning', APPROVED: 'success', REJECTED: 'error' } as Record<string, string>)[status] || 'default';
@@ -162,8 +146,9 @@ async function fetchData() {
   await store.fetchList({ page: page.value, pageSize: pageSize.value, approvalStatus: approvalStatusFilter.value || undefined, status: statusFilter.value || undefined });
 }
 
-const registerDialog = ref(false);
+const formDialog = ref(false);
 const submitting = ref(false);
+const editTarget = ref<FixedAsset | null>(null);
 const form = reactive({
   assetName: '',
   categoryId: '',
@@ -171,17 +156,55 @@ const form = reactive({
   supplierId: '',
   purchaseDate: new Date().toISOString().slice(0, 10),
   purchaseValue: undefined as number | undefined,
+  currentValue: undefined as number | undefined,
+  status: 'ACTIVE',
   locationText: '',
 });
 const errors = reactive({ assetName: '', categoryId: '', purchaseValue: '' });
 
-function openRegisterDialog() {
-  Object.assign(form, { assetName: '', categoryId: '', vehicleId: '', supplierId: '', purchaseDate: new Date().toISOString().slice(0, 10), purchaseValue: undefined, locationText: '' });
+// The backend refuses a purchase-value change once the purchase has been
+// approved — the Bank/Cash balances were already adjusted for it.
+const purchaseValueLocked = computed(() => editTarget.value?.approvalStatus === 'APPROVED');
+
+function resetForm() {
+  Object.assign(form, {
+    assetName: '',
+    categoryId: '',
+    vehicleId: '',
+    supplierId: '',
+    purchaseDate: new Date().toISOString().slice(0, 10),
+    purchaseValue: undefined,
+    currentValue: undefined,
+    status: 'ACTIVE',
+    locationText: '',
+  });
   Object.assign(errors, { assetName: '', categoryId: '', purchaseValue: '' });
-  registerDialog.value = true;
 }
 
-async function onRegister() {
+function openRegisterDialog() {
+  editTarget.value = null;
+  resetForm();
+  formDialog.value = true;
+}
+
+function openEditDialog(asset: FixedAsset) {
+  editTarget.value = asset;
+  Object.assign(errors, { assetName: '', categoryId: '', purchaseValue: '' });
+  Object.assign(form, {
+    assetName: asset.assetName,
+    categoryId: asset.category.id,
+    vehicleId: asset.vehicle?.id || '',
+    supplierId: asset.supplier?.id || '',
+    purchaseDate: String(asset.purchaseDate).slice(0, 10),
+    purchaseValue: Number(asset.purchaseValue),
+    currentValue: Number(asset.currentValue),
+    status: asset.status,
+    locationText: asset.locationText || '',
+  });
+  formDialog.value = true;
+}
+
+async function onSubmit() {
   errors.assetName = form.assetName ? '' : 'Asset name is required';
   errors.categoryId = form.categoryId ? '' : 'Category is required';
   errors.purchaseValue = form.purchaseValue && form.purchaseValue > 0 ? '' : 'Purchase value must be greater than 0';
@@ -189,30 +212,45 @@ async function onRegister() {
 
   submitting.value = true;
   try {
-    await store.register({
-      assetName: form.assetName,
-      categoryId: form.categoryId,
-      vehicleId: form.vehicleId || undefined,
-      supplierId: form.supplierId || undefined,
-      purchaseDate: form.purchaseDate,
-      purchaseValue: form.purchaseValue,
-      locationText: form.locationText || undefined,
-    });
-    success('Fixed asset registered');
-    registerDialog.value = false;
+    if (editTarget.value) {
+      await store.update(editTarget.value.id, {
+        assetName: form.assetName,
+        categoryId: form.categoryId,
+        vehicleId: form.vehicleId || null,
+        supplierId: form.supplierId || null,
+        purchaseDate: form.purchaseDate,
+        // Omitted when locked so the request never trips the server-side guard.
+        purchaseValue: purchaseValueLocked.value ? undefined : form.purchaseValue,
+        currentValue: form.currentValue,
+        status: form.status,
+        locationText: form.locationText || null,
+      });
+      success('Fixed asset updated');
+    } else {
+      await store.register({
+        assetName: form.assetName,
+        categoryId: form.categoryId,
+        vehicleId: form.vehicleId || undefined,
+        supplierId: form.supplierId || undefined,
+        purchaseDate: form.purchaseDate,
+        purchaseValue: form.purchaseValue,
+        locationText: form.locationText || undefined,
+      });
+      success('Fixed asset registered');
+    }
+    formDialog.value = false;
     fetchData();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to register asset'));
+    error(extractErrorMessage(err, editTarget.value ? 'Failed to update asset' : 'Failed to register asset'));
   } finally {
     submitting.value = false;
   }
 }
 
 interface FundingLineRow {
-  type: 'BANK' | 'CASH' | 'LOAN' | 'SUPPLIER';
+  type: 'BANK' | 'CASH' | 'SUPPLIER';
   amount: number;
   fundAccountKey?: string;
-  vehicleLoanId?: string;
 }
 
 const approveDialog = ref(false);
@@ -242,11 +280,10 @@ async function onApprove() {
         const [, fundAccountId] = line.fundAccountKey ? line.fundAccountKey.split(':') : [undefined, undefined];
         return { type: line.type, amount: line.amount, fundAccountId };
       }
-      if (line.type === 'LOAN') return { type: 'LOAN', amount: line.amount, vehicleLoanId: line.vehicleLoanId };
       return { type: 'SUPPLIER', amount: line.amount };
     });
     await store.approve(approveTarget.value.id, payload as unknown as Record<string, unknown>[]);
-    success('Asset purchase approved and posted');
+    success('Asset purchase approved');
     approveDialog.value = false;
     fetchData();
   } catch (err) {
@@ -291,7 +328,6 @@ async function openCostSummary(asset: FixedAsset) {
 onMounted(async () => {
   await Promise.all([
     categoryStore.fetchList(),
-    loanStore.fetchList({ pageSize: 200 }),
     vehicleStore.fetchList({ pageSize: 200 }),
     supplierStore.fetchList({ pageSize: 200 }),
     bankAccountStore.fetchList({ pageSize: 200 }),

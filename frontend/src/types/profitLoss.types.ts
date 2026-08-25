@@ -19,7 +19,6 @@ export interface ProfitLossResult {
       total: number;
     };
     officeExpenses: number;
-    interestAndFinanceCharges: number;
     staffSalary: number;
     total: number;
   };

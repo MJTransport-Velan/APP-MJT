@@ -255,48 +255,25 @@ const VEHICLE_ASSET_PERMISSIONS = [
   { name: 'asset_category.create', description: 'Create Asset Categories' },
   { name: 'asset_category.edit', description: 'Edit Asset Categories' },
   { name: 'asset_category.delete', description: 'Delete Asset Categories' },
-  { name: 'asset.view', description: 'View the Fixed Asset / Vehicle Asset Register' },
+  { name: 'asset.view', description: 'View the Fixed Asset Register' },
   { name: 'asset.create', description: 'Register a Fixed Asset (purchase)' },
-  { name: 'asset.approve', description: 'Approve a Fixed Asset purchase (posts the Asset Purchase Voucher)' },
+  { name: 'asset.edit', description: 'Edit a Fixed Asset register entry' },
+  { name: 'asset.approve', description: 'Approve a Fixed Asset purchase (records how it was funded)' },
   { name: 'asset.delete', description: 'Delete an unapproved Fixed Asset' },
-  { name: 'vehicle_loan.view', description: 'View Vehicle Loans' },
-  { name: 'vehicle_loan.create', description: 'Request a Vehicle Loan' },
-  { name: 'vehicle_loan.approve', description: 'Approve/Reject and Disburse a Vehicle Loan' },
-  { name: 'vehicle_loan.pay', description: 'Pay a Vehicle Loan EMI Installment / Foreclose a Vehicle Loan' },
-  { name: 'vehicle_loan.delete', description: 'Delete an unapproved Vehicle Loan' },
-  { name: 'vehicle_expense.approve', description: 'Approve/Reject a Vehicle Expense (posts its Voucher)' },
-  { name: 'vehicle_tyre.view', description: 'View Vehicle Tyres' },
-  { name: 'vehicle_tyre.create', description: 'Install a Vehicle Tyre' },
-  { name: 'vehicle_tyre.edit', description: 'Rotate / Remove / Scrap a Vehicle Tyre' },
-  { name: 'vehicle_battery.view', description: 'View Vehicle Batteries' },
-  { name: 'vehicle_battery.create', description: 'Install a Vehicle Battery' },
-  { name: 'vehicle_battery.edit', description: 'Dispose a Vehicle Battery' },
-  { name: 'vehicle_compliance.view', description: 'View Vehicle Compliance Records (Insurance/Permit/Fitness/Road Tax/Pollution)' },
-  { name: 'vehicle_compliance.create', description: 'Record a Vehicle Compliance renewal' },
-  { name: 'vehicle_compliance.edit', description: 'File / Settle a Vehicle Insurance Claim' },
+  { name: 'vehicle_expense.approve', description: 'Approve/Reject a Vehicle Expense' },
   { name: 'fasttag.view', description: 'View FastTag Accounts & Transactions' },
   { name: 'fasttag.create', description: 'Create a FastTag Account' },
   { name: 'fasttag.edit', description: 'Recharge the FastTag wallet / Log FastTag Usage / Refund / Adjust / Edit a transaction' },
   { name: 'fasttag.delete', description: 'Delete a FastTag transaction' },
-  { name: 'asset_transfer.view', description: 'View Asset Transfers' },
-  { name: 'asset_transfer.create', description: 'Request an Asset Transfer (department/custody move)' },
-  { name: 'asset_transfer.approve', description: 'Approve/Reject an Asset Transfer' },
-  { name: 'asset_disposal.view', description: 'View Asset Disposals' },
-  { name: 'asset_disposal.create', description: 'Raise an Asset Disposal (Sale/Scrap/Write-off/Theft/Accident/Donation)' },
-  { name: 'asset_disposal.approve', description: 'Approve/Reject an Asset Disposal (posts its Voucher)' },
-  { name: 'depreciation.view', description: 'View Depreciation Runs' },
-  { name: 'depreciation.create', description: 'Create/Calculate a Depreciation Run' },
-  { name: 'depreciation.approve', description: 'Approve a Depreciation Run (posts the consolidated Depreciation Voucher)' },
 ];
 
 // Phase 13 — Financial Reporting. GST/TDS compliance, financial-statement
 // and Budget/Year-End-Closing permissions were removed with the
 // Voucher/Ledger double-entry engine they depended on; the reports below
-// read directly from Invoice/SupplierBill/Driver/Vehicle/Loan data instead.
+// read directly from Invoice/SupplierBill/Driver/Vehicle data instead.
 const FINANCIAL_REPORTING_PERMISSIONS = [
   { name: 'profitability_report.view', description: 'View Customer/Supplier/Vehicle/Driver Profitability' },
   { name: 'outstanding_report.view', description: 'View Driver/Employee Outstanding Reports' },
-  { name: 'loan_report.view', description: 'View the consolidated Driver/Employee/Vehicle Loan Report' },
   { name: 'expense_analysis.view', description: 'View category-wise Expense Analysis' },
   { name: 'mis_dashboard.view', description: 'View the MIS Dashboard' },
   { name: 'report_schedule.view', description: 'View Report Schedule definitions' },
@@ -1064,48 +1041,35 @@ async function main() {
       permissionNames: [
         'asset_category.view',
         'asset.view', 'asset.approve',
-        'vehicle_loan.view', 'vehicle_loan.approve',
         'vehicle_expense.view', 'vehicle_expense.approve',
-        'vehicle_tyre.view', 'vehicle_battery.view', 'vehicle_compliance.view', 'fasttag.view',
-        'asset_transfer.view', 'asset_transfer.approve',
-        'asset_disposal.view', 'asset_disposal.approve',
-        'depreciation.view', 'depreciation.approve',
+        'fasttag.view',
       ],
     },
     // Fleet Manager (existing role): operational upkeep, no financial approval (design doc §18).
     {
       role: fleetManagerRole,
       permissionNames: [
-        'vehicle_tyre.view', 'vehicle_tyre.create', 'vehicle_tyre.edit',
-        'vehicle_battery.view', 'vehicle_battery.create', 'vehicle_battery.edit',
-        'vehicle_compliance.view', 'vehicle_compliance.create', 'vehicle_compliance.edit',
         'fasttag.view', 'fasttag.create', 'fasttag.edit', 'fasttag.delete',
         'vehicle_expense.view', 'vehicle_expense.create',
-        'asset.view', 'asset_transfer.view', 'asset_transfer.create',
+        'asset.view',
         'data_import.view', 'data_import.run',
       ],
     },
     // Maintenance Manager (new role): narrower than Fleet Manager, for a dedicated workshop lead (design doc §18).
     {
       role: maintenanceManagerRole,
-      permissionNames: [
-        'vehicle_expense.view', 'vehicle_expense.create',
-        'vehicle_tyre.view', 'vehicle_tyre.create', 'vehicle_tyre.edit',
-        'vehicle_battery.view', 'vehicle_battery.create', 'vehicle_battery.edit',
-      ],
+      permissionNames: ['vehicle_expense.view', 'vehicle_expense.create'],
     },
-    // Purchase Manager (new role): files purchase/loan requests, does not approve them (design doc §18).
+    // Purchase Manager (new role): files purchase requests and maintains the register, does not approve them (design doc §18).
     {
       role: purchaseManagerRole,
-      permissionNames: ['asset_category.view', 'asset.view', 'asset.create', 'vehicle_loan.view', 'vehicle_loan.create'],
+      permissionNames: ['asset_category.view', 'asset.view', 'asset.create', 'asset.edit'],
     },
     // Operation Manager: .view only across this phase — visibility without action rights (design doc §18).
     {
       role: operationManagerRole,
       permissionNames: [
-        'asset_category.view', 'asset.view', 'vehicle_loan.view', 'vehicle_expense.view',
-        'vehicle_tyre.view', 'vehicle_battery.view', 'vehicle_compliance.view', 'fasttag.view',
-        'asset_transfer.view', 'asset_disposal.view', 'depreciation.view',
+        'asset_category.view', 'asset.view', 'vehicle_expense.view', 'fasttag.view',
       ],
     },
   ];
@@ -1139,7 +1103,7 @@ async function main() {
   const managerRole = await prisma.role.findUnique({ where: { name: 'MANAGER' } });
 
   const broadReportViewPermissions = [
-    'profitability_report.view', 'outstanding_report.view', 'loan_report.view',
+    'profitability_report.view', 'outstanding_report.view',
     'expense_analysis.view', 'mis_dashboard.view', 'report_schedule.view', 'balance_sheet.view', 'profit_loss.view',
   ];
 

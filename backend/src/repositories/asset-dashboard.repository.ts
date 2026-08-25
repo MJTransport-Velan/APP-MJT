@@ -13,25 +13,26 @@ export const assetDashboardRepository = {
     return prisma.fixedAsset.aggregate({ where: { status: 'ACTIVE', deletedAt: null, vehicleId: { not: null } }, _sum: { currentValue: true } });
   },
 
-  async sumLoanOutstanding() {
-    const [principal, repaid] = await Promise.all([
-      prisma.vehicleLoan.aggregate({ where: { status: 'ACTIVE', deletedAt: null }, _sum: { principalAmount: true } }),
-      prisma.vehicleLoanInstallment.aggregate({ where: { status: 'PAID', loan: { status: 'ACTIVE' } }, _sum: { principalComponent: true } }),
-    ]);
-    return Number(principal._sum.principalAmount || 0) - Number(repaid._sum.principalComponent || 0);
-  },
-
   sumTodaysExpenses(startOfDay: Date, endOfDay: Date) {
     return prisma.vehicleExpense.aggregate({ where: { deletedAt: null, expenseDate: { gte: startOfDay, lte: endOfDay } }, _sum: { totalAmount: true, amount: true } });
   },
 
-  findExpiringCompliance(until: Date) {
-    return prisma.vehicleComplianceRecord.findMany({
-      where: { status: 'ACTIVE', deletedAt: null, expiryDate: { lte: until } },
-      include: { vehicle: { select: { id: true, registrationNumber: true } } },
-      orderBy: { expiryDate: 'asc' },
-      take: 20,
+  async countByCategory(take: number) {
+    const groups = await prisma.fixedAsset.groupBy({
+      by: ['categoryId'],
+      where: { deletedAt: null, status: 'ACTIVE' },
+      _count: { _all: true },
+      _sum: { currentValue: true },
+      orderBy: { _sum: { currentValue: 'desc' } },
+      take,
     });
+    const categories = await prisma.assetCategory.findMany({ where: { id: { in: groups.map((g) => g.categoryId) } }, select: { id: true, name: true } });
+    const byId = new Map(categories.map((c) => [c.id, c]));
+    return groups.map((g) => ({
+      category: byId.get(g.categoryId) ?? null,
+      assetCount: g._count._all,
+      totalValue: Number(g._sum.currentValue || 0),
+    }));
   },
 
   async topExpenseVehicles(take: number) {

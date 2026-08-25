@@ -69,17 +69,9 @@ import salaryPaymentQuoteRoutes from './salary-payment-quote.routes';
 import payrollDashboardRoutes from './payroll-dashboard.routes';
 import assetCategoryRoutes from './asset-category.routes';
 import fixedAssetRoutes from './fixed-asset.routes';
-import vehicleLoanRoutes from './vehicle-loan.routes';
-import vehicleTyreRoutes from './vehicle-tyre.routes';
-import vehicleBatteryRoutes from './vehicle-battery.routes';
-import vehicleComplianceRoutes from './vehicle-compliance.routes';
 import fastTagRoutes from './fasttag.routes';
-import assetTransferRoutes from './asset-transfer.routes';
-import assetDisposalRoutes from './asset-disposal.routes';
-import depreciationRunRoutes from './depreciation-run.routes';
 import profitabilityReportRoutes from './profitability-report.routes';
 import outstandingReportRoutes from './outstanding-report.routes';
-import loanReportRoutes from './loan-report.routes';
 import expenseAnalysisRoutes from './expense-analysis.routes';
 import misDashboardRoutes from './mis-dashboard.routes';
 import auditReportRoutes from './audit-report.routes';
@@ -214,17 +206,10 @@ router.use('/accounts/payroll/salary-payments', employeeSalaryPaymentRoutes);
 router.use('/accounts/payroll/salary-quote', salaryPaymentQuoteRoutes);
 router.use('/accounts/payroll/dashboard', payrollDashboardRoutes);
 
-// Vehicle Asset Accounting, Vehicle Loans, Vehicle Expenses & Depreciation
+// Fixed Asset Register, Asset Categories & Vehicle Expenses
 router.use('/accounts/assets/categories', assetCategoryRoutes);
-router.use('/accounts/assets/transfers', assetTransferRoutes);
-router.use('/accounts/assets/disposals', assetDisposalRoutes);
 router.use('/accounts/assets', fixedAssetRoutes);
-router.use('/accounts/vehicle-loans', vehicleLoanRoutes);
-router.use('/accounts/vehicle-tyres', vehicleTyreRoutes);
-router.use('/accounts/vehicle-batteries', vehicleBatteryRoutes);
-router.use('/accounts/vehicle-compliance', vehicleComplianceRoutes);
 router.use('/accounts/fasttag-accounts', fastTagRoutes);
-router.use('/accounts/depreciation/runs', depreciationRunRoutes);
 
 // Business Reporting — every report here reads directly from business
 // entities (Trip/Invoice/SupplierBill/VehicleExpense/DriverAdvance/...),
@@ -234,7 +219,6 @@ router.use('/accounts/depreciation/runs', depreciationRunRoutes);
 // depended on.
 router.use('/accounts/profitability-reports', profitabilityReportRoutes);
 router.use('/accounts/outstanding-reports', outstandingReportRoutes);
-router.use('/accounts/loan-reports', loanReportRoutes);
 router.use('/accounts/expense-analysis', expenseAnalysisRoutes);
 router.use('/accounts/mis-dashboard', misDashboardRoutes);
 router.use('/accounts/audit-reports', auditReportRoutes);

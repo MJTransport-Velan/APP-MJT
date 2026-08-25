@@ -123,7 +123,7 @@ export const financialStateService = {
    * generic "expenses" total (design brief: "Do NOT combine FASTag and
    * Diesel into one expense number"). Sourced entirely from VehicleExpense,
    * which every dedicated module (FuelEntry, FastTagTransaction,
-   * MaintenanceRecord, VehicleTyre, VehicleBattery, manual entries) already
+   * MaintenanceRecord, manual entries) already
    * mirrors into via vehicleExpenseInternalService.logFromSource.
    */
   async vehicleState(vehicleId: string) {

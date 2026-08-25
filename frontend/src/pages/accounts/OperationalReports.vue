@@ -1,11 +1,10 @@
 <template>
   <div>
-    <h2 class="text-h6 mb-4">Outstanding, Loan &amp; Expense Reports</h2>
+    <h2 class="text-h6 mb-4">Outstanding &amp; Expense Reports</h2>
 
     <AppTabs v-model="activeTab" color="primary" class="mb-4">
       <AppTab value="driverOutstanding">Driver Outstanding</AppTab>
       <AppTab value="employeeOutstanding">Employee Outstanding</AppTab>
-      <AppTab value="loans">Loan Report</AppTab>
       <AppTab value="expense">Expense Analysis</AppTab>
     </AppTabs>
 
@@ -47,27 +46,6 @@
         </AppCard>
       </AppWindowItem>
 
-      <AppWindowItem value="loans">
-        <FinancialSummary v-if="loanReport" :cards="[{ label: 'Principal', value: loanReport.totals.principalAmount }, { label: 'Outstanding', value: loanReport.totals.outstandingPrincipal }]" class="mb-3" />
-        <AppCard>
-          <div class="tblwrap">
-            <AppTable density="compact">
-              <thead><tr><th>Category</th><th>Loan No.</th><th>Borrower</th><th class="text-right">Principal</th><th class="text-right">EMI</th><th class="text-right">Outstanding</th><th>Status</th></tr></thead>
-              <tbody>
-                <tr v-for="(r, i) in loanReport?.rows || []" :key="i">
-                  <td><AppChip size="x-small" variant="outlined">{{ r.category }}</AppChip></td>
-                  <td>{{ r.loanNumber }}</td><td>{{ r.borrower }}</td>
-                  <td class="text-right">{{ formatCurrency(r.principalAmount) }}</td>
-                  <td class="text-right">{{ formatCurrency(r.emiAmount) }}</td>
-                  <td class="text-right">{{ formatCurrency(r.outstandingPrincipal) }}</td>
-                  <td><AppChip size="x-small" :color="r.isOverdue ? 'error' : 'default'">{{ r.isOverdue ? 'Overdue' : r.status }}</AppChip></td>
-                </tr>
-              </tbody>
-            </AppTable>
-          </div>
-        </AppCard>
-      </AppWindowItem>
-
       <AppWindowItem value="expense">
         <FinancialSummary v-if="expenseAnalysis" :cards="[{ label: 'Vehicle Cost', value: expenseAnalysis.totalVehicleExpense }, { label: 'Driver Cost', value: expenseAnalysis.driverCost }, { label: 'Grand Total', value: expenseAnalysis.grandTotal }]" class="mb-3" />
         <div class="row">
@@ -85,11 +63,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import { outstandingReportApi, loanReportApi, expenseAnalysisApi } from '@/services/accounts/financialReporting';
+import { outstandingReportApi, expenseAnalysisApi } from '@/services/accounts/financialReporting';
 import { formatCurrency } from '@/utils/format';
 import FinancialSummary from '@/components/accounts/FinancialSummary.vue';
-import { AppTabs, AppTab, AppWindow, AppWindowItem, AppCard, AppTable, AppTextField, AppChip } from '@/components/ui';
-import type { OutstandingResult, LoanReportResult, ExpenseAnalysisResult } from '@/types/phase7.types';
+import { AppTabs, AppTab, AppWindow, AppWindowItem, AppCard, AppTable, AppTextField } from '@/components/ui';
+import type { OutstandingResult, ExpenseAnalysisResult } from '@/types/phase7.types';
 
 const activeTab = ref('driverOutstanding');
 const now = new Date();
@@ -98,13 +76,11 @@ const to = ref(now.toISOString().slice(0, 10));
 
 const driverOutstanding = ref<OutstandingResult | null>(null);
 const employeeOutstanding = ref<OutstandingResult | null>(null);
-const loanReport = ref<LoanReportResult | null>(null);
 const expenseAnalysis = ref<ExpenseAnalysisResult | null>(null);
 
 async function fetchActive() {
   if (activeTab.value === 'driverOutstanding') driverOutstanding.value = (await outstandingReportApi.driver()).data.data;
   else if (activeTab.value === 'employeeOutstanding') employeeOutstanding.value = (await outstandingReportApi.employee()).data.data;
-  else if (activeTab.value === 'loans') loanReport.value = (await loanReportApi.summary()).data.data;
   else if (activeTab.value === 'expense') expenseAnalysis.value = (await expenseAnalysisApi.analyze({ from: from.value, to: to.value })).data.data;
 }
 

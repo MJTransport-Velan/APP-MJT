@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const depreciationMethodEnum = z.enum(['STRAIGHT_LINE', 'WRITTEN_DOWN_VALUE', 'CUSTOM']);
+const fixedAssetStatusEnum = z.enum(['ACTIVE', 'WRITTEN_OFF']);
 
 export const listFixedAssetsSchema = z.object({
   body: z.object({}).optional(),
@@ -10,7 +11,7 @@ export const listFixedAssetsSchema = z.object({
     pageSize: z.string().optional(),
     search: z.string().optional(),
     categoryId: z.string().uuid().optional(),
-    status: z.enum(['ACTIVE', 'UNDER_TRANSFER', 'DISPOSED', 'WRITTEN_OFF']).optional(),
+    status: fixedAssetStatusEnum.optional(),
     approvalStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
   }),
 });
@@ -33,6 +34,7 @@ export const createFixedAssetSchema = z.object({
     capitalizationDate: z.string().optional(),
     purchaseValue: z.number().positive('Purchase value must be greater than 0'),
     residualValue: z.number().min(0).optional(),
+    currentValue: z.number().min(0).optional(),
     usefulLifeMonths: z.number().int().positive().optional(),
     depreciationMethod: depreciationMethodEnum.optional(),
     departmentId: z.string().uuid().optional(),
@@ -41,11 +43,34 @@ export const createFixedAssetSchema = z.object({
   }),
 });
 
+export const updateFixedAssetSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid asset id') }),
+  body: z
+    .object({
+      assetName: z.string().min(1, 'Asset name is required').optional(),
+      categoryId: z.string().uuid().optional(),
+      vehicleId: z.string().uuid().nullable().optional(),
+      supplierId: z.string().uuid().nullable().optional(),
+      purchaseDate: z.string().min(1).optional(),
+      capitalizationDate: z.string().min(1).optional(),
+      purchaseValue: z.number().positive('Purchase value must be greater than 0').optional(),
+      residualValue: z.number().min(0).optional(),
+      currentValue: z.number().min(0).optional(),
+      usefulLifeMonths: z.number().int().positive().optional(),
+      depreciationMethod: depreciationMethodEnum.optional(),
+      departmentId: z.string().uuid().nullable().optional(),
+      locationText: z.string().nullable().optional(),
+      responsiblePersonId: z.string().uuid().nullable().optional(),
+      status: fixedAssetStatusEnum.optional(),
+    })
+    .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' }),
+});
+
 const fundingLineSchema = z.object({
-  type: z.enum(['BANK', 'CASH', 'LOAN', 'SUPPLIER']),
+  type: z.enum(['BANK', 'CASH', 'SUPPLIER']),
   amount: z.number().positive('Amount must be greater than 0'),
   fundAccountId: z.string().uuid().optional(),
-  vehicleLoanId: z.string().uuid().optional(),
 });
 
 export const approveFixedAssetSchema = z.object({
@@ -63,4 +88,5 @@ export const rejectFixedAssetSchema = z.object({
 });
 
 export type CreateFixedAssetInput = z.infer<typeof createFixedAssetSchema>['body'];
+export type UpdateFixedAssetInput = z.infer<typeof updateFixedAssetSchema>['body'];
 export type ApproveFixedAssetInput = z.infer<typeof approveFixedAssetSchema>['body'];

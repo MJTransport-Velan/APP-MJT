@@ -156,8 +156,6 @@ model Department {
 
   // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
   fixedAssets        FixedAsset[]
-  assetTransfersFrom AssetTransfer[] @relation("AssetTransferFromDepartment")
-  assetTransfersTo   AssetTransfer[] @relation("AssetTransferToDepartment")
 
   @@map("departments")
 }
@@ -411,10 +409,6 @@ model Vehicle {
 
   // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
   fixedAsset          FixedAsset?
-  vehicleLoans        VehicleLoan[]
-  complianceRecords   VehicleComplianceRecord[]
-  tyres               VehicleTyre[]
-  batteries           VehicleBattery[]
   fastTagTransactions FastTagTransaction[]
 
   // Phase 15 — Business Financial Entry.
@@ -578,8 +572,6 @@ model Tyre {
   updatedById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-
-  vehicleTyres VehicleTyre[]
 
   @@map("tyres")
 }
@@ -2544,25 +2536,19 @@ model EmployeeAdvance {
 // PartyLoan / PartyLoanInstallment above (borrowerType=EMPLOYEE).
 
 // ===========================================================
-// PHASE 12 — VEHICLE ASSETS, VEHICLE LOANS & EXPENSE MANAGEMENT
+// PHASE 12 — FIXED ASSET REGISTER, FASTTAG & EXPENSE MANAGEMENT
 // ===========================================================
 // docs/phase6-vehicle-assets-loans-expenses.md. Vehicle (Phase 4 — Fleet
-// Management) is a pure operational/compliance record with zero financial
-// fields; VehicleExpense/FuelEntry/MaintenanceRecord all pre-date the
-// Voucher Engine, the same disconnected shape Phase 10 found in Invoice
-// and Phase 11 found in TripExpense. Unlike those, this phase found real
-// plumbing already laid for it: a VEHICLE_LOAN system ledger and an
-// INTEREST_EXPENSE ledger (Phase 7, unused), an empty FIXED_ASSETS
-// account group (Phase 7), and six NumberSeriesDocumentType values —
-// EXPENSE_VOUCHER, LOAN_VOUCHER, INTEREST_VOUCHER, DEPRECIATION_VOUCHER,
-// ASSET_PURCHASE_VOUCHER, ASSET_SALE_VOUCHER — seeded in Phase 8 with a
-// comment stating they were "left for an admin to configure... when
-// actually needed." This phase is that "when." VehicleExpense is
-// extended additively (not forked, unlike TripExpense) since nothing in
-// the report layer depends on its current shape. No balance is ever
-// stored here — asset book value, loan outstanding, and FastTag balance
-// are always computed from VoucherLines/schedules, or cached with
-// transactional recompute exactly like Invoice.outstandingAmount.
+// Management) is a pure operational record with zero financial fields;
+// VehicleExpense/FuelEntry/MaintenanceRecord all pre-date this block.
+// VehicleExpense is extended additively (not forked, unlike TripExpense)
+// since nothing in the report layer depends on its current shape.
+//
+// Scope note: this block once also carried vehicle loans, depreciation
+// runs, asset transfers, asset disposals, vehicle compliance records,
+// tyre and battery tracking. All of them were removed — the asset side
+// is now just a register (entry / edit / delete), its categories, and a
+// read-only dashboard over them.
 
 enum AssetType {
   VEHICLE
@@ -2584,17 +2570,14 @@ enum DepreciationMethod {
 
 enum FixedAssetStatus {
   ACTIVE
-  UNDER_TRANSFER
-  DISPOSED
   WRITTEN_OFF
 }
 
-// One pooled Ledger per category under FIXED_ASSETS — NOT one per
-// physical asset. FixedAsset (the Asset Register) is the subsidiary
-// detail; the Ledger is the GL control account. An asset's own
-// "statement" is its depreciation/movement history, not a running party
-// balance, so it does not get its own control ledger the way a
-// Customer/Supplier/Driver/Employee/VehicleLoan does (design doc §2).
+// Depreciation policy (method / useful life / residual %) grouped per
+// category. The fields below are the asset's book-value CONFIGURATION
+// only — there is no depreciation run, schedule or posting anywhere in
+// this system; they exist so an asset carries the terms it was bought
+// under.
 model AssetCategory {
   id                      String             @id @default(uuid())
   code                    String             @unique
@@ -2619,9 +2602,8 @@ model AssetCategory {
 
 // The Fixed Asset Register. vehicleId links a vehicle-type asset back to
 // the existing Vehicle master; null for non-vehicle assets (Land,
-// Building, Furniture, Computer, ...). currentValue is a cache,
-// recomputed transactionally after every depreciation run / disposal —
-// never a second source of truth (design doc §7.2).
+// Building, Furniture, Computer, ...). currentValue is entered/edited by
+// hand — nothing derives it, since this system runs no depreciation.
 model FixedAsset {
   id                  String             @id @default(uuid())
   assetCode           String             @unique
@@ -2655,257 +2637,8 @@ model FixedAsset {
   supplier   Supplier?     @relation(fields: [supplierId], references: [id])
   department Department?   @relation(fields: [departmentId], references: [id])
 
-  depreciationLines DepreciationRunLine[]
-  transfers         AssetTransfer[]
-  disposal          AssetDisposal?
-  vehicleLoans      VehicleLoan[]
-
   @@index([categoryId])
   @@map("fixed_assets")
-}
-
-enum LenderType {
-  BANK
-  NBFC
-  PRIVATE_FINANCE
-  INTERNAL
-}
-
-enum VehicleLoanStatus {
-  PENDING_APPROVAL
-  ACTIVE
-  CLOSED
-  FORECLOSED
-  REJECTED
-}
-
-enum VehicleLoanInstallmentStatus {
-  PENDING
-  PAID
-  OVERDUE
-  WAIVED
-}
-
-// Money the company BORROWED (a liability) — the opposite direction of
-// DriverLoan/EmployeeLoan (Phase 11), which is money the company LENT
-// OUT. Auto-provisions one control Ledger per loan under LOANS,
-// superseding the pooled VEHICLE_LOAN system ledger seeded in Phase 7 —
-// the same story as every per-party ledger since Phase 10 (design doc
-// §3, §6.12-equivalent).
-model VehicleLoan {
-  id                  String            @id @default(uuid())
-  loanNumber          String            @unique
-  vehicleId           String
-  fixedAssetId        String?
-  lenderType          LenderType
-  lenderName          String
-  loanAccountNumber   String?
-  principalAmount     Decimal           @db.Decimal(14, 2)
-  processingFee       Decimal           @default(0) @db.Decimal(12, 2)
-  interestRatePercent Decimal           @db.Decimal(5, 2)
-  disbursementDate    DateTime
-  emiStartDate        DateTime
-  emiAmount           Decimal           @db.Decimal(12, 2)
-  tenureMonths        Int
-  status              VehicleLoanStatus @default(PENDING_APPROVAL)
-  approvedById        String?
-  organizationId      String?
-  isActive            Boolean           @default(true)
-  deletedAt           DateTime?
-  createdById         String?
-  updatedById         String?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-
-  vehicle    Vehicle     @relation(fields: [vehicleId], references: [id])
-  fixedAsset FixedAsset? @relation(fields: [fixedAssetId], references: [id])
-
-  disbursements VehicleLoanDisbursement[]
-  installments  VehicleLoanInstallment[]
-
-  @@index([vehicleId])
-  @@map("vehicle_loans")
-}
-
-// Supports "Multiple Loan Disbursements" as tranches against one loan.
-model VehicleLoanDisbursement {
-  id               String   @id @default(uuid())
-  loanId           String
-  disbursementDate DateTime
-  amount           Decimal  @db.Decimal(14, 2)
-  createdById      String?
-  updatedById      String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  loan VehicleLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
-
-  @@index([loanId])
-  @@map("vehicle_loan_disbursements")
-}
-
-// A real amortization schedule with a reducing-balance principal/
-// interest split — unlike DriverLoan/EmployeeLoan (Phase 11), which are
-// flat-principal with interestRate always 0 today. Outstanding principal
-// is never a stored running balance — always principal −
-// SUM(paid installments' principalComponent), computed live.
-model VehicleLoanInstallment {
-  id                 String                       @id @default(uuid())
-  loanId             String
-  installmentNo      Int
-  dueDate            DateTime
-  emiAmount          Decimal                      @db.Decimal(12, 2)
-  principalComponent Decimal                      @db.Decimal(12, 2)
-  interestComponent  Decimal                      @db.Decimal(12, 2)
-  lateFeeAmount      Decimal                      @default(0) @db.Decimal(12, 2)
-  status             VehicleLoanInstallmentStatus @default(PENDING)
-  paidDate           DateTime?
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-
-  loan VehicleLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
-
-  @@index([loanId])
-  @@map("vehicle_loan_installments")
-}
-
-enum DepreciationRunStatus {
-  DRAFT
-  CALCULATED
-  APPROVED
-}
-
-enum DepreciationPeriodType {
-  MONTHLY
-  QUARTERLY
-  YEARLY
-}
-
-// One consolidated Voucher per run regardless of how many assets it
-// covers — the same "aggregate many lines into one Journal by ledger
-// pair" batching PayrollRun.approve() established in Phase 11.
-model DepreciationRun {
-  id             String                 @id @default(uuid())
-  runNumber      String                 @unique
-  periodType     DepreciationPeriodType
-  periodStart    DateTime
-  periodEnd      DateTime
-  status         DepreciationRunStatus  @default(DRAFT)
-  approvedById   String?
-  organizationId String?
-  isActive       Boolean                @default(true)
-  deletedAt      DateTime?
-  createdById    String?
-  updatedById    String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-
-  lines DepreciationRunLine[]
-
-  @@map("depreciation_runs")
-}
-
-// One row per asset per run — frozen history (openingValue/
-// depreciationAmount/closingValue/method) so a past run stays reproducible
-// even if the category's method changes later, the same snapshot
-// discipline PayrollRunLineComponent gives payslips in Phase 11.
-model DepreciationRunLine {
-  id                 String             @id @default(uuid())
-  runId              String
-  assetId            String
-  openingValue       Decimal            @db.Decimal(14, 2)
-  depreciationAmount Decimal            @db.Decimal(12, 2)
-  closingValue       Decimal            @db.Decimal(14, 2)
-  method             DepreciationMethod
-  createdAt          DateTime           @default(now())
-
-  run   DepreciationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  asset FixedAsset      @relation(fields: [assetId], references: [id])
-
-  @@index([runId])
-  @@index([assetId])
-  @@map("depreciation_run_lines")
-}
-
-enum ComplianceType {
-  INSURANCE
-  PERMIT
-  FITNESS
-  ROAD_TAX
-  POLLUTION
-}
-
-enum ComplianceStatus {
-  ACTIVE
-  EXPIRED
-  RENEWED
-}
-
-// One table, a complianceType discriminator, covering five near-identical
-// shapes (Insurance/Permit/Fitness/Road Tax/Pollution) — the same
-// consolidation reasoning as DriverEarning merging Allowance+Incentive in
-// Phase 11. Writes Vehicle.insuranceExpiryDate etc. (existing Fleet
-// fields) on renewal so the Fleet module's own expiry-alert UI keeps
-// working unmodified — this phase updates that field, it does not
-// replace it.
-model VehicleComplianceRecord {
-  id                 String           @id @default(uuid())
-  vehicleId          String
-  complianceType     ComplianceType
-  documentNumber     String
-  issuerName         String?
-  issueDate          DateTime
-  expiryDate         DateTime
-  premiumOrFeeAmount Decimal?         @db.Decimal(12, 2)
-  documentUrl        String?
-  renewedFromId      String?          @unique
-  status             ComplianceStatus @default(ACTIVE)
-  isActive           Boolean          @default(true)
-  deletedAt          DateTime?
-  createdById        String?
-  updatedById        String?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-
-  vehicle     Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  renewedFrom VehicleComplianceRecord? @relation("ComplianceRenewal", fields: [renewedFromId], references: [id])
-  renewedTo   VehicleComplianceRecord? @relation("ComplianceRenewal")
-
-  claims VehicleInsuranceClaim[]
-
-  @@index([vehicleId])
-  @@index([complianceType])
-  @@map("vehicle_compliance_records")
-}
-
-enum InsuranceClaimStatus {
-  FILED
-  APPROVED
-  SETTLED
-  REJECTED
-}
-
-// The one genuinely insurance-specific child — claims don't apply to
-// permit/fitness/road tax/pollution records.
-model VehicleInsuranceClaim {
-  id                 String               @id @default(uuid())
-  complianceRecordId String
-  claimNumber        String               @unique
-  claimDate          DateTime
-  claimAmount        Decimal              @db.Decimal(12, 2)
-  settledAmount      Decimal?             @db.Decimal(12, 2)
-  settlementDate     DateTime?
-  status             InsuranceClaimStatus @default(FILED)
-  createdById        String?
-  updatedById        String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-
-  complianceRecord VehicleComplianceRecord @relation(fields: [complianceRecordId], references: [id])
-  disposal         AssetDisposal?
-
-  @@index([complianceRecordId])
-  @@map("vehicle_insurance_claims")
 }
 
 enum FastTagTransactionType {
@@ -3000,172 +2733,6 @@ model FastTagTransaction {
   @@index([status])
   @@index([transactionReference])
   @@map("fasttag_transactions")
-}
-
-enum VehicleTyreStatus {
-  INSTALLED
-  REMOVED
-  SCRAPPED
-}
-
-enum TyreMovementType {
-  INSTALL
-  ROTATE
-  REMOVE
-  SCRAP
-}
-
-// The physical tyre unit — Tyre (Fleet phase) is just a brand/spec
-// catalog with no installation concept at all; this is genuinely new
-// ground, not an extension.
-model VehicleTyre {
-  id                String            @id @default(uuid())
-  tyreId            String
-  vehicleId         String?
-  serialNumber      String?
-  position          String?
-  installedDate     DateTime?
-  installedOdometer Int?
-  removedDate       DateTime?
-  removedOdometer   Int?
-  status            VehicleTyreStatus @default(INSTALLED)
-  cost              Decimal?          @db.Decimal(12, 2)
-  createdById       String?
-  updatedById       String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-
-  tyre    Tyre     @relation(fields: [tyreId], references: [id])
-  vehicle Vehicle? @relation(fields: [vehicleId], references: [id])
-
-  movements TyreMovement[]
-
-  @@index([vehicleId])
-  @@map("vehicle_tyres")
-}
-
-// fromVehicleId/toVehicleId are plain scalars, not physical FKs — an
-// informational history log, the same treatment CostCenter.refId gives
-// polymorphic references (design doc §7.9).
-model TyreMovement {
-  id              String           @id @default(uuid())
-  vehicleTyreId   String
-  movementType    TyreMovementType
-  fromVehicleId   String?
-  toVehicleId     String?
-  fromPosition    String?
-  toPosition      String?
-  odometerReading Int?
-  movementDate    DateTime         @default(now())
-  notes           String?
-  createdById     String?
-  createdAt       DateTime         @default(now())
-
-  vehicleTyre VehicleTyre @relation(fields: [vehicleTyreId], references: [id], onDelete: Cascade)
-
-  @@index([vehicleTyreId])
-  @@map("tyre_movements")
-}
-
-enum VehicleBatteryStatus {
-  INSTALLED
-  REPLACED
-  DISPOSED
-}
-
-model VehicleBattery {
-  id                 String               @id @default(uuid())
-  vehicleId          String
-  brand              String
-  serialNumber       String?
-  installedDate      DateTime
-  installedOdometer  Int?
-  warrantyMonths     Int?
-  warrantyExpiryDate DateTime?
-  replacedDate       DateTime?
-  status             VehicleBatteryStatus @default(INSTALLED)
-  cost               Decimal?             @db.Decimal(12, 2)
-  createdById        String?
-  updatedById        String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  @@index([vehicleId])
-  @@map("vehicle_batteries")
-}
-
-enum AssetTransferType {
-  DEPARTMENT
-  CUSTODY
-  LOCATION
-}
-
-// A custody/department move — no value change, no Voucher, purely a
-// history record (design doc §2, §9).
-model AssetTransfer {
-  id                      String            @id @default(uuid())
-  assetId                 String
-  transferType            AssetTransferType
-  fromDepartmentId        String?
-  toDepartmentId          String?
-  fromResponsiblePersonId String?
-  toResponsiblePersonId   String?
-  transferDate            DateTime
-  reason                  String?
-  approvalStatus          ApprovalStatus    @default(PENDING)
-  approvedById            String?
-  createdById             String?
-  updatedById             String?
-  createdAt               DateTime          @default(now())
-  updatedAt               DateTime          @updatedAt
-
-  asset          FixedAsset  @relation(fields: [assetId], references: [id])
-  fromDepartment Department? @relation("AssetTransferFromDepartment", fields: [fromDepartmentId], references: [id])
-  toDepartment   Department? @relation("AssetTransferToDepartment", fields: [toDepartmentId], references: [id])
-
-  @@index([assetId])
-  @@map("asset_transfers")
-}
-
-enum AssetDisposalType {
-  SALE
-  SCRAP
-  WRITE_OFF
-  THEFT
-  ACCIDENT_TOTAL_LOSS
-  DONATION
-}
-
-// Terminal — a disposed asset takes no further depreciation, expense, or
-// transfer. netBookValueAtDisposal is a frozen snapshot, immune to later
-// depreciation-run changes (design doc §9, §19). disposalType=SALE posts
-// through the new ASSET_SALE Voucher Type; every other type posts a plain
-// JOURNAL (design doc §11).
-model AssetDisposal {
-  id                     String            @id @default(uuid())
-  assetId                String            @unique
-  disposalType           AssetDisposalType
-  disposalDate           DateTime
-  saleValue              Decimal?          @db.Decimal(14, 2)
-  netBookValueAtDisposal Decimal           @db.Decimal(14, 2)
-  gainLossAmount         Decimal           @db.Decimal(14, 2)
-  buyerDetails           String?
-  insuranceClaimId       String?           @unique
-  exchangeGroupId        String?
-  approvalStatus         ApprovalStatus    @default(PENDING)
-  approvedById           String?
-  organizationId         String?
-  createdById            String?
-  updatedById            String?
-  createdAt              DateTime          @default(now())
-  updatedAt              DateTime          @updatedAt
-
-  asset          FixedAsset             @relation(fields: [assetId], references: [id])
-  insuranceClaim VehicleInsuranceClaim? @relation(fields: [insuranceClaimId], references: [id])
-
-  @@map("asset_disposals")
 }
 
 // ===========================================================

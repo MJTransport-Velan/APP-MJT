@@ -6,7 +6,6 @@ const assetWithRelations = Prisma.validator<Prisma.FixedAssetInclude>()({
   vehicle: { select: { id: true, registrationNumber: true } },
   supplier: { select: { id: true, name: true } },
   department: { select: { id: true, name: true } },
-  vehicleLoans: { select: { id: true, loanNumber: true, status: true } },
 });
 
 export type FixedAssetWithRelations = Prisma.FixedAssetGetPayload<{ include: typeof assetWithRelations }>;
@@ -59,9 +58,5 @@ export const fixedAssetRepository = {
 
   softDelete(id: string, updatedById: string) {
     return prisma.fixedAsset.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
-  },
-
-  sumDepreciation(assetId: string) {
-    return prisma.depreciationRunLine.aggregate({ where: { assetId }, _sum: { depreciationAmount: true } });
   },
 };

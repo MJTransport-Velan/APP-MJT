@@ -7,6 +7,7 @@ import {
   listFixedAssetsSchema,
   fixedAssetIdParamSchema,
   createFixedAssetSchema,
+  updateFixedAssetSchema,
   approveFixedAssetSchema,
   rejectFixedAssetSchema,
 } from '../validators/fixed-asset.validator';
@@ -19,6 +20,7 @@ router.get('/dashboard', authorize('asset.view'), fixedAssetController.dashboard
 router.get('/:id', authorize('asset.view'), validate(fixedAssetIdParamSchema), fixedAssetController.getById);
 router.get('/:id/cost-summary', authorize('asset.view'), validate(fixedAssetIdParamSchema), fixedAssetController.costSummary);
 router.post('/', authorize('asset.create'), validate(createFixedAssetSchema), fixedAssetController.register);
+router.put('/:id', authorize('asset.edit'), validate(updateFixedAssetSchema), fixedAssetController.update);
 router.patch('/:id/approve', authorize('asset.approve'), validate(approveFixedAssetSchema), fixedAssetController.approve);
 router.patch('/:id/reject', authorize('asset.approve'), validate(rejectFixedAssetSchema), fixedAssetController.reject);
 router.delete('/:id', authorize('asset.delete'), validate(fixedAssetIdParamSchema), fixedAssetController.remove);

@@ -227,8 +227,6 @@ const liabilityLines: { key: keyof BalanceSheetLiabilities; label: string; icon:
   { key: 'supplierPayables', label: 'Supplier Payables', icon: 'mdi-truck-delivery-outline' },
   { key: 'driverEmployeePayables', label: 'Driver / Employee Payables', icon: 'mdi-account-group-outline' },
   { key: 'customerAdvances', label: 'Customer Advances', icon: 'mdi-cash-refund' },
-  { key: 'vehicleLoans', label: 'Vehicle Loans', icon: 'mdi-hand-coin-outline' },
-  { key: 'otherLoans', label: 'Other Loans', icon: 'mdi-bank-transfer', disabled: true },
   { key: 'otherLiabilities', label: 'Other Outstanding Liabilities', icon: 'mdi-alert-circle-outline', disabled: true },
 ];
 
@@ -350,8 +348,6 @@ function sectionGroups(key: string): SectionGroup[] {
       ];
     case 'customerAdvances':
       return [{ title: 'Customer-wise', partyType: 'customer', rows: b.customerAdvances }];
-    case 'vehicleLoans':
-      return [{ title: 'Loan-wise', partyType: null, rows: b.vehicleLoans.map((l) => ({ id: l.id, name: `${l.name} — ${l.lenderName} (${l.vehicle})`, amount: l.amount })) }];
     case 'capitalAccount':
       return [{ title: 'Partner-wise', partyType: 'capitalPartner', rows: b.capitalAccount }];
     default:
@@ -448,8 +444,6 @@ async function onExport() {
       { section: 'LIABILITIES', particulars: 'Supplier Payables', amount: r.liabilities.supplierPayables },
       { section: 'LIABILITIES', particulars: 'Driver / Employee Payables', amount: r.liabilities.driverEmployeePayables },
       { section: 'LIABILITIES', particulars: 'Customer Advances', amount: r.liabilities.customerAdvances },
-      { section: 'LIABILITIES', particulars: 'Vehicle Loans', amount: r.liabilities.vehicleLoans },
-      { section: 'LIABILITIES', particulars: 'Other Loans', amount: r.liabilities.otherLoans },
       { section: 'LIABILITIES', particulars: 'Other Outstanding Liabilities', amount: r.liabilities.otherLiabilities },
       { section: 'LIABILITIES', particulars: 'TOTAL LIABILITIES', amount: r.totalLiabilities },
       { section: 'NET POSITION', particulars: 'Net Position (Assets − Liabilities)', amount: r.netPosition },

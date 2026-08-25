@@ -24,22 +24,6 @@ export interface OutstandingResult {
   total: number;
 }
 
-export interface LoanReportRow {
-  category: 'DRIVER' | 'EMPLOYEE' | 'VEHICLE';
-  loanNumber: string;
-  borrower: string;
-  principalAmount: number;
-  emiAmount: number;
-  outstandingPrincipal: number;
-  status: string;
-  nextDueDate: string | null;
-  isOverdue: boolean;
-}
-export interface LoanReportResult {
-  rows: LoanReportRow[];
-  totals: { principalAmount: number; outstandingPrincipal: number; overdueCount: number };
-}
-
 export interface ExpenseAnalysisResult {
   from: string;
   to: string;

@@ -84,9 +84,6 @@
               <span>Office Expenses</span><span class="font-weight-medium">{{ formatCurrency(result.expenses.officeExpenses) }}</span>
             </div>
             <div class="bs-row bs-row--disabled">
-              <span>Interest &amp; Finance Charges</span><span class="font-weight-medium">{{ formatCurrency(result.expenses.interestAndFinanceCharges) }}</span>
-            </div>
-            <div class="bs-row bs-row--disabled">
               <span>Staff Salary</span><span class="font-weight-medium">{{ formatCurrency(result.expenses.staffSalary) }}</span>
             </div>
             <div class="d-flex justify-space-between font-weight-bold pt-2 mt-1 bs-total-row">

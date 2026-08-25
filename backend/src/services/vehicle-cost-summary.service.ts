@@ -14,11 +14,7 @@ export const vehicleCostSummaryService = {
     if (!asset) throw new AppError('Fixed Asset not found', 404);
 
     const purchaseCost = Number(asset.purchaseValue);
-    const [depreciation, expenseGroups] = await Promise.all([
-      vehicleCostSummaryRepository.sumDepreciationToDate(assetId),
-      asset.vehicleId ? vehicleCostSummaryRepository.groupExpensesByCategory(asset.vehicleId) : Promise.resolve([]),
-    ]);
-    const depreciationToDate = Number(depreciation._sum.depreciationAmount || 0);
+    const expenseGroups = asset.vehicleId ? await vehicleCostSummaryRepository.groupExpensesByCategory(asset.vehicleId) : [];
 
     const expensesByCategory = expenseGroups.reduce<Record<string, number>>((acc, g) => {
       acc[g.category] = Number(g._sum.totalAmount || 0);
@@ -26,31 +22,21 @@ export const vehicleCostSummaryService = {
     }, {});
     const totalExpenses = Object.values(expensesByCategory).reduce((s, v) => s + v, 0);
 
-    let loanPrincipalRepaid = 0;
-    let loanInterestPaid = 0;
     let driverCost = 0;
     let tripRevenue = 0;
 
     if (asset.vehicleId) {
-      const [loanTotals, driverTotals] = await Promise.all([
-        vehicleCostSummaryRepository.sumPaidInstallmentsForVehicle(asset.vehicleId),
-        vehicleCostSummaryRepository.sumDriverCostForVehicle(asset.vehicleId),
-      ]);
-      loanPrincipalRepaid = Number(loanTotals._sum.principalComponent || 0);
-      loanInterestPaid = Number(loanTotals._sum.interestComponent || 0);
+      const driverTotals = await vehicleCostSummaryRepository.sumDriverCostForVehicle(asset.vehicleId);
       driverCost = driverTotals.earnings + driverTotals.advances;
       tripRevenue = driverTotals.tripRevenue;
     }
 
-    const totalCost = purchaseCost + loanPrincipalRepaid + loanInterestPaid + depreciationToDate + totalExpenses + driverCost;
+    const totalCost = purchaseCost + totalExpenses + driverCost;
 
     return {
       asset: { id: asset.id, assetCode: asset.assetCode, assetName: asset.assetName, category: asset.category.name },
       vehicle: asset.vehicle ? { id: asset.vehicle.id, registrationNumber: asset.vehicle.registrationNumber } : null,
       purchaseCost,
-      loanPrincipalRepaid,
-      loanInterestPaid,
-      depreciationToDate,
       expensesByCategory,
       totalExpenses,
       driverCost,

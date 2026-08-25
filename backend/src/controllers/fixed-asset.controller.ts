@@ -27,6 +27,10 @@ export const fixedAssetController = {
     const asset = await fixedAssetService.register(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Fixed Asset registered', data: asset });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const asset = await fixedAssetService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Fixed Asset updated', data: asset });
+  }),
   approve: asyncHandler(async (req: AuthRequest, res: Response) => {
     const asset = await fixedAssetService.approve(req.params.id, req.body, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Fixed Asset purchase approved and posted', data: asset });

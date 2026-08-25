@@ -2,7 +2,7 @@
  * Finance → Balance Sheet: a read-only "what do we own / what do we owe"
  * report computed entirely from the existing direct-balance business
  * tables (Invoice/Receipt/SupplierBill/SupplierPayment/DriverAdvance/
- * EmployeeAdvance/FixedAsset/VehicleLoan/DriverEarning/
+ * EmployeeAdvance/FixedAsset/DriverEarning/
  * DriverPenalty/BankAccount/
  * CashAccount/CapitalTransaction) — no Ledger/Voucher/Chart-of-Accounts
  * concept is introduced. CapitalPartner/CapitalTransaction (added
@@ -220,35 +220,11 @@ async function fixedAssetsBreakdown(cutoff: Date): Promise<{ rows: FixedAssetRow
   };
 }
 
-interface VehicleLoanRow extends NamedAmountRow {
-  lenderName: string;
-  vehicle: string;
-}
-
-/** Money the company BORROWED against a vehicle, outstanding principal as of cutoff (exact — VehicleLoanInstallment.paidDate is a real timestamp). */
-async function vehicleLoansBreakdown(cutoff: Date): Promise<{ rows: VehicleLoanRow[]; total: number }> {
-  const loans = await prisma.vehicleLoan.findMany({
-    where: { deletedAt: null, status: { notIn: ['REJECTED', 'PENDING_APPROVAL'] }, disbursementDate: { lte: cutoff } },
-    include: { installments: true, vehicle: { select: { registrationNumber: true } } },
-  });
-  const rows: VehicleLoanRow[] = loans
-    .map((loan) => {
-      const paidPrincipal = loan.installments
-        .filter((i) => i.status === 'PAID' && i.paidDate && i.paidDate <= cutoff)
-        .reduce((s, i) => s + Number(i.principalComponent), 0);
-      const amount = round2(Math.max(Number(loan.principalAmount) - paidPrincipal, 0));
-      return { id: loan.id, name: loan.loanNumber, lenderName: loan.lenderName, vehicle: loan.vehicle.registrationNumber, amount };
-    })
-    .filter((r) => r.amount > EPS)
-    .sort((a, b) => b.amount - a.amount);
-  return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)) };
-}
-
 export const balanceSheetService = {
   async get(asOfDateInput?: string) {
     const { dateStr, cutoff, isToday } = resolveAsOf(asOfDateInput);
 
-    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, vehicleLoans, capitalAccount] = await Promise.all([
+    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, capitalAccount] = await Promise.all([
       financialStateService.bankAndCashState(undefined),
       customerBreakdown(cutoff),
       supplierBreakdown(cutoff),
@@ -256,7 +232,6 @@ export const balanceSheetService = {
       employeeAdvancesRecoverable(cutoff),
       fixedAssetsBreakdown(cutoff),
       driverPayable(cutoff),
-      vehicleLoansBreakdown(cutoff),
       capitalAccountBreakdown(cutoff),
     ]);
 
@@ -296,8 +271,6 @@ export const balanceSheetService = {
       supplierPayables: totalSupplierPayable,
       driverEmployeePayables,
       customerAdvances: totalCustomerAdvance,
-      vehicleLoans: vehicleLoans.total,
-      otherLoans: 0,
       otherLiabilities: 0,
     };
     const totalLiabilities = round2(
@@ -305,8 +278,6 @@ export const balanceSheetService = {
         liabilities.supplierPayables +
         liabilities.driverEmployeePayables +
         liabilities.customerAdvances +
-        liabilities.vehicleLoans +
-        liabilities.otherLoans +
         liabilities.otherLiabilities
     );
 
@@ -353,7 +324,6 @@ export const balanceSheetService = {
         fixedAssets: fixedAssets.rows,
         fixedAssetsVehicleTotal: fixedAssets.vehicleTotal,
         fixedAssetsOtherTotal: fixedAssets.otherTotal,
-        vehicleLoans: vehicleLoans.rows,
         capitalAccount: capitalAccount.rows,
       },
       limitations,

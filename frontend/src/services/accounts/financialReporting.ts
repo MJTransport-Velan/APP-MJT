@@ -3,7 +3,6 @@ import type { ApiResponse } from '@/types/api.types';
 import type {
   ProfitabilityResult,
   OutstandingResult,
-  LoanReportResult,
   ExpenseAnalysisResult,
   MisDashboardSummary,
   UserActivityRow,
@@ -32,12 +31,6 @@ export const outstandingReportApi = {
   },
   employee() {
     return api.get<ApiResponse<OutstandingResult>>('/accounts/outstanding-reports/employee');
-  },
-};
-
-export const loanReportApi = {
-  summary(params: Record<string, unknown> = {}) {
-    return api.get<ApiResponse<LoanReportResult>>('/accounts/loan-reports/summary', { params });
   },
 };
 

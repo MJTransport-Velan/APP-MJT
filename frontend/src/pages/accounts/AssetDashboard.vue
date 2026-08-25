@@ -24,12 +24,6 @@
           <ProfitCard label="Total Vehicle Value" :value="dashboard.stats.totalVehicleValue" icon="mdi-truck-outline" color="primary" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Loan Outstanding" :value="dashboard.stats.loanOutstanding" icon="mdi-hand-coin-outline" color="warning" />
-        </div>
-      </div>
-
-      <div class="row mt-1">
-        <div class="col-12 col-sm-6 col-md-3">
           <ProfitCard label="Today's Expenses" :value="dashboard.stats.todaysExpenses" icon="mdi-cash-fast" color="info" />
         </div>
       </div>
@@ -37,17 +31,16 @@
       <div class="row mt-4">
         <div class="col-12 col-md-6">
           <AppCard class="pa-4">
-            <div class="text-subtitle-2 mb-2">Compliance Due Within 30 Days</div>
-            <div v-if="dashboard.complianceDueSoon.length === 0" class="text-caption text-medium-emphasis">Nothing expiring soon.</div>
+            <div class="text-subtitle-2 mb-2">Asset Value by Category</div>
+            <div v-if="dashboard.assetsByCategory.length === 0" class="text-caption text-medium-emphasis">No assets registered yet.</div>
             <div class="tblwrap" v-else>
               <AppTable density="compact">
-                <thead><tr><th>Vehicle</th><th>Type</th><th>Document</th><th>Expiry</th></tr></thead>
+                <thead><tr><th>Category</th><th class="text-right">Assets</th><th class="text-right">Current Value</th></tr></thead>
                 <tbody>
-                  <tr v-for="r in dashboard.complianceDueSoon" :key="r.id">
-                    <td>{{ r.vehicle.registrationNumber }}</td>
-                    <td><AppChip size="x-small" variant="outlined">{{ r.complianceType }}</AppChip></td>
-                    <td>{{ r.documentNumber }}</td>
-                    <td class="text-error">{{ new Date(r.expiryDate).toLocaleDateString() }}</td>
+                  <tr v-for="(r, idx) in dashboard.assetsByCategory" :key="idx">
+                    <td>{{ r.category?.name || '-' }}</td>
+                    <td class="text-right">{{ r.assetCount }}</td>
+                    <td class="text-right">{{ formatCurrency(r.totalValue) }}</td>
                   </tr>
                 </tbody>
               </AppTable>
@@ -81,7 +74,7 @@ import { computed, onMounted } from 'vue';
 import { useFixedAssetStore } from '@/stores/accounts/vehicleAssets';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
 import { formatCurrency } from '@/utils/format';
-import { AppProgressCircular, AppCard, AppTable, AppChip } from '@/components/ui';
+import { AppProgressCircular, AppCard, AppTable } from '@/components/ui';
 
 const store = useFixedAssetStore();
 const dashboard = computed(() => store.dashboard);

@@ -262,7 +262,7 @@ const routes: RouteRecordRaw[] = [
             path: 'vehicle-assets',
             name: 'accounts-vehicle-assets-hub',
             component: () => import('@/pages/accounts/VehicleAssetsHub.vue'),
-            meta: { breadcrumb: 'Vehicle Assets & Compliance' },
+            meta: { breadcrumb: 'Assets & FastTag' },
           },
           {
             path: 'gst-taxation',
@@ -384,9 +384,8 @@ const routes: RouteRecordRaw[] = [
             component: () => import('@/pages/accounts/PayrollDashboard.vue'),
             meta: { breadcrumb: 'Payroll Dashboard' },
           },
-          // Phase 12 — Vehicle Assets, Loans & Expense Management (docs
-          // Phase 6). Every transaction here still becomes a Voucher
-          // through the unchanged Phase 8 engine.
+          // Phase 12 — Fixed Asset Register, FastTag & Expense
+          // Management (docs Phase 6).
           {
             path: 'asset-categories',
             name: 'accounts-asset-categories',
@@ -397,55 +396,13 @@ const routes: RouteRecordRaw[] = [
             path: 'assets',
             name: 'accounts-assets',
             component: () => import('@/pages/accounts/FixedAssets.vue'),
-            meta: { breadcrumb: 'Vehicle Asset Register' },
-          },
-          {
-            path: 'asset-transfers',
-            name: 'accounts-asset-transfers',
-            component: () => import('@/pages/accounts/AssetTransfers.vue'),
-            meta: { breadcrumb: 'Asset Transfers' },
-          },
-          {
-            path: 'asset-disposals',
-            name: 'accounts-asset-disposals',
-            component: () => import('@/pages/accounts/AssetDisposals.vue'),
-            meta: { breadcrumb: 'Asset Disposals' },
+            meta: { breadcrumb: 'Asset Register' },
           },
           {
             path: 'asset-dashboard',
             name: 'accounts-asset-dashboard',
             component: () => import('@/pages/accounts/AssetDashboard.vue'),
             meta: { breadcrumb: 'Asset Dashboard' },
-          },
-          {
-            path: 'vehicle-loans',
-            name: 'accounts-vehicle-loans',
-            component: () => import('@/pages/accounts/VehicleLoans.vue'),
-            meta: { breadcrumb: 'Vehicle Loans' },
-          },
-          {
-            path: 'depreciation-runs',
-            name: 'accounts-depreciation-runs',
-            component: () => import('@/pages/accounts/DepreciationRuns.vue'),
-            meta: { breadcrumb: 'Depreciation Processing' },
-          },
-          {
-            path: 'vehicle-tyres',
-            name: 'accounts-vehicle-tyres',
-            component: () => import('@/pages/accounts/VehicleTyres.vue'),
-            meta: { breadcrumb: 'Vehicle Tyres' },
-          },
-          {
-            path: 'vehicle-batteries',
-            name: 'accounts-vehicle-batteries',
-            component: () => import('@/pages/accounts/VehicleBatteries.vue'),
-            meta: { breadcrumb: 'Vehicle Batteries' },
-          },
-          {
-            path: 'vehicle-compliance',
-            name: 'accounts-vehicle-compliance',
-            component: () => import('@/pages/accounts/VehicleCompliance.vue'),
-            meta: { breadcrumb: 'Vehicle Compliance' },
           },
           {
             path: 'fasttag',
@@ -463,7 +420,7 @@ const routes: RouteRecordRaw[] = [
             path: 'operational-reports',
             name: 'accounts-operational-reports',
             component: () => import('@/pages/accounts/OperationalReports.vue'),
-            meta: { breadcrumb: 'Outstanding, Loan & Expense Reports' },
+            meta: { breadcrumb: 'Outstanding & Expense Reports' },
           },
           {
             path: 'mis-dashboard',

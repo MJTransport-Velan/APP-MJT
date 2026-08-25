@@ -5,17 +5,6 @@ export const vehicleCostSummaryRepository = {
     return prisma.fixedAsset.findFirst({ where: { id, deletedAt: null }, include: { category: true, vehicle: true } });
   },
 
-  sumDepreciationToDate(assetId: string) {
-    return prisma.depreciationRunLine.aggregate({ where: { assetId }, _sum: { depreciationAmount: true } });
-  },
-
-  sumPaidInstallmentsForVehicle(vehicleId: string) {
-    return prisma.vehicleLoanInstallment.aggregate({
-      where: { status: 'PAID', loan: { vehicleId } },
-      _sum: { principalComponent: true, interestComponent: true },
-    });
-  },
-
   groupExpensesByCategory(vehicleId: string) {
     return prisma.vehicleExpense.groupBy({
       by: ['category'],

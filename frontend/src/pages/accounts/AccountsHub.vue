@@ -53,8 +53,8 @@ const cards = [
   { icon: 'mdi-cash-plus', title: 'Receivables', description: 'Customer invoices, receipts, aging, credit control and collections', to: '/accounts/receivables' },
   { icon: 'mdi-cash-minus', title: 'Payables', description: 'Supplier bills and payments for market-vehicle hires', to: '/accounts/payables' },
   { icon: 'mdi-account-cash-outline', title: 'Driver Accounts & Payroll', description: 'Driver advances and settlements; salary structures and payroll runs', to: '/accounts/driver-payroll' },
-  { icon: 'mdi-truck-outline', title: 'Vehicle Assets & Compliance', description: 'Fixed assets, vehicle loans, depreciation, tyres, batteries and compliance renewals', to: '/accounts/vehicle-assets' },
-  { icon: 'mdi-finance', title: 'Financial Reporting & Closing', description: 'Profitability, outstanding/loan/expense reports, MIS dashboard and audit trail', to: '/accounts/financial-reporting' },
+  { icon: 'mdi-truck-outline', title: 'Assets & FastTag', description: 'The fixed asset register, its categories and dashboard, plus FastTag', to: '/accounts/vehicle-assets' },
+  { icon: 'mdi-finance', title: 'Financial Reporting & Closing', description: 'Profitability, outstanding/expense reports, MIS dashboard and audit trail', to: '/accounts/financial-reporting' },
   { icon: 'mdi-bank-outline', title: 'Banking & Cash', description: 'Bank/cash accounts, transfers, cheques and petty cash', to: '/accounting/banking' },
   { icon: 'mdi-domain', title: 'Accounting (Advanced)', description: 'GST & taxation, currencies, cost categories and the organization these books belong to', to: '/accounting' },
 ];

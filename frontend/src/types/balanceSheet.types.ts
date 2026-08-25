@@ -18,11 +18,6 @@ export interface FixedAssetRow extends NamedAmountRow {
   category: 'Vehicle' | 'Other';
 }
 
-export interface VehicleLoanRow extends NamedAmountRow {
-  lenderName: string;
-  vehicle: string;
-}
-
 export interface BalanceSheetAssets {
   bankAndCash: number;
   customerReceivables: number;
@@ -36,8 +31,6 @@ export interface BalanceSheetLiabilities {
   supplierPayables: number;
   driverEmployeePayables: number;
   customerAdvances: number;
-  vehicleLoans: number;
-  otherLoans: number;
   otherLiabilities: number;
 }
 
@@ -55,7 +48,6 @@ export interface BalanceSheetBreakdown {
   fixedAssets: FixedAssetRow[];
   fixedAssetsVehicleTotal: number;
   fixedAssetsOtherTotal: number;
-  vehicleLoans: VehicleLoanRow[];
   capitalAccount: NamedAmountRow[];
 }
 
