@@ -13,7 +13,8 @@
  *   (Diesel/FASTag/Repairs/Insurance/Tyres/Battery/Driver Salary/Other,
  *   fleet-wide, same category buckets as financial-state.service.ts's
  *   vehicleState()) + Office Expenses (FinancialEntry EXPENSE/OFFICE_EXPENSE)
- *   + Staff Salary (EmployeeSalaryPayment rows for the period).
+ *   + Interest & Finance Charges (interest component of LoanInstallments
+ *   paid in the period) + Staff Salary (EmployeeSalaryPayment rows).
  */
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
@@ -45,7 +46,7 @@ export const profitLossService = {
     const { from, to, dateFrom, dateTo } = resolvePeriod(query.from, query.to);
     const range = { dateFrom, dateTo };
 
-    const [tripAgg, otherIncomeAgg, tripExpenseAgg, vehicleExpenses, officeExpenseAgg, salaryPaymentAgg] = await Promise.all([
+    const [tripAgg, otherIncomeAgg, tripExpenseAgg, vehicleExpenses, officeExpenseAgg, interestAgg, salaryPaymentAgg] = await Promise.all([
       prisma.trip.aggregate({
         where: { deletedAt: null, status: 'COMPLETED', ...dateRangeWhere('actualEndDate', range) },
         _sum: { freightAmount: true, supplierRate: true },
@@ -65,6 +66,10 @@ export const profitLossService = {
       prisma.financialEntry.aggregate({
         where: { entryType: 'EXPENSE', purpose: 'OFFICE_EXPENSE', status: { notIn: ['CANCELLED'] }, deletedAt: null, ...dateRangeWhere('entryDate', range) },
         _sum: { amount: true },
+      }),
+      prisma.loanInstallment.aggregate({
+        where: { status: 'PAID', ...dateRangeWhere('paidDate', range) },
+        _sum: { interestComponent: true },
       }),
       prisma.employeeSalaryPayment.aggregate({
         where: dateRangeWhere('paidDate', range),
@@ -96,9 +101,12 @@ export const profitLossService = {
     const vehicleOperatingTotal = round2(Object.values(buckets).reduce((s, v) => s + v, 0));
 
     const officeExpenses = round2(Number(officeExpenseAgg._sum.amount ?? 0));
+    // Only the interest half of an EMI is an expense — the principal half
+    // repays a liability and never touches P&L.
+    const interestAndFinanceCharges = round2(Number(interestAgg._sum.interestComponent ?? 0));
     const staffSalary = round2(Number(salaryPaymentAgg._sum.amount ?? 0));
 
-    const totalExpenses = round2(tripRelatedCost + vehicleOperatingTotal + officeExpenses + staffSalary);
+    const totalExpenses = round2(tripRelatedCost + vehicleOperatingTotal + officeExpenses + interestAndFinanceCharges + staffSalary);
     const netProfit = round2(totalIncome - totalExpenses);
 
     return {
@@ -112,6 +120,7 @@ export const profitLossService = {
         tripRelatedCost: { supplierCost: tripSupplierCost, manualTripExpenses: tripManualExpense, total: tripRelatedCost },
         vehicleOperatingCost: { ...buckets, total: vehicleOperatingTotal },
         officeExpenses,
+        interestAndFinanceCharges,
         staffSalary,
         total: totalExpenses,
       },

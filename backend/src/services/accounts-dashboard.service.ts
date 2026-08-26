@@ -1,6 +1,129 @@
 import { prisma } from '../config/db';
+import { balanceSheetService } from './balance-sheet.service';
+import { loanDashboardService } from './loan-dashboard.service';
+import { profitLossService } from './profit-loss.service';
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * The finance-wide figures (§3) that aren't receivable/payable specific.
+ * Both sources are reused rather than re-derived so the dashboard can never
+ * disagree with the Balance Sheet or the Loans & EMI screen — showing the
+ * same number two different ways is exactly how those screens drift apart.
+ */
+async function financeOverview() {
+  const [bs, loans] = await Promise.all([
+    balanceSheetService.get(),
+    loanDashboardService.get({} as never),
+  ]);
+
+  return {
+    cashAvailable: bs.assets.currentAssets.cash,
+    bankAvailable: bs.assets.currentAssets.bank,
+    totalAssets: bs.totalAssets,
+    totalLiabilities: bs.totalLiabilities,
+    ownerCapital: bs.equity.ownerCapital,
+    // Every owner loan, whether it carries an EMI schedule or was recorded
+    // on Capital & Owner Funds.
+    ownerLoan: bs.liabilities.ownerLoans,
+    loanOutstanding: round2(bs.liabilities.vehicleLoans + bs.liabilities.bankLoans + bs.liabilities.ownerLoans + bs.liabilities.otherLoans),
+    pendingEmiCount: loans.stats.pendingEmiCount,
+    overdueEmiCount: loans.stats.overdueEmiCount,
+    overdueEmiAmount: loans.stats.overdueEmiAmount,
+    thisMonthEmi: loans.stats.thisMonthEmi,
+    nextEmiDate: loans.stats.nextEmiDate,
+    nextEmiAmount: loans.stats.nextEmiAmount,
+    upcomingEmis: loans.upcomingEmis.slice(0, 8),
+  };
+}
+
+/** First and last day of the month `offset` months back from now, as YYYY-MM-DD. */
+function monthRange(offset: number) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    key: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+    label: start.toLocaleString('en-US', { month: 'short', year: '2-digit' }),
+    from: fmt(start),
+    to: fmt(end),
+    start,
+    end,
+  };
+}
 
 export const accountsDashboardService = {
+  /**
+   * Trend data for the dashboard's two charts (spec §3).
+   *
+   * Revenue vs Expenses reuses profitLossService per month rather than
+   * re-deriving the maths, so a bar on this chart always equals what the
+   * Profit & Loss screen reports for that same month.
+   *
+   * There is deliberately NO cash/bank movement series: Bank/Cash balances
+   * are a single running figure mutated in place with no dated transaction
+   * ledger behind them (see balance-sheet.service.ts), so a historical
+   * movement line cannot be reconstructed without inventing it.
+   */
+  async getTrends(monthsBack = 6, monthsAhead = 6) {
+    const pastMonths = Array.from({ length: monthsBack }, (_, i) => monthRange(monthsBack - 1 - i));
+
+    const performance = await Promise.all(
+      pastMonths.map(async (m) => {
+        const pl = await profitLossService.get({ from: m.from, to: m.to });
+        return {
+          month: m.key,
+          label: m.label,
+          revenue: pl.income.total,
+          expenses: pl.expenses.total,
+          profit: pl.netProfit,
+        };
+      })
+    );
+
+    // EMI falling due over the coming months — the forward-looking half of
+    // the picture, straight off the generated schedules.
+    const now = new Date();
+    const horizonEnd = new Date(now.getFullYear(), now.getMonth() + monthsAhead + 1, 0, 23, 59, 59, 999);
+    const installments = await prisma.loanInstallment.findMany({
+      where: {
+        status: { in: ['PENDING', 'OVERDUE'] },
+        dueDate: { lte: horizonEnd },
+        loan: { deletedAt: null, status: 'ACTIVE' },
+      },
+      select: { dueDate: true, emiAmount: true, principalComponent: true, interestComponent: true },
+    });
+
+    const buckets = new Map<string, { label: string; emiAmount: number; principal: number; interest: number; count: number }>();
+    for (let i = 0; i < monthsAhead; i++) {
+      const m = monthRange(-i);
+      buckets.set(m.key, { label: m.label, emiAmount: 0, principal: 0, interest: 0, count: 0 });
+    }
+    for (const inst of installments) {
+      const key = `${inst.dueDate.getFullYear()}-${String(inst.dueDate.getMonth() + 1).padStart(2, '0')}`;
+      const b = buckets.get(key);
+      // Anything already overdue from before the window is folded into the
+      // current month rather than dropped off the chart entirely.
+      const target = b ?? buckets.get(monthRange(0).key)!;
+      target.emiAmount += Number(inst.emiAmount);
+      target.principal += Number(inst.principalComponent);
+      target.interest += Number(inst.interestComponent);
+      target.count += 1;
+    }
+
+    const upcomingEmiByMonth = Array.from(buckets.entries()).map(([month, b]) => ({
+      month,
+      label: b.label,
+      emiAmount: round2(b.emiAmount),
+      principal: round2(b.principal),
+      interest: round2(b.interest),
+      count: b.count,
+    }));
+
+    return { monthlyPerformance: performance, upcomingEmiByMonth };
+  },
+
   async getSummary() {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -143,7 +266,10 @@ export const accountsDashboardService = {
       }
     }
 
+    const overview = await financeOverview();
+
     return {
+      ...overview,
       outstandingReceivables: Number(outstandingReceivables._sum.outstandingAmount || 0),
       // Now sourced from SupplierBill (Phase 10) where it exists — falls back
       // to the legacy trip-based estimate for suppliers with no bill yet.

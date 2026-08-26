@@ -1,10 +1,22 @@
 /**
- * Capital Account money movement — a partner CONTRIBUTION credits a real
- * Bank/Cash account (money coming in), a WITHDRAWAL debits one (money
- * going out), through the same adjustFundAccountBalance primitive every
- * other module in this app uses. No ledger/account-group: a partner's
- * capital balance is simply SUM(CONTRIBUTION) − SUM(WITHDRAWAL),
- * computed live wherever it's needed (this service, balance-sheet.service.ts).
+ * Capital & Owner Funds money movement. Four transaction types across two
+ * genuinely different instruments, which is the whole reason this screen
+ * exists (spec §9–§12):
+ *
+ *   CONTRIBUTION         money in  → Owner Capital      (EQUITY  +)
+ *   WITHDRAWAL           money out → Owner Capital      (EQUITY  −, a drawing)
+ *   OWNER_LOAN_RECEIVED  money in  → Owner Loan         (LIABILITY +)
+ *   OWNER_LOAN_REPAYMENT money out → Owner Loan         (LIABILITY −)
+ *
+ * An owner handing the business ₹50,00,000 may be ₹30,00,000 of capital and
+ * ₹20,00,000 of loan; recording it as one ₹50,00,000 "capital" figure
+ * overstates equity and hides the debt. Repaying an owner loan is therefore
+ * NOT a capital withdrawal and must never be recorded as one.
+ *
+ * Every type credits or debits a real Bank/Cash account through the same
+ * adjustFundAccountBalance primitive every other module uses. No
+ * ledger/account-group: a partner's balances are simply sums over these
+ * rows, computed live wherever needed (this service, balance-sheet.service.ts).
  */
 import { Request } from 'express';
 import { capitalTransactionRepository, CapitalTransactionWithRelations } from '../repositories/capital-transaction.repository';
@@ -33,10 +45,24 @@ function serialize(t: CapitalTransactionWithRelations) {
   };
 }
 
-/** delta applied to the fund account: a CONTRIBUTION brings money in (+), a WITHDRAWAL takes money out (-). */
+/** The two inbound types bring money in (+); the two outbound types take it out (−). */
+const MONEY_IN_TYPES = new Set(['CONTRIBUTION', 'OWNER_LOAN_RECEIVED']);
+
 function fundDelta(type: string, amount: number) {
-  return type === 'CONTRIBUTION' ? amount : -amount;
+  return MONEY_IN_TYPES.has(type) ? amount : -amount;
 }
+
+/** Which of the two instruments a type belongs to — equity or liability. */
+function bucketOf(type: string): 'CAPITAL' | 'OWNER_LOAN' {
+  return type === 'CONTRIBUTION' || type === 'WITHDRAWAL' ? 'CAPITAL' : 'OWNER_LOAN';
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  CONTRIBUTION: 'capital contribution from',
+  WITHDRAWAL: 'capital withdrawal by',
+  OWNER_LOAN_RECEIVED: 'owner loan received from',
+  OWNER_LOAN_REPAYMENT: 'owner loan repayment to',
+};
 
 export const capitalTransactionService = {
   async list(query: Request['query']) {
@@ -65,8 +91,23 @@ export const capitalTransactionService = {
 
     const fundAccount = await resolveFundAccount(organizationId, input.fundAccountType, input.fundAccountId);
     if (!fundAccount.isActive) throw new AppError('The selected Bank/Cash account is inactive', 409);
-    if (input.type === 'WITHDRAWAL' && fundAccount.currentBalance < input.amount) {
-      throw new AppError(`Insufficient balance in ${fundAccount.label} to withdraw ${input.amount}`, 409);
+    const isMoneyOut = !MONEY_IN_TYPES.has(input.type);
+    if (isMoneyOut && fundAccount.currentBalance < input.amount) {
+      const verb = input.type === 'WITHDRAWAL' ? 'withdraw' : 'repay';
+      throw new AppError(`Insufficient balance in ${fundAccount.label} to ${verb} ${input.amount}`, 409);
+    }
+
+    // You cannot repay more owner loan than the business actually owes that
+    // partner — that would push the liability negative and silently turn
+    // itself into an unrecorded capital withdrawal.
+    if (input.type === 'OWNER_LOAN_REPAYMENT') {
+      const state = await capitalTransactionService.partnerState(input.partnerId);
+      if (input.amount - state.ownerLoanBalance > 0.01) {
+        throw new AppError(
+          `${partner.name} is owed ${state.ownerLoanBalance} — repaying ${input.amount} would overpay the owner loan. Record the excess as a Capital Withdrawal instead.`,
+          422
+        );
+      }
     }
 
     const transactionDate = input.transactionDate ? input.transactionDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -93,7 +134,7 @@ export const capitalTransactionService = {
       action: 'CREATE',
       entityType: 'CapitalTransaction',
       entityId: transaction.id,
-      description: `Recorded ${input.type === 'CONTRIBUTION' ? 'capital contribution from' : 'capital withdrawal by'} ${partner.name}: ${input.amount}`,
+      description: `Recorded ${TYPE_LABELS[input.type] ?? input.type} ${partner.name}: ${input.amount}`,
     });
 
     return capitalTransactionService.getById(transaction.id);
@@ -115,21 +156,45 @@ export const capitalTransactionService = {
     });
   },
 
-  /** A single partner's capital state — Total Contributed / Withdrawn / Net Balance, same shape as financial-state.service.ts's driverState/employeeState. */
+  /**
+   * A single partner's state, with equity and liability reported separately
+   * so the two are never added together by a caller (spec §12).
+   * netBalance stays the capital-only figure it always was — callers that
+   * mean "what does the business owe this owner" want ownerLoanBalance.
+   */
   async partnerState(partnerId: string) {
     const partner = await capitalTransactionRepository.findPartnerById(partnerId);
     if (!partner) throw new AppError('Capital Partner not found', 404);
 
     const transactions = await capitalTransactionRepository.findAllByPartner(partnerId);
-    const totalContributed = round2(transactions.filter((t) => t.type === 'CONTRIBUTION').reduce((s, t) => s + Number(t.amount), 0));
-    const totalWithdrawn = round2(transactions.filter((t) => t.type === 'WITHDRAWAL').reduce((s, t) => s + Number(t.amount), 0));
+    const sumOf = (type: string) => round2(transactions.filter((t) => t.type === type).reduce((s, t) => s + Number(t.amount), 0));
+
+    const totalContributed = sumOf('CONTRIBUTION');
+    const totalWithdrawn = sumOf('WITHDRAWAL');
+    const ownerLoanReceived = sumOf('OWNER_LOAN_RECEIVED');
+    const ownerLoanRepaid = sumOf('OWNER_LOAN_REPAYMENT');
 
     return {
       partner: { id: partner.id, name: partner.name },
+      // Equity side
       totalContributed,
       totalWithdrawn,
+      capitalBalance: round2(totalContributed - totalWithdrawn),
+      // Liability side — what the business still owes this owner
+      ownerLoanReceived,
+      ownerLoanRepaid,
+      ownerLoanBalance: round2(ownerLoanReceived - ownerLoanRepaid),
+      // Retained for existing callers: capital only, never capital + loan.
       netBalance: round2(totalContributed - totalWithdrawn),
-      transactions: transactions.map((t) => ({ id: t.id, transactionNumber: t.transactionNumber, type: t.type, amount: Number(t.amount), transactionDate: t.transactionDate, remarks: t.remarks })),
+      transactions: transactions.map((t) => ({
+        id: t.id,
+        transactionNumber: t.transactionNumber,
+        type: t.type,
+        bucket: bucketOf(t.type),
+        amount: Number(t.amount),
+        transactionDate: t.transactionDate,
+        remarks: t.remarks,
+      })),
     };
   },
 };

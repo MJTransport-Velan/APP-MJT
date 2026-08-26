@@ -75,6 +75,18 @@ export const assetCategoryService = {
     if (!existing) throw new AppError('Asset Category not found', 404);
     if (existing.isSystemCategory) throw new AppError(`Asset Category "${existing.name}" is system-defined and cannot be deleted`, 409);
 
+    // Deleting a category out from under its assets leaves them pointing at
+    // something that no longer appears anywhere in the UI, and their
+    // depreciation terms unexplainable. Same guard style as the rest of the
+    // app ("cannot delete a loan with paid EMI").
+    const assetCount = await assetCategoryRepository.countAssets(id);
+    if (assetCount > 0) {
+      throw new AppError(
+        `Asset Category "${existing.name}" is used by ${assetCount} asset${assetCount === 1 ? '' : 's'} — reassign or delete ${assetCount === 1 ? 'it' : 'them'} first.`,
+        409
+      );
+    }
+
     await assetCategoryRepository.softDelete(id, actorId);
     await auditService.record({ userId: actorId, action: 'DELETE', entityType: 'AssetCategory', entityId: id, description: `Deleted asset category ${existing.name}` });
   },

@@ -2,10 +2,10 @@
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
       <div>
-        <h2 class="text-h6 mb-1">Accounts</h2>
+        <h2 class="text-h6 mb-1">Finance</h2>
         <p class="text-caption text-medium-emphasis mb-0">Where money came from, where it is now, and what it's for — no accounting jargon required</p>
       </div>
-      <HubSearch v-model="search" placeholder="Search accounts pages..." />
+      <HubSearch v-model="search" placeholder="Search finance pages..." />
     </div>
 
     <!-- <HubStatRow :stats="statRow" /> -->
@@ -15,6 +15,14 @@
         <HubCard v-bind="(item as any)" :background-images="ACCOUNTS_CARD_BACKGROUNDS" />
       </template>
     </HubCardGrid>
+
+    <div class="d-flex flex-wrap align-center ga-2 mt-4">
+      <span class="text-caption text-medium-emphasis">Setup:</span>
+      <template v-for="(link, i) in setupLinks" :key="link.to">
+        <span v-if="i > 0" class="text-caption text-medium-emphasis">·</span>
+        <RouterLink :to="link.to" class="text-caption text-primary">{{ link.title }}</RouterLink>
+      </template>
+    </div>
 
     <HubFavoritesRecents />
   </div>
@@ -44,19 +52,30 @@ const statRow = computed(() => {
   ];
 });
 
-// Each card is a group landing on its own sub-hub (same drill-down pattern
-// as Accounting → Banking) rather than a single flat list of ~40 pages.
+// One card per finance area, in the order an office user actually works
+// through them (spec §21). Each lands on its own sub-hub rather than a
+// single flat list of ~40 pages.
 const cards = [
-  { icon: 'mdi-cash-fast', title: 'Financial Entry', description: 'Record money received, paid, transferred or spent — pick source, destination and purpose, done', to: '/accounts/financial-entry' },
-  { icon: 'mdi-wallet-outline', title: 'Capital Account', description: 'Partner contributions and withdrawals, and each partner’s capital balance', to: '/accounts/capital-account' },
-  { icon: 'mdi-view-dashboard-variant-outline', title: 'Accounts Dashboard', description: 'Receivables, payables and profit analytics', to: '/accounts/dashboard' },
+  { icon: 'mdi-view-dashboard-variant-outline', title: 'Finance Dashboard', description: 'Cash, bank, receivables, payables, loans and profit at a glance', to: '/accounts/dashboard' },
+  { icon: 'mdi-cash-fast', title: 'Financial Entries', description: 'Record money received, paid, transferred or spent — pick source, destination and purpose, done', to: '/accounts/financial-entry' },
+  { icon: 'mdi-bank-outline', title: 'Loans & EMI', description: 'Vehicle, bank, business and owner loans — EMI schedules, payments and outstanding', to: '/accounts/loans' },
+  { icon: 'mdi-wallet-outline', title: 'Capital & Owner Funds', description: 'Owner capital (equity) and owner loans (liability), kept separate — plus withdrawals', to: '/accounts/capital-account' },
   { icon: 'mdi-cash-plus', title: 'Receivables', description: 'Customer invoices, receipts, aging, credit control and collections', to: '/accounts/receivables' },
   { icon: 'mdi-cash-minus', title: 'Payables', description: 'Supplier bills and payments for market-vehicle hires', to: '/accounts/payables' },
-  { icon: 'mdi-account-cash-outline', title: 'Driver Accounts & Payroll', description: 'Driver advances and settlements; salary structures and payroll runs', to: '/accounts/driver-payroll' },
-  { icon: 'mdi-truck-outline', title: 'Assets & FastTag', description: 'The fixed asset register, its categories and dashboard, plus FastTag', to: '/accounts/vehicle-assets' },
-  { icon: 'mdi-finance', title: 'Financial Reporting & Closing', description: 'Profitability, outstanding/expense reports, MIS dashboard and audit trail', to: '/accounts/financial-reporting' },
+  { icon: 'mdi-account-cash-outline', title: 'Driver & Employee Accounts', description: 'Driver advances and settlements; salary structures and salary payments', to: '/accounts/driver-payroll' },
+  { icon: 'mdi-truck-outline', title: 'Assets', description: 'The fixed asset register, its categories and dashboard', to: '/accounts/vehicle-assets' },
+  { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Prepaid FASTag wallet — recharge, toll usage and transaction history', to: '/accounts/fasttag' },
   { icon: 'mdi-bank-outline', title: 'Banking & Cash', description: 'Bank/cash accounts, transfers, cheques and petty cash', to: '/accounting/banking' },
-  { icon: 'mdi-domain', title: 'Accounting (Advanced)', description: 'GST & taxation, currencies, cost categories and the organization these books belong to', to: '/accounting' },
+  { icon: 'mdi-finance', title: 'Balance Sheet & Reports', description: 'Balance Sheet, Profit & Loss, profitability, outstanding/expense reports and MIS', to: '/accounts/financial-reporting' },
+];
+
+// GST rates, currencies and the organization record are setup data touched a
+// few times a year, not daily finance work — so they sit here as quiet links
+// rather than taking a card in the grid above (spec §20).
+const setupLinks = [
+  { title: 'GST & Taxation', to: '/accounts/gst-taxation' },
+  { title: 'Currencies', to: '/accounting/currencies' },
+  { title: 'Organization', to: '/accounting/organizations' },
 ];
 
 const filteredCards = computed(() => {

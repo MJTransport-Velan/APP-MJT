@@ -220,25 +220,44 @@ const routes: RouteRecordRaw[] = [
         path: 'accounts',
         name: 'accounts',
         component: RouterView,
-        meta: { breadcrumb: 'Accounts', permission: 'accounts.view' },
+        meta: { breadcrumb: 'Finance', permission: 'accounts.view' },
         children: [
           {
             path: '',
             name: 'accounts-hub',
             component: () => import('@/pages/accounts/AccountsHub.vue'),
-            meta: { breadcrumb: 'Accounts' },
+            meta: { breadcrumb: 'Finance' },
           },
           {
             path: 'financial-entry',
             name: 'accounts-financial-entry',
             component: () => import('@/pages/accounts/FinancialEntry.vue'),
-            meta: { breadcrumb: 'Financial Entry', permission: 'financialEntry.view' },
+            meta: { breadcrumb: 'Financial Entries', permission: 'financialEntry.view' },
+          },
+          // Loans & EMI — Vehicle/Bank/Business/Owner loans. The detail
+          // route carries a parentBreadcrumb so Back always lands on the
+          // module rather than wherever the user came from.
+          {
+            path: 'loans',
+            name: 'accounts-loans',
+            component: () => import('@/pages/accounts/Loans.vue'),
+            meta: { breadcrumb: 'Loans & EMI', permission: 'loan.view' },
+          },
+          {
+            path: 'loans/:id',
+            name: 'accounts-loan-detail',
+            component: () => import('@/pages/accounts/LoanDetail.vue'),
+            meta: {
+              breadcrumb: 'EMI Schedule',
+              parentBreadcrumb: { title: 'Loans & EMI', to: '/accounts/loans' },
+              permission: 'loan.view',
+            },
           },
           {
             path: 'capital-account',
             name: 'accounts-capital-account',
             component: () => import('@/pages/accounts/CapitalAccount.vue'),
-            meta: { breadcrumb: 'Capital Account', permission: 'capital_transaction.view' },
+            meta: { breadcrumb: 'Capital & Owner Funds', permission: 'capital_transaction.view' },
           },
           {
             path: 'receivables',
@@ -256,13 +275,13 @@ const routes: RouteRecordRaw[] = [
             path: 'driver-payroll',
             name: 'accounts-driver-payroll-hub',
             component: () => import('@/pages/accounts/DriverPayrollHub.vue'),
-            meta: { breadcrumb: 'Driver Accounts & Payroll' },
+            meta: { breadcrumb: 'Driver & Employee Accounts' },
           },
           {
             path: 'vehicle-assets',
             name: 'accounts-vehicle-assets-hub',
-            component: () => import('@/pages/accounts/VehicleAssetsHub.vue'),
-            meta: { breadcrumb: 'Assets & FastTag' },
+            component: () => import('@/pages/accounts/AssetsHub.vue'),
+            meta: { breadcrumb: 'Assets' },
           },
           {
             path: 'gst-taxation',
@@ -287,7 +306,7 @@ const routes: RouteRecordRaw[] = [
             path: 'financial-reporting',
             name: 'accounts-financial-reporting-hub',
             component: () => import('@/pages/accounts/FinancialReportingHub.vue'),
-            meta: { breadcrumb: 'Financial Reporting & Closing' },
+            meta: { breadcrumb: 'Balance Sheet & Reports' },
           },
           {
             path: 'invoices',
@@ -337,7 +356,7 @@ const routes: RouteRecordRaw[] = [
             path: 'dashboard',
             name: 'accounts-dashboard',
             component: () => import('@/pages/accounts/AccountsDashboard.vue'),
-            meta: { breadcrumb: 'Accounts Dashboard' },
+            meta: { breadcrumb: 'Finance Dashboard' },
           },
           // Phase 11 — Driver Accounts, Employee Payroll & Settlements
           // (docs Phase 5). Every transaction here still becomes a Voucher

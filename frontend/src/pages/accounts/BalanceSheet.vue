@@ -30,36 +30,36 @@
 
     <template v-else-if="result">
       <AppAlert v-if="!result.reconciliation.reconciled" type="error" class="mb-4">
-        Financial position does not reconcile — Assets ({{ formatCurrency(result.totalAssets) }}) vs Liabilities + Net Position
-        ({{ formatCurrency(result.totalLiabilities + result.netPosition) }}), difference {{ formatCurrency(result.reconciliation.difference) }}.
+        Financial position does not reconcile — Assets ({{ formatCurrency(result.totalAssets) }}) vs Liabilities + Equity
+        ({{ formatCurrency(result.totalLiabilities + result.totalEquity) }}), difference {{ formatCurrency(result.reconciliation.difference) }}.
       </AppAlert>
 
       <div class="row mb-1">
         <div class="col-12 col-sm-4"><ProfitCard label="Total Assets" :value="result.totalAssets" icon="mdi-scale-balance" color="success" /></div>
         <div class="col-12 col-sm-4"><ProfitCard label="Total Liabilities" :value="result.totalLiabilities" icon="mdi-cash-remove" color="error" /></div>
-        <div class="col-12 col-sm-4"><ProfitCard label="Net Position" :value="result.netPosition" icon="mdi-chart-donut" color="primary" color-by-value /></div>
+        <div class="col-12 col-sm-4"><ProfitCard label="Total Equity" :value="result.totalEquity" icon="mdi-chart-donut" color="primary" color-by-value /></div>
       </div>
 
       <AppCard class="pa-4 mb-4">
         <div class="d-flex justify-space-between text-caption text-medium-emphasis mb-1">
-          <span>Assets vs Liabilities + Net Position</span>
+          <span>Assets = Liabilities + Equity</span>
           <span>{{ formatCurrency(result.totalAssets) }}</span>
         </div>
         <div class="bs-bar">
           <div class="bs-bar__seg" :style="{ width: liabilitiesPct + '%', background: 'var(--color-error)' }" :title="`Liabilities ${formatCurrency(result.totalLiabilities)}`" />
           <div
-            v-if="result.netPosition >= 0"
+            v-if="result.totalEquity >= 0"
             class="bs-bar__seg"
-            :style="{ width: netPct + '%', background: 'var(--color-primary)' }"
-            :title="`Net Position ${formatCurrency(result.netPosition)}`"
+            :style="{ width: equityPct + '%', background: 'var(--color-primary)' }"
+            :title="`Equity ${formatCurrency(result.totalEquity)}`"
           />
         </div>
-        <div v-if="result.netPosition < 0" class="text-caption text-error mt-1">
-          Liabilities exceed Assets by {{ formatCurrency(-result.netPosition) }}
+        <div v-if="result.totalEquity < 0" class="text-caption text-error mt-1">
+          Liabilities exceed Assets by {{ formatCurrency(-result.totalEquity) }}
         </div>
         <div class="d-flex ga-4 mt-2 text-caption">
           <span><span class="bs-dot" style="background: var(--color-error)" /> Liabilities</span>
-          <span><span class="bs-dot" style="background: var(--color-primary)" /> Net Position</span>
+          <span><span class="bs-dot" style="background: var(--color-primary)" /> Equity</span>
         </div>
       </AppCard>
 
@@ -82,7 +82,7 @@
                 <span>{{ line.label }}</span>
               </span>
               <span class="d-flex align-center ga-1">
-                <span class="font-weight-medium">{{ formatCurrency(result.assets[line.key]) }}</span>
+                <span class="font-weight-medium">{{ formatCurrency(line.value(result)) }}</span>
                 <AppIcon v-if="!line.disabled" icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
               </span>
             </div>
@@ -123,12 +123,40 @@
                 <span>{{ line.label }}</span>
               </span>
               <span class="d-flex align-center ga-1">
-                <span class="font-weight-medium">{{ formatCurrency(result.liabilities[line.key]) }}</span>
+                <span class="font-weight-medium">{{ formatCurrency(line.value(result)) }}</span>
                 <AppIcon v-if="!line.disabled" icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
               </span>
             </div>
             <div class="d-flex justify-space-between font-weight-bold pt-2 mt-1 bs-total-row">
               <span>Total Liabilities</span><span>{{ formatCurrency(result.totalLiabilities) }}</span>
+            </div>
+          </AppCard>
+
+          <!-- Equity is its own section, not a liability line — that
+               separation is the whole point of Capital vs Owner Loan. -->
+          <AppCard class="pa-4 mt-4">
+            <div class="d-flex align-center justify-space-between mb-1">
+              <div class="text-subtitle-1 font-weight-bold">Equity</div>
+              <div class="text-subtitle-1 font-weight-bold">{{ formatCurrency(result.totalEquity) }}</div>
+            </div>
+            <div
+              v-for="line in equityLines"
+              :key="line.key"
+              class="bs-row"
+              :class="{ 'bs-row--disabled': line.disabled }"
+              @click="!line.disabled && openSection(line.key, line.label)"
+            >
+              <span class="d-flex align-center ga-2">
+                <AppIcon :icon="line.icon" size="small" class="text-medium-emphasis" />
+                <span>{{ line.label }}</span>
+              </span>
+              <span class="d-flex align-center ga-1">
+                <span class="font-weight-medium">{{ line.negative ? '(' + formatCurrency(line.value(result)) + ')' : formatCurrency(line.value(result)) }}</span>
+                <AppIcon v-if="!line.disabled" icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
+              </span>
+            </div>
+            <div class="d-flex justify-space-between font-weight-bold pt-2 mt-1 bs-total-row">
+              <span>Total Equity</span><span>{{ formatCurrency(result.totalEquity) }}</span>
             </div>
           </AppCard>
 
@@ -215,19 +243,43 @@ interface SectionGroup {
 
 const { success, error: showError } = useSnackbar();
 
-const assetLines: { key: keyof BalanceSheetAssets; label: string; icon: string; disabled?: boolean }[] = [
-  { key: 'bankAndCash', label: 'Bank & Cash', icon: 'mdi-bank-outline' },
-  { key: 'customerReceivables', label: 'Customer Receivables', icon: 'mdi-account-cash-outline' },
-  { key: 'advancesRecoverable', label: 'Advances Recoverable', icon: 'mdi-cash-fast' },
-  { key: 'fixedAssets', label: 'Vehicle / Fixed Assets', icon: 'mdi-truck-outline' },
-  { key: 'otherAssets', label: 'Other Assets', icon: 'mdi-shape-outline', disabled: true },
+// Assets are grouped (Fixed vs Current) server-side, so each line reads its
+// figure through an accessor rather than a flat key lookup.
+interface SectionLine {
+  key: string;
+  label: string;
+  icon: string;
+  value: (r: BalanceSheetResult) => number;
+  disabled?: boolean;
+  negative?: boolean;
+}
+
+const assetLines: SectionLine[] = [
+  { key: 'fixedAssetsVehicles', label: 'Fixed Assets — Vehicles', icon: 'mdi-truck-outline', value: (r) => r.assets.fixedAssets.vehicles },
+  { key: 'fixedAssetsOther', label: 'Fixed Assets — Equipment & Other', icon: 'mdi-desktop-tower-monitor', value: (r) => r.assets.fixedAssets.equipmentAndOther },
+  { key: 'cash', label: 'Cash', icon: 'mdi-cash', value: (r) => r.assets.currentAssets.cash },
+  { key: 'bank', label: 'Bank', icon: 'mdi-bank-outline', value: (r) => r.assets.currentAssets.bank },
+  { key: 'customerReceivables', label: 'Receivables', icon: 'mdi-account-cash-outline', value: (r) => r.assets.currentAssets.receivables },
+  { key: 'advancesRecoverable', label: 'Advances Recoverable', icon: 'mdi-cash-fast', value: (r) => r.assets.currentAssets.advances },
+  { key: 'otherAssets', label: 'Other Assets', icon: 'mdi-shape-outline', value: (r) => r.assets.otherAssets, disabled: true },
 ];
-const liabilityLines: { key: keyof BalanceSheetLiabilities; label: string; icon: string; disabled?: boolean }[] = [
-  { key: 'capitalAccount', label: 'Capital Account', icon: 'mdi-account-cash-outline' },
-  { key: 'supplierPayables', label: 'Supplier Payables', icon: 'mdi-truck-delivery-outline' },
-  { key: 'driverEmployeePayables', label: 'Driver / Employee Payables', icon: 'mdi-account-group-outline' },
-  { key: 'customerAdvances', label: 'Customer Advances', icon: 'mdi-cash-refund' },
-  { key: 'otherLiabilities', label: 'Other Outstanding Liabilities', icon: 'mdi-alert-circle-outline', disabled: true },
+
+const liabilityLines: SectionLine[] = [
+  { key: 'vehicleLoans', label: 'Vehicle Loans', icon: 'mdi-truck-outline', value: (r) => r.liabilities.vehicleLoans },
+  { key: 'bankLoans', label: 'Bank / Business Loans', icon: 'mdi-bank-outline', value: (r) => r.liabilities.bankLoans },
+  { key: 'ownerLoans', label: 'Owner Loans', icon: 'mdi-account-cash-outline', value: (r) => r.liabilities.ownerLoans },
+  { key: 'otherLoans', label: 'Other Loans', icon: 'mdi-hand-coin-outline', value: (r) => r.liabilities.otherLoans },
+  { key: 'supplierPayables', label: 'Supplier Payables', icon: 'mdi-truck-delivery-outline', value: (r) => r.liabilities.supplierPayables },
+  { key: 'employeePayables', label: 'Driver / Employee Payables', icon: 'mdi-account-group-outline', value: (r) => r.liabilities.employeePayables },
+  { key: 'customerAdvances', label: 'Customer Advances', icon: 'mdi-cash-refund', value: (r) => r.liabilities.customerAdvances },
+  { key: 'taxPayables', label: 'Tax / Statutory Payables', icon: 'mdi-file-percent-outline', value: (r) => r.liabilities.taxPayables, disabled: true },
+  { key: 'otherLiabilities', label: 'Other Liabilities', icon: 'mdi-alert-circle-outline', value: (r) => r.liabilities.otherLiabilities, disabled: true },
+];
+
+const equityLines: SectionLine[] = [
+  { key: 'ownerCapital', label: 'Owner Capital', icon: 'mdi-wallet-outline', value: (r) => r.equity.ownerCapital },
+  { key: 'retainedProfit', label: 'Retained Profit', icon: 'mdi-chart-line', value: (r) => r.equity.retainedProfit, disabled: true },
+  { key: 'drawings', label: 'Drawings', icon: 'mdi-cash-minus', value: (r) => r.equity.drawings, negative: true },
 ];
 
 const todayStr = localDateStr();
@@ -289,7 +341,7 @@ const liabilitiesPct = computed(() => {
   if (!result.value || result.value.totalAssets <= 0) return 0;
   return Math.min((result.value.totalLiabilities / result.value.totalAssets) * 100, 100);
 });
-const netPct = computed(() => {
+const equityPct = computed(() => {
   if (!result.value || result.value.totalAssets <= 0) return 0;
   return Math.max(100 - liabilitiesPct.value, 0);
 });
@@ -302,10 +354,10 @@ const assetComposition = computed(() => {
   const a = result.value.assets;
   const total = result.value.totalAssets || 1;
   const items = [
-    { key: 'bankAndCash', label: 'Bank & Cash', value: a.bankAndCash, color: 'var(--color-primary)' },
-    { key: 'customerReceivables', label: 'Customer Receivables', value: a.customerReceivables, color: 'var(--color-secondary)' },
-    { key: 'advancesRecoverable', label: 'Advances Recoverable', value: a.advancesRecoverable, color: 'var(--color-success)' },
-    { key: 'fixedAssets', label: 'Vehicle / Fixed Assets', value: a.fixedAssets, color: 'var(--color-warning)' },
+    { key: 'bankAndCash', label: 'Bank & Cash', value: a.currentAssets.cash + a.currentAssets.bank, color: 'var(--color-primary)' },
+    { key: 'customerReceivables', label: 'Receivables', value: a.currentAssets.receivables, color: 'var(--color-secondary)' },
+    { key: 'advancesRecoverable', label: 'Advances Recoverable', value: a.currentAssets.advances, color: 'var(--color-success)' },
+    { key: 'fixedAssets', label: 'Fixed Assets', value: a.fixedAssets.total, color: 'var(--color-warning)' },
     { key: 'otherAssets', label: 'Other Assets', value: a.otherAssets, color: 'var(--color-error)' },
   ];
   return items.filter((i) => i.value > 0.004).map((i) => ({ ...i, pct: (i.value / total) * 100 }));
@@ -318,11 +370,10 @@ function sectionGroups(key: string): SectionGroup[] {
   if (!result.value) return [];
   const b = result.value.breakdown;
   switch (key) {
-    case 'bankAndCash':
-      return [
-        { title: 'Bank Accounts', partyType: null, rows: b.bankAccounts.map((a) => ({ id: a.id, name: a.bankName ? `${a.name} — ${a.bankName}` : a.name, amount: a.currentBalance })) },
-        { title: 'Cash Accounts', partyType: null, rows: b.cashAccounts.map((c) => ({ id: c.id, name: c.name, amount: c.currentBalance })) },
-      ];
+    case 'bank':
+      return [{ title: 'Bank Accounts', partyType: null, rows: b.bankAccounts.map((a) => ({ id: a.id, name: a.bankName ? `${a.name} — ${a.bankName}` : a.name, amount: a.currentBalance })) }];
+    case 'cash':
+      return [{ title: 'Cash Accounts', partyType: null, rows: b.cashAccounts.map((c) => ({ id: c.id, name: c.name, amount: c.currentBalance })) }];
     case 'customerReceivables':
       return [{ title: 'Customer-wise', partyType: 'customer', rows: b.customerReceivables }];
     case 'advancesRecoverable':
@@ -331,25 +382,48 @@ function sectionGroups(key: string): SectionGroup[] {
         { title: 'Driver Advances', partyType: 'driver', rows: b.driverAdvances },
         { title: 'Employee Advances', partyType: 'employee', rows: b.employeeAdvances },
       ];
-    case 'fixedAssets':
-      return [
-        {
-          title: `Assets (Vehicle: ${formatCurrency(b.fixedAssetsVehicleTotal)} · Other: ${formatCurrency(b.fixedAssetsOtherTotal)})`,
-          partyType: null,
-          rows: b.fixedAssets.map((a) => ({ id: a.id, name: `${a.name} [${a.category}]`, amount: a.amount })),
-        },
-      ];
+    case 'fixedAssetsVehicles':
+      return [{ title: 'Vehicle Assets', partyType: null, rows: b.fixedAssets.filter((a) => a.category === 'Vehicle').map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
+    case 'fixedAssetsOther':
+      return [{ title: 'Equipment & Other Assets', partyType: null, rows: b.fixedAssets.filter((a) => a.category !== 'Vehicle').map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
     case 'supplierPayables':
       return [{ title: 'Supplier-wise', partyType: 'supplier', rows: b.supplierPayables }];
-    case 'driverEmployeePayables':
+    case 'employeePayables':
       return [
         { title: 'Driver Payables', partyType: 'driver', rows: b.driverPayables },
         { title: 'Employee Payables', partyType: 'employee', rows: b.employeePayables },
       ];
     case 'customerAdvances':
       return [{ title: 'Customer-wise', partyType: 'customer', rows: b.customerAdvances }];
-    case 'capitalAccount':
-      return [{ title: 'Partner-wise', partyType: 'capitalPartner', rows: b.capitalAccount }];
+    case 'vehicleLoans':
+    case 'bankLoans':
+    case 'ownerLoans':
+    case 'otherLoans': {
+      const wanted: Record<string, string[]> = {
+        vehicleLoans: ['VEHICLE_LOAN'],
+        bankLoans: ['BANK_LOAN', 'BUSINESS_LOAN'],
+        ownerLoans: ['OWNER_LOAN'],
+        otherLoans: ['OTHER_LOAN'],
+      };
+      const groups: SectionGroup[] = [
+        {
+          title: key === 'ownerLoans' ? 'Owner Loans with an EMI schedule' : 'Loan-wise',
+          partyType: null,
+          rows: b.loans
+            .filter((l) => wanted[key].includes(l.loanType))
+            .map((l) => ({ id: l.id, name: l.linkedTo ? `${l.name} — ${l.lenderName} (${l.linkedTo})` : `${l.name} — ${l.lenderName}`, amount: l.amount })),
+        },
+      ];
+      // Informal owner money lives on Capital & Owner Funds instead of the
+      // Loans module, so both sources are listed under Owner Loans.
+      if (key === 'ownerLoans') {
+        groups.push({ title: 'Owner Loans recorded on Capital & Owner Funds', partyType: 'capitalPartner', rows: b.ownerLoans });
+      }
+      return groups;
+    }
+    case 'ownerCapital':
+    case 'drawings':
+      return [{ title: 'Partner-wise (net capital)', partyType: 'capitalPartner', rows: b.capitalAccount }];
     default:
       return [];
   }
@@ -415,10 +489,15 @@ async function openParty(type: PartyType, id: string, name: string, fromSection?
       ];
     } else {
       const d = (await capitalTransactionApi.partnerState(id)).data.data;
+      // Capital (equity) and owner loan (liability) are shown as two
+      // separate blocks — never summed into one "partner balance".
       partyDialog.value.rows = [
-        { label: 'Total Contributed', value: d.totalContributed },
-        { label: 'Total Withdrawn', value: d.totalWithdrawn },
-        { label: 'Net Balance', value: d.netBalance },
+        { label: 'Capital Contributed', value: d.totalContributed },
+        { label: 'Capital Withdrawn (Drawings)', value: d.totalWithdrawn },
+        { label: 'Owner Capital Balance', value: d.capitalBalance ?? d.netBalance },
+        { label: 'Owner Loan Received', value: d.ownerLoanReceived ?? 0 },
+        { label: 'Owner Loan Repaid', value: d.ownerLoanRepaid ?? 0 },
+        { label: 'Owner Loan Outstanding', value: d.ownerLoanBalance ?? 0 },
       ];
     }
   } catch (e) {
@@ -435,18 +514,30 @@ async function onExport() {
   try {
     const r = result.value;
     const rows: Record<string, unknown>[] = [
-      { section: 'ASSETS', particulars: 'Bank & Cash', amount: r.assets.bankAndCash },
-      { section: 'ASSETS', particulars: 'Customer Receivables', amount: r.assets.customerReceivables },
-      { section: 'ASSETS', particulars: 'Advances Recoverable', amount: r.assets.advancesRecoverable },
-      { section: 'ASSETS', particulars: 'Vehicle / Fixed Assets', amount: r.assets.fixedAssets },
+      { section: 'ASSETS', particulars: 'Fixed Assets — Vehicles', amount: r.assets.fixedAssets.vehicles },
+      { section: 'ASSETS', particulars: 'Fixed Assets — Equipment & Other', amount: r.assets.fixedAssets.equipmentAndOther },
+      { section: 'ASSETS', particulars: 'Total Fixed Assets', amount: r.assets.fixedAssets.total },
+      { section: 'ASSETS', particulars: 'Cash', amount: r.assets.currentAssets.cash },
+      { section: 'ASSETS', particulars: 'Bank', amount: r.assets.currentAssets.bank },
+      { section: 'ASSETS', particulars: 'Receivables', amount: r.assets.currentAssets.receivables },
+      { section: 'ASSETS', particulars: 'Advances Recoverable', amount: r.assets.currentAssets.advances },
+      { section: 'ASSETS', particulars: 'Total Current Assets', amount: r.assets.currentAssets.total },
       { section: 'ASSETS', particulars: 'Other Assets', amount: r.assets.otherAssets },
       { section: 'ASSETS', particulars: 'TOTAL ASSETS', amount: r.totalAssets },
+      { section: 'LIABILITIES', particulars: 'Vehicle Loans', amount: r.liabilities.vehicleLoans },
+      { section: 'LIABILITIES', particulars: 'Bank / Business Loans', amount: r.liabilities.bankLoans },
+      { section: 'LIABILITIES', particulars: 'Owner Loans', amount: r.liabilities.ownerLoans },
+      { section: 'LIABILITIES', particulars: 'Other Loans', amount: r.liabilities.otherLoans },
       { section: 'LIABILITIES', particulars: 'Supplier Payables', amount: r.liabilities.supplierPayables },
-      { section: 'LIABILITIES', particulars: 'Driver / Employee Payables', amount: r.liabilities.driverEmployeePayables },
+      { section: 'LIABILITIES', particulars: 'Driver / Employee Payables', amount: r.liabilities.employeePayables },
       { section: 'LIABILITIES', particulars: 'Customer Advances', amount: r.liabilities.customerAdvances },
-      { section: 'LIABILITIES', particulars: 'Other Outstanding Liabilities', amount: r.liabilities.otherLiabilities },
+      { section: 'LIABILITIES', particulars: 'Tax / Statutory Payables', amount: r.liabilities.taxPayables },
+      { section: 'LIABILITIES', particulars: 'Other Liabilities', amount: r.liabilities.otherLiabilities },
       { section: 'LIABILITIES', particulars: 'TOTAL LIABILITIES', amount: r.totalLiabilities },
-      { section: 'NET POSITION', particulars: 'Net Position (Assets − Liabilities)', amount: r.netPosition },
+      { section: 'EQUITY', particulars: 'Owner Capital', amount: r.equity.ownerCapital },
+      { section: 'EQUITY', particulars: 'Retained Profit', amount: r.equity.retainedProfit },
+      { section: 'EQUITY', particulars: 'Drawings (deduction)', amount: -r.equity.drawings },
+      { section: 'EQUITY', particulars: 'TOTAL EQUITY', amount: r.totalEquity },
     ];
     await exportRowsToExcel(
       `Balance Sheet as of ${r.asOfDate}`,

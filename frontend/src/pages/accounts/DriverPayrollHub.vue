@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
       <div>
-        <h2 class="text-h6 mb-1">Driver Accounts & Payroll</h2>
+        <h2 class="text-h6 mb-1">Driver &amp; Employee Accounts</h2>
         <p class="text-caption text-medium-emphasis mb-0">Driver advances and settlements; employee salary structures and payments</p>
       </div>
       <HubSearch v-model="search" placeholder="Search driver & payroll pages..." />

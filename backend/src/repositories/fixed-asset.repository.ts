@@ -1,5 +1,6 @@
 import { Prisma, FixedAssetStatus } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const assetWithRelations = Prisma.validator<Prisma.FixedAssetInclude>()({
   category: true,
@@ -42,10 +43,21 @@ export const fixedAssetRepository = {
     return prisma.assetCategory.findFirst({ where: { id, deletedAt: null } });
   },
 
+  /**
+   * Issued from the shared DocumentCounter sequence rather than count()+1,
+   * which both races and reuses codes after a delete (the count drops while
+   * surviving assets keep their codes) — see documentNumber.util.ts.
+   * The counter is per category code, matching the existing code format.
+   */
   async nextAssetCode(categoryCode: string) {
-    const count = await prisma.fixedAsset.count();
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `AST-${categoryCode}-${datePart}-${String(count + 1).padStart(4, '0')}`;
+    const prefix = `AST-${categoryCode}`;
+    return nextDocumentNumber(prefix, 4, async (stamp) => {
+      const rows = await prisma.fixedAsset.findMany({
+        where: { assetCode: { startsWith: `${prefix}-${stamp}-` } },
+        select: { assetCode: true },
+      });
+      return highestSequenceToday(rows, 'assetCode', prefix, stamp);
+    });
   },
 
   create(data: Prisma.FixedAssetUncheckedCreateInput) {

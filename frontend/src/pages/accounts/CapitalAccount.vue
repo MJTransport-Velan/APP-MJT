@@ -2,9 +2,9 @@
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
       <div>
-        <h2 class="text-h6 mb-1">Capital Account</h2>
+        <h2 class="text-h6 mb-1">Capital &amp; Owner Funds</h2>
         <p class="text-caption text-medium-emphasis mb-0">
-          Money partners have put into (or drawn out of) the business
+          Owner capital is money that stays in the business (equity); an owner loan is money the business owes back (liability)
         </p>
       </div>
       <div class="d-flex flex-wrap align-center ga-2">
@@ -20,44 +20,57 @@
           size="small"
           prepend-icon="mdi-cash-plus"
           @click="openRecord('CONTRIBUTION')"
-          >Record Contribution</AppBtn
+          >Record Owner Funds</AppBtn
         >
         <AppBtn
           color="error"
           size="small"
           prepend-icon="mdi-cash-minus"
           @click="openRecord('WITHDRAWAL')"
-          >Record Withdrawal</AppBtn
+          >Record Withdrawal / Repayment</AppBtn
         >
       </div>
     </div>
 
     <div class="row mb-4">
-      <div class="col-12 col-sm-4">
+      <div class="col-12 col-sm-3">
         <ProfitCard
-          label="Total Contributed"
-          :value="totals.contributed"
+          label="Owner Capital (Equity)"
+          :value="totals.capitalBalance"
+          icon="mdi-wallet-outline"
+          color="primary"
+        />
+      </div>
+      <div class="col-12 col-sm-3">
+        <ProfitCard
+          label="Owner Loan (Liability)"
+          :value="totals.ownerLoanBalance"
+          icon="mdi-hand-coin-outline"
+          color="warning"
+        />
+      </div>
+      <div class="col-12 col-sm-3">
+        <ProfitCard
+          label="Total Funds In"
+          :value="totals.fundsIn"
           icon="mdi-cash-plus"
           color="success"
         />
       </div>
-      <div class="col-12 col-sm-4">
+      <div class="col-12 col-sm-3">
         <ProfitCard
-          label="Total Withdrawn"
-          :value="totals.withdrawn"
+          label="Total Funds Out"
+          :value="totals.fundsOut"
           icon="mdi-cash-minus"
           color="error"
         />
       </div>
-      <div class="col-12 col-sm-4">
-        <ProfitCard
-          label="Net Capital Balance"
-          :value="totals.net"
-          icon="mdi-scale-balance"
-          color="primary"
-        />
-      </div>
     </div>
+
+    <p class="text-caption text-medium-emphasis mb-4">
+      Funds In = capital contributions + owner loans received &nbsp;·&nbsp; Funds Out = capital
+      withdrawals + owner loan repayments
+    </p>
 
     <AppCard class="pa-4 mb-4 mt-4">
       <div class="text-subtitle-2 mb-2">Partner-wise Balance</div>
@@ -71,8 +84,16 @@
         @click="viewPartner(p.partner.id)"
       >
         <span>{{ p.partner.name }}</span>
-        <span class="d-flex align-center ga-1">
-          <span class="font-weight-medium">{{ formatCurrency(p.netBalance) }}</span>
+        <!-- Capital and owner loan are shown side by side, never as one number. -->
+        <span class="d-flex align-center ga-3">
+          <span class="text-caption text-medium-emphasis">
+            Capital
+            <span class="font-weight-medium text-high-emphasis">{{ formatCurrency(p.capitalBalance ?? p.netBalance) }}</span>
+          </span>
+          <span v-if="(p.ownerLoanBalance ?? 0) !== 0" class="text-caption text-medium-emphasis">
+            Owner Loan
+            <span class="font-weight-medium text-warning">{{ formatCurrency(p.ownerLoanBalance) }}</span>
+          </span>
           <AppIcon icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
         </span>
       </div>
@@ -100,13 +121,9 @@
               <td>{{ t.transactionNumber }}</td>
               <td>{{ t.partner.name }}</td>
               <td>
-                <AppChip
-                  size="x-small"
-                  :color="t.type === 'CONTRIBUTION' ? 'success' : 'error'"
-                  >{{
-                    t.type === "CONTRIBUTION" ? "Contribution" : "Withdrawal"
-                  }}</AppChip
-                >
+                <AppChip size="x-small" :color="typeColor(t.type)">{{
+                  CAPITAL_TRANSACTION_LABELS[t.type]
+                }}</AppChip>
               </td>
               <td class="text-right">{{ formatCurrency(t.amount) }}</td>
               <td>{{ t.fundAccountType }}</td>
@@ -132,21 +149,28 @@
       </div>
     </AppCard>
 
-    <!-- Record Contribution/Withdrawal -->
+    <!-- Record owner money in / out -->
     <AppDialog v-model="recordDialog.open" max-width="480">
       <AppCardTitle>{{
-        recordDialog.type === "CONTRIBUTION"
-          ? "Record Capital Contribution"
-          : "Record Capital Withdrawal"
+        isMoneyIn ? "Record Owner Funds Received" : "Record Withdrawal / Repayment"
       }}</AppCardTitle>
       <AppCardText>
         <AppSelect
           v-model="form.partnerId"
           :items="partnerOptions"
-          label="Partner"
+          label="Owner / Partner"
           class="mb-3"
           required
         />
+        <!-- The classification IS the decision this screen exists to capture. -->
+        <AppSelect
+          v-model="form.type"
+          :items="typeOptions"
+          label="Type"
+          class="mb-1"
+          required
+        />
+        <p class="text-caption text-medium-emphasis mb-3">{{ typeHint }}</p>
         <AppTextField
           v-model.number="form.amount"
           type="number"
@@ -179,7 +203,7 @@
       <AppCardActions>
         <AppBtn variant="text" @click="recordDialog.open = false">Cancel</AppBtn>
         <AppBtn
-          :color="recordDialog.type === 'CONTRIBUTION' ? 'success' : 'error'"
+          :color="isMoneyIn ? 'success' : 'error'"
           :loading="saving"
           @click="submitRecord"
           >Save</AppBtn
@@ -246,14 +270,34 @@
             <span class="text-medium-emphasis">Total Contributed</span
             ><span>{{ formatCurrency(partnerStateDialog.data.totalContributed) }}</span>
           </div>
-          <div class="d-flex justify-space-between text-body-2 mb-3">
+          <div class="d-flex justify-space-between text-body-2 mb-1">
             <span class="text-medium-emphasis">Total Withdrawn</span
             ><span>{{ formatCurrency(partnerStateDialog.data.totalWithdrawn) }}</span>
           </div>
           <div class="d-flex justify-space-between font-weight-bold mb-3">
-            <span>Net Balance</span
-            ><span>{{ formatCurrency(partnerStateDialog.data.netBalance) }}</span>
+            <span>Capital Balance</span
+            ><span>{{
+              formatCurrency(
+                partnerStateDialog.data.capitalBalance ?? partnerStateDialog.data.netBalance
+              )
+            }}</span>
           </div>
+          <template v-if="hasOwnerLoanActivity">
+            <div class="d-flex justify-space-between text-body-2 mb-1">
+              <span class="text-medium-emphasis">Owner Loan Received</span
+              ><span>{{ formatCurrency(partnerStateDialog.data.ownerLoanReceived) }}</span>
+            </div>
+            <div class="d-flex justify-space-between text-body-2 mb-1">
+              <span class="text-medium-emphasis">Owner Loan Repaid</span
+              ><span>{{ formatCurrency(partnerStateDialog.data.ownerLoanRepaid) }}</span>
+            </div>
+            <div class="d-flex justify-space-between font-weight-bold mb-3">
+              <span>Owner Loan Balance</span
+              ><span class="text-warning">{{
+                formatCurrency(partnerStateDialog.data.ownerLoanBalance)
+              }}</span>
+            </div>
+          </template>
           <div class="text-caption font-weight-bold text-medium-emphasis mb-1">
             Transactions ({{ partnerStateDialog.data.transactions.length }})
           </div>
@@ -264,7 +308,7 @@
           >
             <span
               >{{ formatDate(t.transactionDate) }} —
-              {{ t.type === "CONTRIBUTION" ? "Contribution" : "Withdrawal" }}</span
+              {{ CAPITAL_TRANSACTION_LABELS[t.type] }}</span
             >
             <span>{{ formatCurrency(t.amount) }}</span>
           </div>
@@ -297,6 +341,7 @@ import {
   AppProgressCircular,
   AppIcon,
 } from "@/components/ui";
+import { CAPITAL_TRANSACTION_LABELS } from "@/types/capitalTransaction.types";
 import type {
   CapitalTransaction,
   CapitalTransactionType,
@@ -328,10 +373,22 @@ function formatDate(d: string) {
   });
 }
 
+// Equity and liability are totalled separately and never added together —
+// that separation is the whole point of this screen (spec §12).
 const totals = computed(() => ({
-  contributed: partnerBalances.value.reduce((s, p) => s + p.totalContributed, 0),
-  withdrawn: partnerBalances.value.reduce((s, p) => s + p.totalWithdrawn, 0),
-  net: partnerBalances.value.reduce((s, p) => s + p.netBalance, 0),
+  capitalBalance: partnerBalances.value.reduce((s, p) => s + (p.capitalBalance ?? p.netBalance), 0),
+  ownerLoanBalance: partnerBalances.value.reduce((s, p) => s + (p.ownerLoanBalance ?? 0), 0),
+  // Cash movement, not a balance: every rupee the owners put in / took out,
+  // across both instruments. Contributions and owner loans are still never
+  // merged into a single balance — the two cards above keep those apart.
+  fundsIn: partnerBalances.value.reduce(
+    (s, p) => s + p.totalContributed + (p.ownerLoanReceived ?? 0),
+    0
+  ),
+  fundsOut: partnerBalances.value.reduce(
+    (s, p) => s + p.totalWithdrawn + (p.ownerLoanRepaid ?? 0),
+    0
+  ),
 }));
 
 const partnerOptions = computed(() =>
@@ -359,7 +416,15 @@ async function loadPartnerBalances() {
   );
   partnerBalances.value = results
     .map((r) => r.data.data)
-    .filter((d) => d.totalContributed > 0 || d.totalWithdrawn > 0);
+    // A partner who has only ever lent the business money still belongs in
+    // this list, so owner-loan activity counts too.
+    .filter(
+      (d) =>
+        d.totalContributed > 0 ||
+        d.totalWithdrawn > 0 ||
+        (d.ownerLoanReceived ?? 0) > 0 ||
+        (d.ownerLoanRepaid ?? 0) > 0
+    );
 }
 
 async function loadAll() {
@@ -396,6 +461,7 @@ const recordDialog = ref<{ open: boolean; type: CapitalTransactionType }>({
 });
 const form = ref({
   partnerId: "",
+  type: "CONTRIBUTION" as CapitalTransactionType,
   amount: 0,
   transactionDate: localDateStr(),
   fundAccountType: "BANK" as "BANK" | "CASH",
@@ -403,9 +469,41 @@ const form = ref({
   remarks: "",
 });
 
+const MONEY_IN_TYPES: CapitalTransactionType[] = ["CONTRIBUTION", "OWNER_LOAN_RECEIVED"];
+const isMoneyIn = computed(() => MONEY_IN_TYPES.includes(form.value.type));
+
+/** Green for money in, red for money out; owner-loan types are tinted to read as debt. */
+function typeColor(type: CapitalTransactionType) {
+  return (
+    {
+      CONTRIBUTION: "success",
+      WITHDRAWAL: "error",
+      OWNER_LOAN_RECEIVED: "warning",
+      OWNER_LOAN_REPAYMENT: "info",
+    } as Record<CapitalTransactionType, string>
+  )[type];
+}
+
+/** The dialog offers only the two types matching its direction, so money-in and money-out never mix. */
+const typeOptions = computed(() =>
+  (isMoneyIn.value
+    ? (["CONTRIBUTION", "OWNER_LOAN_RECEIVED"] as CapitalTransactionType[])
+    : (["WITHDRAWAL", "OWNER_LOAN_REPAYMENT"] as CapitalTransactionType[])
+  ).map((value) => ({ title: CAPITAL_TRANSACTION_LABELS[value], value }))
+);
+
+const TYPE_HINTS: Record<CapitalTransactionType, string> = {
+  CONTRIBUTION: "Permanent investment — increases Owner Capital under EQUITY.",
+  WITHDRAWAL: "A drawing against capital — reduces Owner Capital under EQUITY.",
+  OWNER_LOAN_RECEIVED: "Money the business must repay — increases Owner Loan under LIABILITIES.",
+  OWNER_LOAN_REPAYMENT: "Repays an owner loan — reduces Owner Loan under LIABILITIES. This is not a capital withdrawal.",
+};
+const typeHint = computed(() => TYPE_HINTS[form.value.type]);
+
 function openRecord(type: CapitalTransactionType) {
   form.value = {
     partnerId: "",
+    type,
     amount: 0,
     transactionDate: localDateStr(),
     fundAccountType: "BANK",
@@ -424,18 +522,14 @@ async function submitRecord() {
   try {
     await capitalTransactionApi.create({
       partnerId: form.value.partnerId,
-      type: recordDialog.value.type,
+      type: form.value.type,
       amount: form.value.amount,
       transactionDate: form.value.transactionDate,
       fundAccountType: form.value.fundAccountType,
       fundAccountId: form.value.fundAccountId,
       remarks: form.value.remarks || undefined,
     });
-    success(
-      recordDialog.value.type === "CONTRIBUTION"
-        ? "Capital contribution recorded"
-        : "Capital withdrawal recorded"
-    );
+    success(`${CAPITAL_TRANSACTION_LABELS[form.value.type]} recorded`);
     recordDialog.value.open = false;
     await loadAll();
   } catch (e) {
@@ -487,6 +581,12 @@ const partnerStateDialog = ref<{
   loading: boolean;
   data: CapitalPartnerState | null;
 }>({ open: false, loading: false, data: null });
+
+// The loan lines only make sense for a partner who has actually lent money.
+const hasOwnerLoanActivity = computed(() => {
+  const d = partnerStateDialog.value.data;
+  return !!d && ((d.ownerLoanReceived ?? 0) > 0 || (d.ownerLoanRepaid ?? 0) > 0);
+});
 
 async function viewPartner(partnerId: string) {
   partnerStateDialog.value = { open: true, loading: true, data: null };

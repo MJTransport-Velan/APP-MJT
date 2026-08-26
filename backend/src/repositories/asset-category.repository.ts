@@ -25,6 +25,11 @@ export const assetCategoryRepository = {
     return prisma.assetCategory.update({ where: { id }, data });
   },
 
+  /** How many live assets still point at this category — a delete guard. */
+  countAssets(categoryId: string) {
+    return prisma.fixedAsset.count({ where: { categoryId, deletedAt: null } });
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.assetCategory.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

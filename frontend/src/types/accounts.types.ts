@@ -197,6 +197,33 @@ export interface CustomerProfitLine {
 }
 
 export interface AccountsDashboardSummary {
+  // Finance-wide position (spec §3). Sourced from the Balance Sheet and the
+  // Loans & EMI dashboard so these figures always match those screens.
+  cashAvailable: number;
+  bankAvailable: number;
+  totalAssets: number;
+  totalLiabilities: number;
+  ownerCapital: number;
+  ownerLoan: number;
+  loanOutstanding: number;
+  pendingEmiCount: number;
+  overdueEmiCount: number;
+  overdueEmiAmount: number;
+  thisMonthEmi: number;
+  nextEmiDate: string | null;
+  nextEmiAmount: number | null;
+  upcomingEmis: {
+    id: string;
+    loanId: string;
+    dueDate: string;
+    installmentNo: number;
+    vehicle: string | null;
+    loanNumber: string;
+    loanName: string;
+    lenderName: string;
+    emiAmount: number;
+    status: string;
+  }[];
   outstandingReceivables: number;
   outstandingPayables: number;
   monthlyRevenue: number;
@@ -214,6 +241,16 @@ export interface AccountsDashboardSummary {
   supplierOutstanding: { supplierId: string; supplierName: string; outstanding: number }[];
   recentPayments: { id: string; paymentNumber: string; supplier: string; amount: number; paymentDate: string }[];
   recentReceipts: { id: string; receiptNumber: string; company: string; amount: number; receiptDate: string }[];
+}
+
+/**
+ * Dashboard trend series (spec §3). There is deliberately no cash/bank
+ * movement series — balances are a single running figure with no dated
+ * transaction ledger behind them, so history cannot be reconstructed.
+ */
+export interface AccountsDashboardTrends {
+  monthlyPerformance: { month: string; label: string; revenue: number; expenses: number; profit: number }[];
+  upcomingEmiByMonth: { month: string; label: string; emiAmount: number; principal: number; interest: number; count: number }[];
 }
 
 export interface CreditControl {

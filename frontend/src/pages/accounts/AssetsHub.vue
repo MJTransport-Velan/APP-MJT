@@ -2,9 +2,9 @@
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
       <div>
-        <h2 class="text-h6 mb-1">Assets & FastTag</h2>
+        <h2 class="text-h6 mb-1">Assets</h2>
         <p class="text-caption text-medium-emphasis mb-0">
-          The fixed asset register, its categories and dashboard, plus FastTag
+          What the business owns — the fixed asset register, its categories and dashboard
         </p>
       </div>
       <HubSearch v-model="search" placeholder="Search asset pages..." />
@@ -47,7 +47,8 @@ const cards = [
     description: "Asset count, fleet value, value by category and top expense vehicles",
     to: "/accounts/asset-dashboard",
   },
-  // { icon: 'mdi-credit-card-wireless-outline', title: 'FastTag', description: 'Prepaid FastTag accounts — recharge and toll usage tracking', to: '/accounts/fasttag' },
+  // FASTag is its own Finance module now (spec §14) — it is a prepaid
+  // wallet, not something the asset register should account for.
 ];
 
 const filteredCards = computed(() => {

@@ -109,9 +109,10 @@ export const moduleRegistry: ModuleDef[] = [
       // transfer/expense/advance/refund/loan/settlement), first in the list
       // on purpose. Everything below still works exactly as before; this
       // is what a non-accountant should reach for first.
-      { title: 'Financial Entry', icon: 'mdi-cash-fast', to: '/accounts/financial-entry' },
-      { title: 'Capital Account', icon: 'mdi-account-cash-outline', to: '/accounts/capital-account' },
-      { title: 'Accounts Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounts/dashboard' },
+      { title: 'Financial Entries', icon: 'mdi-cash-fast', to: '/accounts/financial-entry' },
+      { title: 'Loans & EMI', icon: 'mdi-bank-outline', to: '/accounts/loans' },
+      { title: 'Capital & Owner Funds', icon: 'mdi-wallet-outline', to: '/accounts/capital-account' },
+      { title: 'Finance Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounts/dashboard' },
       // Transactions
       { title: 'Customer Invoices & Receipts', icon: 'mdi-receipt-text-outline', to: '/accounts/invoices' },
       { title: 'Supplier Bills & Payments', icon: 'mdi-file-document-outline', to: '/accounts/supplier-bills' },

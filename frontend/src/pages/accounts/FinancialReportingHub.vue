@@ -2,7 +2,7 @@
   <div>
     <div class="d-flex flex-wrap align-center justify-space-between mb-4 ga-2">
       <div>
-        <h2 class="text-h6 mb-1">Financial Reporting & Closing</h2>
+        <h2 class="text-h6 mb-1">Balance Sheet &amp; Reports</h2>
         <p class="text-caption text-medium-emphasis mb-0">Trip P&L, profitability, operational reports, MIS dashboard and audit trail</p>
       </div>
       <HubSearch v-model="search" placeholder="Search reporting pages..." />

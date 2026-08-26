@@ -127,6 +127,15 @@ const ACCOUNTS_PERMISSIONS = [
   { name: 'capital_transaction.view', description: 'View Capital Account transactions (partner contributions/withdrawals)' },
   { name: 'capital_transaction.create', description: 'Record a Capital Contribution or Withdrawal' },
   { name: 'capital_transaction.delete', description: 'Delete a Capital Transaction' },
+  // Loans & EMI — one module covering Vehicle/Bank/Business/Owner/Other
+  // loans. Paying an EMI is its own permission because it moves real money
+  // out of a bank account, unlike editing a loan's descriptive fields.
+  { name: 'loan.view', description: 'View Loans & EMI schedules' },
+  { name: 'loan.create', description: 'Create a Loan (generates its EMI schedule)' },
+  { name: 'loan.edit', description: 'Edit a Loan / close or foreclose it' },
+  { name: 'loan.delete', description: 'Delete a Loan that has no paid EMI' },
+  { name: 'loan_emi.pay', description: 'Pay a Loan EMI installment' },
+  { name: 'loan_emi.reverse', description: 'Reverse a paid Loan EMI installment' },
 ];
 
 // Phase 7 — Accounting Foundation. Reduced to just Organization (the legal
@@ -780,6 +789,7 @@ async function main() {
       'collectionActivity.view', 'collectionActivity.create',
       'tripFinancial.view', 'accounts.dashboard',
       'capital_transaction.view', 'capital_transaction.create',
+      'loan.view', 'loan_emi.pay',
     ];
     const executivePermissions = await prisma.permission.findMany({
       where: { name: { in: executivePermissionNames } },

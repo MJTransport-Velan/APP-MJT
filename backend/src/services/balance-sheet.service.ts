@@ -173,23 +173,62 @@ async function driverPayable(cutoff: Date): Promise<{ rows: NamedAmountRow[]; to
   return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)) };
 }
 
-/** Partner-wise SUM(CONTRIBUTION) − SUM(WITHDRAWAL) as of cutoff — a liability (what the business owes its own partners). */
-async function capitalAccountBreakdown(cutoff: Date): Promise<{ rows: NamedAmountRow[]; total: number }> {
+/**
+ * Owner money, split into the two things it actually is (spec §9–§12):
+ * CONTRIBUTION/WITHDRAWAL is EQUITY the owner permanently holds, while
+ * OWNER_LOAN_* is a LIABILITY the business owes back. They are summed
+ * separately here so no caller can accidentally add them together.
+ *
+ * contributed/withdrawn are also returned gross, because the Equity section
+ * shows Owner Capital and Drawings as two lines, not one net figure.
+ */
+async function ownerFundsBreakdown(cutoff: Date): Promise<{
+  capitalRows: NamedAmountRow[];
+  contributed: number;
+  withdrawn: number;
+  capitalTotal: number;
+  ownerLoanRows: NamedAmountRow[];
+  ownerLoanTotal: number;
+}> {
   const transactions = await prisma.capitalTransaction.findMany({
     where: { deletedAt: null, transactionDate: { lte: cutoff } },
     select: { partnerId: true, type: true, amount: true, partner: { select: { name: true } } },
   });
-  const net = new Map<string, { name: string; amount: number }>();
+
+  const capitalNet = new Map<string, { name: string; amount: number }>();
+  const loanNet = new Map<string, { name: string; amount: number }>();
+  let contributed = 0;
+  let withdrawn = 0;
+
   for (const t of transactions) {
-    const delta = t.type === 'CONTRIBUTION' ? Number(t.amount) : -Number(t.amount);
-    const existing = net.get(t.partnerId);
-    net.set(t.partnerId, { name: t.partner.name, amount: (existing?.amount ?? 0) + delta });
+    const amount = Number(t.amount);
+    const isCapital = t.type === 'CONTRIBUTION' || t.type === 'WITHDRAWAL';
+    const isInbound = t.type === 'CONTRIBUTION' || t.type === 'OWNER_LOAN_RECEIVED';
+    const target = isCapital ? capitalNet : loanNet;
+    const existing = target.get(t.partnerId);
+    target.set(t.partnerId, { name: t.partner.name, amount: (existing?.amount ?? 0) + (isInbound ? amount : -amount) });
+
+    if (t.type === 'CONTRIBUTION') contributed += amount;
+    if (t.type === 'WITHDRAWAL') withdrawn += amount;
   }
-  const rows = Array.from(net.entries())
-    .map(([id, v]) => ({ id, name: v.name, amount: round2(v.amount) }))
-    .filter((r) => Math.abs(r.amount) > EPS)
-    .sort((a, b) => b.amount - a.amount);
-  return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)) };
+
+  const toRows = (m: Map<string, { name: string; amount: number }>) =>
+    Array.from(m.entries())
+      .map(([id, v]) => ({ id, name: v.name, amount: round2(v.amount) }))
+      .filter((r) => Math.abs(r.amount) > EPS)
+      .sort((a, b) => b.amount - a.amount);
+
+  const capitalRows = toRows(capitalNet);
+  const ownerLoanRows = toRows(loanNet);
+
+  return {
+    capitalRows,
+    contributed: round2(contributed),
+    withdrawn: round2(withdrawn),
+    capitalTotal: round2(capitalRows.reduce((s, r) => s + r.amount, 0)),
+    ownerLoanRows,
+    ownerLoanTotal: round2(ownerLoanRows.reduce((s, r) => s + r.amount, 0)),
+  };
 }
 
 interface FixedAssetRow extends NamedAmountRow {
@@ -220,11 +259,56 @@ async function fixedAssetsBreakdown(cutoff: Date): Promise<{ rows: FixedAssetRow
   };
 }
 
+interface LoanRow extends NamedAmountRow {
+  lenderName: string;
+  loanType: string;
+  linkedTo: string | null;
+}
+
+/**
+ * Money the company BORROWED — outstanding principal as of cutoff, exact
+ * because LoanInstallment.paidDate is a real timestamp. Covers every loan
+ * type; the Owner Loan slice is what keeps owner money out of Equity
+ * (spec §12).
+ */
+async function loansBreakdown(cutoff: Date): Promise<{ rows: LoanRow[]; total: number; byType: Record<string, number> }> {
+  const loans = await prisma.loan.findMany({
+    where: { deletedAt: null, status: { not: 'FORECLOSED' }, loanStartDate: { lte: cutoff } },
+    include: {
+      installments: true,
+      vehicle: { select: { registrationNumber: true } },
+      capitalPartner: { select: { name: true } },
+    },
+  });
+
+  const rows: LoanRow[] = loans
+    .map((loan) => {
+      const paidPrincipal = loan.installments
+        .filter((i) => i.status === 'PAID' && i.paidDate && i.paidDate <= cutoff)
+        .reduce((s, i) => s + Number(i.principalComponent), 0);
+      return {
+        id: loan.id,
+        name: `${loan.loanNumber} — ${loan.loanName}`,
+        lenderName: loan.lenderName,
+        loanType: loan.loanType,
+        linkedTo: loan.vehicle?.registrationNumber ?? loan.capitalPartner?.name ?? null,
+        amount: round2(Math.max(Number(loan.principalAmount) - paidPrincipal, 0)),
+      };
+    })
+    .filter((r) => r.amount > EPS)
+    .sort((a, b) => b.amount - a.amount);
+
+  const byType: Record<string, number> = {};
+  for (const r of rows) byType[r.loanType] = round2((byType[r.loanType] || 0) + r.amount);
+
+  return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)), byType };
+}
+
 export const balanceSheetService = {
   async get(asOfDateInput?: string) {
     const { dateStr, cutoff, isToday } = resolveAsOf(asOfDateInput);
 
-    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, capitalAccount] = await Promise.all([
+    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, ownerFunds, loans] = await Promise.all([
       financialStateService.bankAndCashState(undefined),
       customerBreakdown(cutoff),
       supplierBreakdown(cutoff),
@@ -232,7 +316,8 @@ export const balanceSheetService = {
       employeeAdvancesRecoverable(cutoff),
       fixedAssetsBreakdown(cutoff),
       driverPayable(cutoff),
-      capitalAccountBreakdown(cutoff),
+      ownerFundsBreakdown(cutoff),
+      loansBreakdown(cutoff),
     ]);
 
     const customerReceivable = customerRows.filter((r) => r.net > EPS);
@@ -252,48 +337,95 @@ export const balanceSheetService = {
     const advancesRecoverable = round2(totalSupplierAdvance + driverAdv.total + employeeAdv.total);
     const bankAndCash = round2(bankCash.totalBankBalance + bankCash.totalCashBalance);
 
+    // ------------------------------------------------------------ ASSETS
+    // Split Fixed vs Current the way the report is actually read (spec §19),
+    // rather than as one flat list.
+    const fixedAssetsGroup = {
+      vehicles: fixedAssets.vehicleTotal,
+      equipmentAndOther: fixedAssets.otherTotal,
+      total: fixedAssets.total,
+    };
+    const currentAssetsGroup = {
+      cash: round2(bankCash.totalCashBalance),
+      bank: round2(bankCash.totalBankBalance),
+      receivables: totalCustomerReceivable,
+      advances: advancesRecoverable,
+      total: round2(bankAndCash + totalCustomerReceivable + advancesRecoverable),
+    };
     const assets = {
-      bankAndCash,
-      customerReceivables: totalCustomerReceivable,
-      advancesRecoverable,
-      fixedAssets: fixedAssets.total,
+      fixedAssets: fixedAssetsGroup,
+      currentAssets: currentAssetsGroup,
       otherAssets: 0,
     };
-    const totalAssets = round2(assets.bankAndCash + assets.customerReceivables + assets.advancesRecoverable + assets.fixedAssets + assets.otherAssets);
+    const totalAssets = round2(fixedAssetsGroup.total + currentAssetsGroup.total + assets.otherAssets);
 
+    // ------------------------------------------------------- LIABILITIES
     // Employee salary has no accrued-unpaid liability concept in this system
     // — a Financial Entry with purpose=SALARY pays and marks the month paid
     // in one atomic step (financial-entry.service.ts
     // delegateToEmployeeSalaryPayment), so this bucket is driver-only now.
     const driverEmployeePayables = round2(driverPay.total);
+
+    // Owner loans arrive from two places and both are real, separate debts:
+    // a formal Loan with an EMI schedule (Loans & EMI), and informal money
+    // recorded on Capital & Owner Funds. Adding them is not double counting
+    // — they are different rows — and the breakdown lists both.
+    const ownerLoansTotal = round2((loans.byType.OWNER_LOAN || 0) + ownerFunds.ownerLoanTotal);
+
     const liabilities = {
-      capitalAccount: capitalAccount.total,
+      vehicleLoans: loans.byType.VEHICLE_LOAN || 0,
+      bankLoans: round2((loans.byType.BANK_LOAN || 0) + (loans.byType.BUSINESS_LOAN || 0)),
+      ownerLoans: ownerLoansTotal,
+      otherLoans: loans.byType.OTHER_LOAN || 0,
       supplierPayables: totalSupplierPayable,
-      driverEmployeePayables,
+      employeePayables: driverEmployeePayables,
       customerAdvances: totalCustomerAdvance,
+      // No statutory/tax accrual is tracked anywhere in this app — GST/TDS
+      // filing was removed along with the ledger engine. Reported as 0
+      // rather than omitted, so the section keeps the spec's shape.
+      taxPayables: 0,
       otherLiabilities: 0,
     };
     const totalLiabilities = round2(
-      liabilities.capitalAccount +
+      liabilities.vehicleLoans +
+        liabilities.bankLoans +
+        liabilities.ownerLoans +
+        liabilities.otherLoans +
         liabilities.supplierPayables +
-        liabilities.driverEmployeePayables +
+        liabilities.employeePayables +
         liabilities.customerAdvances +
+        liabilities.taxPayables +
         liabilities.otherLiabilities
     );
 
-    const netPosition = round2(totalAssets - totalLiabilities);
-    // Assets = Liabilities + Net Position always holds by construction here
-    // (Net Position is the plug) — this system has no independent
-    // capital/ledger figure to cross-check against without introducing the
-    // Chart-of-Accounts concept this feature is explicitly forbidden from
-    // adding. The check below guards against a future coding bug rather
-    // than a genuine trial-balance mismatch.
-    const difference = round2(totalAssets - (totalLiabilities + netPosition));
+    // ------------------------------------------------------------ EQUITY
+    // Owner Capital and Drawings come straight from CapitalTransaction — the
+    // whole point of Phase 2 is that owner money lands here as equity only
+    // when it genuinely is equity, with owner loans sitting in LIABILITIES
+    // above instead.
+    //
+    // Retained Profit is the balancing figure: this app keeps no cumulative
+    // retained-earnings record (P&L reports one period at a time), so it is
+    // derived as whatever makes Assets = Liabilities + Equity hold. That is
+    // stated in `limitations` rather than passed off as an independently
+    // computed number.
+    const ownerCapital = ownerFunds.contributed;
+    const drawings = ownerFunds.withdrawn;
+    const retainedProfit = round2(totalAssets - totalLiabilities - ownerCapital + drawings);
+
+    const equity = { ownerCapital, retainedProfit, drawings };
+    const totalEquity = round2(equity.ownerCapital + equity.retainedProfit - equity.drawings);
+
+    // Holds by construction (Retained Profit is the plug); this guards
+    // against a future coding bug, not a genuine trial-balance mismatch.
+    const difference = round2(totalAssets - (totalLiabilities + totalEquity));
 
     const limitations = [
       'Bank & Cash always reflects the current balance — this system keeps a single running balance per account with no dated transaction ledger, so a true historical balance for a past date cannot be reconstructed.',
       "Fixed Asset values reflect today's depreciated book value, not a value recomputed for the selected date.",
       'Driver/Employee Advance settlement has no settlement timestamp in this system — a past-date view approximates using the record\'s creation date.',
+      'Retained Profit is derived as Assets − Liabilities − Owner Capital + Drawings. This app keeps no cumulative retained-earnings figure (Profit & Loss reports one period at a time), so it balances the sheet by construction rather than being independently computed.',
+      'Tax / Statutory Payables always reads 0 — no GST/TDS accrual is tracked in this system.',
     ];
 
     return {
@@ -302,13 +434,14 @@ export const balanceSheetService = {
       generatedAt: new Date().toISOString(),
       assets,
       liabilities,
+      equity,
       totalAssets,
       totalLiabilities,
-      netPosition,
+      totalEquity,
       reconciliation: {
         reconciled: Math.abs(difference) < 0.01,
         difference,
-        equation: 'Assets = Liabilities + Net Position',
+        equation: 'Assets = Liabilities + Equity',
       },
       breakdown: {
         bankAccounts: bankCash.bankAccounts,
@@ -324,7 +457,9 @@ export const balanceSheetService = {
         fixedAssets: fixedAssets.rows,
         fixedAssetsVehicleTotal: fixedAssets.vehicleTotal,
         fixedAssetsOtherTotal: fixedAssets.otherTotal,
-        capitalAccount: capitalAccount.rows,
+        loans: loans.rows,
+        ownerLoans: ownerFunds.ownerLoanRows,
+        capitalAccount: ownerFunds.capitalRows,
       },
       limitations,
     };

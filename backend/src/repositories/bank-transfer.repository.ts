@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
+import { nextDocumentNumber, highestSequenceToday } from '../utils/documentNumber.util';
 
 const detailInclude = {
   paymentMode: { select: { id: true, code: true, name: true } },
@@ -30,10 +31,19 @@ export const bankTransferRepository = {
     return prisma.bankTransfer.findFirst({ where: { id, deletedAt: null }, include: detailInclude });
   },
 
-  async nextTransferNumber(organizationId: string) {
-    const count = await prisma.bankTransfer.count({ where: { organizationId } });
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    return `TRF-${datePart}-${String(count + 1).padStart(4, '0')}`;
+  /**
+   * Issued from the shared DocumentCounter sequence rather than count()+1,
+   * which races (two simultaneous transfers mint the same number and one
+   * user gets an unexplained "already exists") — see documentNumber.util.ts.
+   */
+  async nextTransferNumber(_organizationId: string) {
+    return nextDocumentNumber('TRF', 4, async (stamp) => {
+      const rows = await prisma.bankTransfer.findMany({
+        where: { transferNumber: { startsWith: `TRF-${stamp}-` } },
+        select: { transferNumber: true },
+      });
+      return highestSequenceToday(rows, 'transferNumber', 'TRF', stamp);
+    });
   },
 
   create(data: Prisma.BankTransferUncheckedCreateInput) {

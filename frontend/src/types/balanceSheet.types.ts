@@ -18,20 +18,49 @@ export interface FixedAssetRow extends NamedAmountRow {
   category: 'Vehicle' | 'Other';
 }
 
+export interface LoanRow extends NamedAmountRow {
+  lenderName: string;
+  loanType: string;
+  linkedTo: string | null;
+}
+
+export interface BalanceSheetFixedAssets {
+  vehicles: number;
+  equipmentAndOther: number;
+  total: number;
+}
+
+export interface BalanceSheetCurrentAssets {
+  cash: number;
+  bank: number;
+  receivables: number;
+  advances: number;
+  total: number;
+}
+
 export interface BalanceSheetAssets {
-  bankAndCash: number;
-  customerReceivables: number;
-  advancesRecoverable: number;
-  fixedAssets: number;
+  fixedAssets: BalanceSheetFixedAssets;
+  currentAssets: BalanceSheetCurrentAssets;
   otherAssets: number;
 }
 
 export interface BalanceSheetLiabilities {
-  capitalAccount: number;
+  vehicleLoans: number;
+  bankLoans: number;
+  ownerLoans: number;
+  otherLoans: number;
   supplierPayables: number;
-  driverEmployeePayables: number;
+  employeePayables: number;
   customerAdvances: number;
+  taxPayables: number;
   otherLiabilities: number;
+}
+
+/** Drawings reduce equity, so totalEquity = ownerCapital + retainedProfit − drawings. */
+export interface BalanceSheetEquity {
+  ownerCapital: number;
+  retainedProfit: number;
+  drawings: number;
 }
 
 export interface BalanceSheetBreakdown {
@@ -48,6 +77,9 @@ export interface BalanceSheetBreakdown {
   fixedAssets: FixedAssetRow[];
   fixedAssetsVehicleTotal: number;
   fixedAssetsOtherTotal: number;
+  loans: LoanRow[];
+  /** Informal owner loans recorded on Capital & Owner Funds (no EMI schedule). */
+  ownerLoans: NamedAmountRow[];
   capitalAccount: NamedAmountRow[];
 }
 
@@ -57,9 +89,10 @@ export interface BalanceSheetResult {
   generatedAt: string;
   assets: BalanceSheetAssets;
   liabilities: BalanceSheetLiabilities;
+  equity: BalanceSheetEquity;
   totalAssets: number;
   totalLiabilities: number;
-  netPosition: number;
+  totalEquity: number;
   reconciliation: {
     reconciled: boolean;
     difference: number;

@@ -411,6 +411,9 @@ model Vehicle {
   fixedAsset          FixedAsset?
   fastTagTransactions FastTagTransaction[]
 
+  // Phase 17 — Loans & EMI.
+  loans Loan[]
+
   // Phase 15 — Business Financial Entry.
   financialEntries FinancialEntry[]
 
@@ -556,6 +559,7 @@ model PaymentMode {
   employeeAdvances EmployeeAdvance[]
   financialEntries FinancialEntry[]
   fuelEntries      FuelEntry[]
+  loanInstallments LoanInstallment[]
 
   @@map("payment_modes")
 }
@@ -2003,13 +2007,21 @@ model CapitalPartner {
   updatedAt   DateTime  @updatedAt
 
   transactions CapitalTransaction[]
+  loans        Loan[]
 
   @@map("capital_partners")
 }
 
+// Owner money splits two ways and the split is the whole point (spec §9):
+// a CONTRIBUTION/WITHDRAWAL is permanent owner EQUITY, while an
+// OWNER_LOAN_RECEIVED/REPAYMENT is a LIABILITY the business owes back.
+// Mixing them overstates equity and hides real debt, so they are distinct
+// types on one table rather than one "capital" bucket.
 enum CapitalTransactionType {
   CONTRIBUTION
   WITHDRAWAL
+  OWNER_LOAN_RECEIVED
+  OWNER_LOAN_REPAYMENT
 }
 
 model CapitalTransaction {
@@ -2637,8 +2649,125 @@ model FixedAsset {
   supplier   Supplier?     @relation(fields: [supplierId], references: [id])
   department Department?   @relation(fields: [departmentId], references: [id])
 
+  loans Loan[]
+
   @@index([categoryId])
   @@map("fixed_assets")
+}
+
+// ===========================================================
+// PHASE 17 — LOANS & EMI
+// ===========================================================
+// One generic Loan covers all five business cases (Vehicle / Bank /
+// Business / Owner / Other) rather than a table per type — they differ
+// only in which master they point at, never in their EMI mechanics.
+// Supersedes the vehicle-only VehicleLoan model removed earlier.
+//
+// No balance is stored: outstanding principal is always
+// principalAmount − SUM(paid installments' principalComponent), computed
+// live, exactly like every other "balance" in this app. Taking out a loan
+// does NOT credit a bank account here — for a vehicle loan the lender
+// pays the dealer directly, so only EMI payments move real money.
+
+enum LoanType {
+  VEHICLE_LOAN
+  BANK_LOAN
+  BUSINESS_LOAN
+  OWNER_LOAN
+  OTHER_LOAN
+}
+
+enum LoanStatus {
+  ACTIVE
+  CLOSED
+  FORECLOSED
+}
+
+enum LoanInstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+model Loan {
+  id                  String     @id @default(uuid())
+  loanNumber          String     @unique
+  loanName            String
+  lenderName          String
+  loanType            LoanType
+  // VEHICLE_LOAN must set vehicleId; OWNER_LOAN must set capitalPartnerId.
+  // Both are enforced in loan.validator.ts, not by the DB, since one
+  // nullable column cannot express "required for exactly one enum value".
+  vehicleId           String?
+  fixedAssetId        String?
+  capitalPartnerId    String?
+  loanStartDate       DateTime
+  principalAmount     Decimal    @db.Decimal(14, 2)
+  interestRatePercent Decimal    @default(0) @db.Decimal(5, 2)
+  tenureMonths        Int
+  emiAmount           Decimal    @db.Decimal(14, 2)
+  firstEmiDate        DateTime
+  // The account EMIs are paid FROM by default; each payment may override it.
+  fundAccountType     FundAccountType
+  fundAccountId       String
+  loanAccountRef      String?
+  status              LoanStatus @default(ACTIVE)
+  remarks             String?
+  organizationId      String?
+  isActive            Boolean    @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  vehicle        Vehicle?        @relation(fields: [vehicleId], references: [id])
+  fixedAsset     FixedAsset?     @relation(fields: [fixedAssetId], references: [id])
+  capitalPartner CapitalPartner? @relation(fields: [capitalPartnerId], references: [id])
+
+  installments LoanInstallment[]
+
+  @@index([loanType])
+  @@index([vehicleId])
+  @@index([status])
+  @@map("loans")
+}
+
+// Generated up-front from the reducing-balance schedule when the loan is
+// created (loanSchedule.util.ts). Paying one is the ONLY thing that moves
+// money: it debits the fund account, and writes a FinancialEntry so the
+// payment shows up in Financial Entries without the user entering it twice.
+model LoanInstallment {
+  id                 String                @id @default(uuid())
+  loanId             String
+  installmentNo      Int
+  dueDate            DateTime
+  emiAmount          Decimal               @db.Decimal(14, 2)
+  principalComponent Decimal               @db.Decimal(14, 2)
+  interestComponent  Decimal               @db.Decimal(14, 2)
+  status             LoanInstallmentStatus @default(PENDING)
+  paidDate           DateTime?
+  paidAmount         Decimal?              @db.Decimal(14, 2)
+  fundAccountType    FundAccountType?
+  fundAccountId      String?
+  paymentModeId      String?
+  referenceNumber    String?
+  remarks            String?
+  financialEntryId   String?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  loan        Loan         @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paymentMode PaymentMode? @relation(fields: [paymentModeId], references: [id])
+
+  @@unique([loanId, installmentNo])
+  @@index([loanId])
+  @@index([dueDate])
+  @@index([status])
+  @@map("loan_installments")
 }
 
 enum FastTagTransactionType {

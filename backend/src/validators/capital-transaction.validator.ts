@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 const fundAccountTypeEnum = z.enum(['BANK', 'CASH']);
-const capitalTransactionTypeEnum = z.enum(['CONTRIBUTION', 'WITHDRAWAL']);
+// CONTRIBUTION/WITHDRAWAL move owner EQUITY; OWNER_LOAN_* move an owner
+// LIABILITY the business owes back. Keeping them apart is the point of the
+// Capital & Owner Funds screen (spec §9–§12).
+const capitalTransactionTypeEnum = z.enum(['CONTRIBUTION', 'WITHDRAWAL', 'OWNER_LOAN_RECEIVED', 'OWNER_LOAN_REPAYMENT']);
 
 export const listCapitalTransactionsSchema = z.object({
   body: z.object({}).optional(),

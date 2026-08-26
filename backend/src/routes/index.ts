@@ -69,6 +69,7 @@ import salaryPaymentQuoteRoutes from './salary-payment-quote.routes';
 import payrollDashboardRoutes from './payroll-dashboard.routes';
 import assetCategoryRoutes from './asset-category.routes';
 import fixedAssetRoutes from './fixed-asset.routes';
+import loanRoutes from './loan.routes';
 import fastTagRoutes from './fasttag.routes';
 import profitabilityReportRoutes from './profitability-report.routes';
 import outstandingReportRoutes from './outstanding-report.routes';
@@ -210,6 +211,11 @@ router.use('/accounts/payroll/dashboard', payrollDashboardRoutes);
 router.use('/accounts/assets/categories', assetCategoryRoutes);
 router.use('/accounts/assets', fixedAssetRoutes);
 router.use('/accounts/fasttag-accounts', fastTagRoutes);
+
+// Loans & EMI — Vehicle / Bank / Business / Owner / Other loans, their
+// generated EMI schedules, and the payment flow that debits the fund
+// account and writes the matching Financial Entry automatically.
+router.use('/accounts/loans', loanRoutes);
 
 // Business Reporting — every report here reads directly from business
 // entities (Trip/Invoice/SupplierBill/VehicleExpense/DriverAdvance/...),

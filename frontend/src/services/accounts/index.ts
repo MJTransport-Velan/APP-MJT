@@ -10,6 +10,7 @@ import type {
   SupplierProfitLine,
   CustomerProfitLine,
   AccountsDashboardSummary,
+  AccountsDashboardTrends,
   CreditControl,
   CollectionActivity,
   PaginationMeta,
@@ -131,6 +132,9 @@ export const tripFinancialApi = {
 export const accountsDashboardApi = {
   getSummary() {
     return api.get<ApiResponse<AccountsDashboardSummary>>('/accounts/dashboard');
+  },
+  getTrends(params: { monthsBack?: number; monthsAhead?: number } = {}) {
+    return api.get<ApiResponse<AccountsDashboardTrends>>('/accounts/dashboard/trends', { params });
   },
 };
 

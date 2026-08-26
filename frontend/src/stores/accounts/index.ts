@@ -19,6 +19,7 @@ import type {
   CustomerProfitLine,
   TripFinancialLine,
   AccountsDashboardSummary,
+  AccountsDashboardTrends,
   CreditControl,
   CollectionActivity,
   PaginationMeta,
@@ -236,6 +237,7 @@ export const useTripFinancialStore = defineStore('acctsTripFinancials', {
 export const useAccountsDashboardStore = defineStore('acctsDashboard', {
   state: () => ({
     summary: null as AccountsDashboardSummary | null,
+    trends: null as AccountsDashboardTrends | null,
     loading: false,
   }),
   actions: {
@@ -247,6 +249,15 @@ export const useAccountsDashboardStore = defineStore('acctsDashboard', {
       } finally {
         this.loading = false;
       }
+    },
+    /**
+     * Loaded separately from the summary: the trend series runs a
+     * per-month Profit & Loss and is noticeably slower, so it must not
+     * hold up the cards at the top of the page.
+     */
+    async fetchTrends() {
+      const response = await accountsDashboardApi.getTrends();
+      this.trends = response.data.data;
     },
   },
 });
