@@ -4,9 +4,11 @@
   "description": "MJ Transport ERP Backend API",
   "main": "dist/server.js",
   "scripts": {
+    "predev": "prisma generate",
     "dev": "nodemon --watch src --exec ts-node src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "seed": "ts-node prisma/seed.ts",
