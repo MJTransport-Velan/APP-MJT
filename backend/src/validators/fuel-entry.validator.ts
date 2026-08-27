@@ -64,6 +64,9 @@ export const updateFuelEntrySchema = z.object({
   params: z.object({ id: z.string().uuid('Invalid fuel entry id') }),
   body: z.object({
     fuelType: fuelTypeEnum.optional(),
+    // Editable because it decides whether the fill draws on the shared
+    // diesel card account, and which card it is attributed to.
+    fuelCardId: z.string().uuid().nullable().optional(),
     billingMethod: billingMethodEnum.optional(),
     location: z.string().optional(),
     tripId: z.string().uuid().optional(),

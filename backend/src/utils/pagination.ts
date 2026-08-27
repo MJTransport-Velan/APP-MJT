@@ -15,7 +15,14 @@ export interface PaginationMeta {
 }
 
 const DEFAULT_PAGE_SIZE = 10;
-const MAX_PAGE_SIZE = 100;
+/**
+ * Dropdown/option loaders across the app fetch a whole master in one shot
+ * (`pageSize: 200`, and 5000 for the client-side-filtered trip/booking/intent
+ * lists). A cap of 100 silently truncated every one of them — e.g. only 100 of
+ * the 134 suppliers ever reached the supplier dropdowns — so the ceiling has to
+ * clear the largest deliberate full-load, not the largest comfortable table page.
+ */
+const MAX_PAGE_SIZE = 5000;
 
 export function parsePagination(query: Request['query']): PaginationParams {
   const rawPage = parseInt((query.page as string) || '1', 10);

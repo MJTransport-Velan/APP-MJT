@@ -284,6 +284,14 @@ export const loanService = {
     return loanService.getById(loan.id);
   },
 
+  /**
+   * Edits a loan. The money terms are normally frozen — they define the
+   * generated schedule — but an OPENING loan's figures are a migration
+   * entry rather than a contract this system issued, so a mistyped
+   * outstanding / rate / tenure can be corrected here and the remaining
+   * schedule regenerated. Once an EMI has been paid against it the
+   * schedule carries real history, so it is frozen like any other loan.
+   */
   async update(id: string, input: UpdateLoanInput, actorId: string) {
     const existing = await loanRepository.findByIdBasic(id);
     if (!existing) throw new AppError('Loan not found', 404);
@@ -298,8 +306,93 @@ export const loanService = {
       if (!account.isActive) throw new AppError('The selected payment account is inactive', 409);
     }
 
-    await loanRepository.update(id, { ...input, updatedById: actorId });
-    await auditService.record({ userId: actorId, action: 'UPDATE', entityType: 'Loan', entityId: id, description: `Updated loan ${existing.loanNumber}` });
+    const rescheduling =
+      input.principalAmount !== undefined ||
+      input.interestRatePercent !== undefined ||
+      input.tenureMonths !== undefined ||
+      input.emiAmount !== undefined ||
+      input.firstEmiDate !== undefined;
+
+    let schedule: ReturnType<typeof generateLoanSchedule> | null = null;
+    let emiAmount = input.emiAmount;
+
+    if (rescheduling) {
+      if (existing.origin !== 'OPENING') {
+        throw new AppError(
+          'The money terms of a loan taken out through this system cannot be changed — they define its EMI schedule. Delete the loan and re-create it instead.',
+          409
+        );
+      }
+      const paidCount = await loanRepository.countPaidInstallments(id);
+      if (paidCount > 0) {
+        throw new AppError(
+          `This loan has ${paidCount} paid EMI ${paidCount === 1 ? 'installment' : 'installments'} — reverse them before correcting its opening figures.`,
+          409
+        );
+      }
+
+      const principalAmount = input.principalAmount ?? Number(existing.principalAmount);
+      const interestRatePercent = input.interestRatePercent ?? Number(existing.interestRatePercent);
+      const tenureMonths = input.tenureMonths ?? existing.tenureMonths;
+      emiAmount = input.emiAmount ?? calculateEmi(principalAmount, interestRatePercent, tenureMonths);
+
+      const firstInterest = round2((principalAmount * interestRatePercent) / 12 / 100);
+      if (emiAmount <= firstInterest) {
+        throw new AppError(
+          `An EMI of ${emiAmount} never repays this loan — the first month's interest alone is ${firstInterest}. Raise the EMI or lower the rate.`,
+          422
+        );
+      }
+
+      const firstEmiDate = input.firstEmiDate ? toDateOnly(input.firstEmiDate) : existing.firstEmiDate;
+      schedule = generateLoanSchedule(principalAmount, interestRatePercent, tenureMonths, emiAmount, firstEmiDate);
+    }
+
+    const principalAmount = input.principalAmount ?? Number(existing.principalAmount);
+    const originalPrincipal =
+      input.originalPrincipal ?? (existing.originalPrincipal === null ? null : Number(existing.originalPrincipal));
+    if (existing.origin === 'OPENING' && originalPrincipal !== null && originalPrincipal < principalAmount) {
+      throw new AppError(
+        `The outstanding amount (${principalAmount}) cannot be more than the original loan amount (${originalPrincipal}).`,
+        422
+      );
+    }
+
+    const { loanStartDate, firstEmiDate, openingAsOfDate, ...rest } = input;
+    await loanRepository.update(id, {
+      ...rest,
+      emiAmount,
+      loanStartDate: loanStartDate ? toDateOnly(loanStartDate) : undefined,
+      firstEmiDate: firstEmiDate ? toDateOnly(firstEmiDate) : undefined,
+      openingAsOfDate: openingAsOfDate ? toDateOnly(openingAsOfDate) : undefined,
+      updatedById: actorId,
+    });
+
+    if (schedule) {
+      await loanRepository.replaceSchedule(
+        id,
+        schedule.map((s) => ({
+          loanId: id,
+          installmentNo: s.installmentNo,
+          dueDate: s.dueDate,
+          emiAmount: s.emiAmount,
+          principalComponent: s.principalComponent,
+          interestComponent: s.interestComponent,
+          createdById: actorId,
+          updatedById: actorId,
+        }))
+      );
+    }
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'Loan',
+      entityId: id,
+      description: schedule
+        ? `Corrected opening loan ${existing.loanNumber} — ${principalAmount} still owed over ${schedule.length} remaining EMIs, schedule regenerated`
+        : `Updated loan ${existing.loanNumber}`,
+    });
     return loanService.getById(id);
   },
 

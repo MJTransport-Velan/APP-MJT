@@ -412,6 +412,9 @@ model Vehicle {
   fixedAsset          FixedAsset?
   fastTagTransactions FastTagTransaction[]
 
+  // Dedicated Diesel/Fuel Card module — the shared prepaid card account.
+  fuelCardTransactions FuelCardTransaction[]
+
   // Phase 17 — Loans & EMI.
   loans Loan[]
 
@@ -748,8 +751,9 @@ model FuelCard {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
-  fuelEntries FuelEntry[]
+  vehicle          Vehicle?              @relation(fields: [vehicleId], references: [id])
+  fuelEntries      FuelEntry[]
+  cardTransactions FuelCardTransaction[]
 
   @@index([vehicleId])
   @@map("fuel_cards")
@@ -819,11 +823,86 @@ model FuelEntry {
   advance     DriverAdvance? @relation(fields: [advanceId], references: [id])
 
   financialEntries FinancialEntry[]
+  // The prepaid-account drawdown for a card-billed fill (see below). At most
+  // one per entry — it mirrors this row's amount, it is not a second cost.
+  cardTransaction  FuelCardTransaction?
 
   @@index([vehicleId])
   @@index([tripId])
   @@index([driverId])
   @@map("fuel_entries")
+}
+
+enum FuelCardTransactionType {
+  RECHARGE
+  USAGE
+  REFUND
+  ADJUSTMENT
+}
+
+// A single shared prepaid account behind every diesel/fuel card in the
+// fleet — one recharge tops up one balance and any card draws down from
+// that same balance, exactly like FastTagAccount. The app enforces there
+// is only ever one non-deleted row via
+// fuelCardAccountRepository.getOrCreateAccount(); there is deliberately no
+// per-card balance, because the cards share the money.
+//
+// currentBalance is a cache of the transactions below. Every write path in
+// fuel-card-account.service keeps it in step, and fuel-entry.service does
+// the same for the USAGE rows it owns.
+model FuelCardAccount {
+  id             String    @id @default(uuid())
+  accountRef     String?
+  currentBalance Decimal   @default(0) @db.Decimal(12, 2)
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  transactions FuelCardTransaction[]
+
+  @@map("fuel_card_accounts")
+}
+
+// RECHARGE / REFUND / ADJUSTMENT rows are entered by hand on the Diesel
+// Card screen. USAGE rows are never entered there: they are written by
+// fuel-entry.service whenever a fill is billed to a card, and fuelEntryId
+// ties the two together so editing or deleting that fill keeps the balance
+// in step instead of stranding a drawdown.
+//
+// fundAccountType/fundAccountId record which Bank/Cash account a RECHARGE
+// actually debited, so edit/delete can reverse that debit rather than only
+// touching this account's own currentBalance cache.
+model FuelCardTransaction {
+  id              String                  @id @default(uuid())
+  accountId       String
+  fuelCardId      String?
+  vehicleId       String?
+  fuelEntryId     String?                 @unique
+  type            FuelCardTransactionType
+  amount          Decimal                 @db.Decimal(12, 2)
+  transactionDate DateTime                @default(now())
+  referenceNumber String?
+  remarks         String?
+  fundAccountType String?
+  fundAccountId   String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  account   FuelCardAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  fuelCard  FuelCard?       @relation(fields: [fuelCardId], references: [id])
+  vehicle   Vehicle?        @relation(fields: [vehicleId], references: [id])
+  fuelEntry FuelEntry?      @relation(fields: [fuelEntryId], references: [id])
+
+  @@index([accountId])
+  @@index([fuelCardId])
+  @@index([vehicleId])
+  @@index([transactionDate])
+  @@map("fuel_card_transactions")
 }
 
 model MaintenanceRecord {

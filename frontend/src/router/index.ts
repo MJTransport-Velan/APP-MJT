@@ -155,65 +155,77 @@ const routes: RouteRecordRaw[] = [
             component: () => import('@/pages/operations/OperationsDashboard.vue'),
             meta: { breadcrumb: 'Operations Dashboard' },
           },
-        ],
-      },
-      {
-        // Deliberately unnamed: a named parent whose '' child is a bare
-        // redirect makes vue-router warn on every navigation, because
-        // resolving the parent name cannot render that child. The children
-        // below are all reached by their own names, so the parent never
-        // needed one.
-        path: 'fleet',
-        component: RouterView,
-        meta: { breadcrumb: 'Operations', permission: 'fleet.view' },
-        children: [
-          {
-            path: '',
-            name: 'fleet',
-            redirect: { name: 'operations-hub' },
-          },
           {
             path: 'vehicles',
-            name: 'fleet-vehicles',
+            name: 'operations-vehicles',
             component: () => import('@/pages/fleet/Vehicles.vue'),
-            meta: { breadcrumb: 'Vehicles' },
+            meta: { breadcrumb: 'Vehicles', permission: 'fleet.view' },
           },
           {
             path: 'assignments',
-            name: 'fleet-assignments',
+            name: 'operations-assignments',
             component: () => import('@/pages/fleet/VehicleAssignments.vue'),
-            meta: { breadcrumb: 'Vehicle Assignments' },
+            meta: { breadcrumb: 'Vehicle Assignments', permission: 'fleet.view' },
           },
           {
             path: 'fuel',
-            name: 'fleet-fuel',
+            name: 'operations-fuel',
             component: () => import('@/pages/fleet/FuelManagement.vue'),
-            meta: { breadcrumb: 'Fuel Management' },
+            meta: { breadcrumb: 'Diesel / Fuel', permission: 'fleet.view' },
+          },
+          {
+            path: 'fasttag',
+            name: 'operations-fasttag',
+            component: () => import('@/pages/accounts/FastTag.vue'),
+            meta: { breadcrumb: 'FastTag', permission: 'fasttag.view' },
           },
           {
             path: 'maintenance',
-            name: 'fleet-maintenance',
+            name: 'operations-maintenance',
             component: () => import('@/pages/fleet/Maintenance.vue'),
-            meta: { breadcrumb: 'Maintenance' },
+            meta: { breadcrumb: 'Maintenance', permission: 'fleet.view' },
           },
           {
             path: 'spare-parts-usage',
-            name: 'fleet-spare-parts-usage',
+            name: 'operations-spare-parts-usage',
             component: () => import('@/pages/fleet/SparePartsUsage.vue'),
-            meta: { breadcrumb: 'Spare Parts Usage' },
+            meta: { breadcrumb: 'Spare Parts Usage', permission: 'fleet.view' },
           },
+          // 'expenses' and 'dashboard' already belong to Trip Expenses and
+          // the Operations Dashboard here, so these two take the names they
+          // are actually known by rather than shadowing them.
           {
-            path: 'expenses',
-            name: 'fleet-expenses',
+            path: 'vehicle-expenses',
+            name: 'operations-vehicle-expenses',
             component: () => import('@/pages/fleet/VehicleExpenses.vue'),
-            meta: { breadcrumb: 'Vehicle Expenses' },
+            meta: { breadcrumb: 'Vehicle Expenses', permission: 'fleet.view' },
           },
           {
-            path: 'dashboard',
-            name: 'fleet-dashboard',
+            path: 'fleet-dashboard',
+            name: 'operations-fleet-dashboard',
             component: () => import('@/pages/fleet/FleetDashboard.vue'),
-            meta: { breadcrumb: 'Fleet Dashboard' },
+            meta: { breadcrumb: 'Fleet Dashboard', permission: 'fleet.view' },
           },
+        ],
+      },
+      {
+        // Legacy /fleet/... URLs. Fleet was merged into Operations, so these
+        // only exist to carry old bookmarks and recorded visits across to
+        // where the pages live now. Deliberately unnamed and ungated: a
+        // redirect resolves before the navigation guard runs, so the target
+        // route's own permission is what applies.
+        path: 'fleet',
+        component: RouterView,
+        children: [
+          { path: '', redirect: { name: 'operations-hub' } },
+          { path: 'vehicles', redirect: { name: 'operations-vehicles' } },
+          { path: 'assignments', redirect: { name: 'operations-assignments' } },
+          { path: 'fuel', redirect: { name: 'operations-fuel' } },
+          { path: 'fasttag', redirect: { name: 'operations-fasttag' } },
+          { path: 'maintenance', redirect: { name: 'operations-maintenance' } },
+          { path: 'spare-parts-usage', redirect: { name: 'operations-spare-parts-usage' } },
+          { path: 'expenses', redirect: { name: 'operations-vehicle-expenses' } },
+          { path: 'dashboard', redirect: { name: 'operations-fleet-dashboard' } },
         ],
       },
       {
@@ -432,11 +444,18 @@ const routes: RouteRecordRaw[] = [
             component: () => import('@/pages/accounts/AssetDashboard.vue'),
             meta: { breadcrumb: 'Asset Dashboard' },
           },
+          // Moved to /fleet/fasttag so the breadcrumb matches the module it
+          // is reached from. Kept as a redirect: existing bookmarks and any
+          // link still pointing here should land on the page, not a 404.
           {
             path: 'fasttag',
-            name: 'accounts-fasttag',
-            component: () => import('@/pages/accounts/FastTag.vue'),
-            meta: { breadcrumb: 'FastTag' },
+            redirect: { name: 'operations-fasttag' },
+          },
+          // The Diesel Card is now the Card Account tab of Diesel / Fuel —
+          // one module for the fuel and the money that paid for it.
+          {
+            path: 'diesel-card',
+            redirect: { name: 'operations-fuel' },
           },
           {
             path: 'profitability-reports',

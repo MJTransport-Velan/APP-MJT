@@ -65,7 +65,7 @@ const cards = [
   { icon: 'mdi-cash-minus', title: 'Payables', description: 'Supplier bills and payments for market-vehicle hires', to: '/accounts/payables' },
   { icon: 'mdi-account-cash-outline', title: 'Driver & Employee Accounts', description: 'Driver advances and settlements; salary structures and salary payments', to: '/accounts/driver-payroll' },
   { icon: 'mdi-truck-outline', title: 'Assets', description: 'The fixed asset register, its categories and dashboard', to: '/accounts/vehicle-assets' },
-  { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Prepaid FASTag wallet — recharge, toll usage and transaction history', to: '/accounts/fasttag' },
+  { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Prepaid FASTag wallet — recharge, toll usage and transaction history', to: '/operations/fasttag' },
   { icon: 'mdi-bank-outline', title: 'Banking & Cash', description: 'Bank/cash accounts, transfers, cheques and petty cash', to: '/accounting/banking' },
   { icon: 'mdi-finance', title: 'Balance Sheet & Reports', description: 'Balance Sheet, Profit & Loss, profitability, outstanding/expense reports and MIS', to: '/accounts/financial-reporting' },
 ];

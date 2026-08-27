@@ -85,6 +85,10 @@ export const fuelEntryRepository = {
     return prisma.trip.findFirst({ where: { id, deletedAt: null }, select: { id: true, vehicleId: true, status: true, tripNumber: true, driverId: true } });
   },
 
+  findFuelCardById(id: string) {
+    return prisma.fuelCard.findFirst({ where: { id, deletedAt: null } });
+  },
+
   findSupplierById(id: string) {
     return prisma.supplier.findFirst({ where: { id, deletedAt: null } });
   },

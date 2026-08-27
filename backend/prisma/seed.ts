@@ -295,6 +295,11 @@ const VEHICLE_ASSET_PERMISSIONS = [
   { name: 'fasttag.create', description: 'Create a FastTag Account' },
   { name: 'fasttag.edit', description: 'Recharge the FastTag wallet / Log FastTag Usage / Refund / Adjust / Edit a transaction' },
   { name: 'fasttag.delete', description: 'Delete a FastTag transaction' },
+  // The diesel/fuel card prepaid account. fuel_card.* already exists as the
+  // card catalog's own CRUD prefix, so the shared account gets its own.
+  { name: 'fuel_card_account.view', description: 'View the Diesel Card account & its transactions' },
+  { name: 'fuel_card_account.edit', description: 'Recharge the Diesel Card account / Refund / Adjust / Edit a transaction' },
+  { name: 'fuel_card_account.delete', description: 'Delete a Diesel Card transaction' },
 ];
 
 // Phase 13 — Financial Reporting. GST/TDS compliance, financial-statement
@@ -1075,6 +1080,7 @@ async function main() {
         'asset.view', 'asset.approve',
         'vehicle_expense.view', 'vehicle_expense.approve',
         'fasttag.view',
+        'fuel_card_account.view',
       ],
     },
     // Fleet Manager (existing role): operational upkeep, no financial approval (design doc §18).
@@ -1082,6 +1088,7 @@ async function main() {
       role: fleetManagerRole,
       permissionNames: [
         'fasttag.view', 'fasttag.create', 'fasttag.edit', 'fasttag.delete',
+        'fuel_card_account.view', 'fuel_card_account.edit', 'fuel_card_account.delete',
         'vehicle_expense.view', 'vehicle_expense.create',
         'asset.view',
         'data_import.view', 'data_import.run',
@@ -1102,6 +1109,7 @@ async function main() {
       role: operationManagerRole,
       permissionNames: [
         'asset_category.view', 'asset.view', 'vehicle_expense.view', 'fasttag.view',
+        'fuel_card_account.view',
       ],
     },
   ];

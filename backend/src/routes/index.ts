@@ -72,6 +72,7 @@ import fixedAssetRoutes from './fixed-asset.routes';
 import loanRoutes from './loan.routes';
 import openingBalanceRoutes from './opening-balance.routes';
 import fastTagRoutes from './fasttag.routes';
+import fuelCardAccountRoutes from './fuel-card-account.routes';
 import profitabilityReportRoutes from './profitability-report.routes';
 import outstandingReportRoutes from './outstanding-report.routes';
 import expenseAnalysisRoutes from './expense-analysis.routes';
@@ -212,6 +213,9 @@ router.use('/accounts/payroll/dashboard', payrollDashboardRoutes);
 router.use('/accounts/assets/categories', assetCategoryRoutes);
 router.use('/accounts/assets', fixedAssetRoutes);
 router.use('/accounts/fasttag-accounts', fastTagRoutes);
+
+// Diesel / Fuel Card — one shared prepaid account every card spends from.
+router.use('/accounts/fuel-card-account', fuelCardAccountRoutes);
 
 // Loans & EMI — Vehicle / Bank / Business / Owner / Other loans, their
 // generated EMI schedules, and the payment flow that debits the fund

@@ -8,6 +8,7 @@
     <AppTabs v-model="activeTab" color="primary" class="mb-4">
       <AppTab value="entries">Fuel Entries</AppTab>
       <AppTab value="cards">Fuel Cards</AppTab>
+      <AppTab v-if="canViewCardAccount" value="card-account">Card Account</AppTab>
       <AppTab value="consumption">Mileage & Consumption</AppTab>
     </AppTabs>
 
@@ -92,7 +93,7 @@
       <!-- Fuel Cards -->
       <AppWindowItem value="cards">
         <div class="d-flex justify-end mb-3">
-          <AppBtn color="primary" prepend-icon="mdi-plus" @click="openCardDialog">New Fuel Card</AppBtn>
+          <AppBtn v-if="canCreateCard" color="primary" prepend-icon="mdi-plus" @click="openCardDialog()">New Fuel Card</AppBtn>
         </div>
 
         <MasterDataTable
@@ -107,9 +108,32 @@
             <StatusChip :is-active="(item as any).isActive" />
           </template>
           <template #item.actions="{ item }">
-            <AppBtn icon="mdi-toggle-switch-outline" variant="text" size="small" @click="onToggleCard(item as any)" />
+            <template v-if="canEditCard">
+              <AppBtn
+                icon="mdi-toggle-switch-outline"
+                variant="text"
+                size="small"
+                :title="(item as any).isActive ? 'Deactivate' : 'Activate'"
+                @click="onToggleCard(item as any)"
+              />
+              <AppBtn icon="mdi-pencil-outline" variant="text" size="small" title="Edit" @click="openCardDialog(item as any)" />
+            </template>
+            <AppBtn
+              v-if="canDeleteCard"
+              icon="mdi-delete-outline"
+              variant="text"
+              size="small"
+              color="error"
+              title="Delete"
+              @click="openDeleteCard(item as any)"
+            />
           </template>
         </MasterDataTable>
+      </AppWindowItem>
+
+      <!-- Card Account — the one prepaid balance every fuel card spends from -->
+      <AppWindowItem v-if="canViewCardAccount" value="card-account">
+        <DieselCardAccount :vehicle-options="vehicleOptions" :card-options="cardStore.items as any" />
       </AppWindowItem>
 
       <!-- Consumption -->
@@ -236,6 +260,11 @@
         clearable
         class="mb-2"
       />
+      <AppAlert v-if="isCardBilled" type="info" variant="tonal" density="compact" class="mb-2">
+        This fill is paid from the shared diesel card account — its balance
+        <strong>{{ formatCurrency(cardAccountStore.account?.currentBalance ?? 0) }}</strong> drops by the amount below
+        when you save. Every card spends from that one balance.
+      </AppAlert>
       <AppTextField
         v-model.number="entryForm.totalAmount"
         type="number"
@@ -283,7 +312,12 @@
     </MasterFormDialog>
 
     <!-- Fuel Card Dialog -->
-    <MasterFormDialog v-model="cardDialog" title="New Fuel Card" :loading="submittingCard" @submit="onSubmitCard">
+    <MasterFormDialog
+      v-model="cardDialog"
+      :title="cardEditTarget ? 'Edit Fuel Card' : 'New Fuel Card'"
+      :loading="submittingCard"
+      @submit="onSubmitCard"
+    >
       <AppTextField v-model="cardForm.cardNumber" label="Card Number" :error-messages="cardErrors.cardNumber" class="mb-2" />
       <AppTextField v-model="cardForm.issuedTo" label="Issued To" />
     </MasterFormDialog>
@@ -347,12 +381,28 @@
       :loading="deletingEntry"
       @confirm="submitDeleteEntry"
     />
+
+    <!--
+      Deleting a card is a soft delete: fills and card-account transactions
+      already recorded against it keep naming it, the card just stops being
+      selectable. Deactivating instead keeps it in the list.
+    -->
+    <ConfirmDialog
+      v-model="deleteCardDialog"
+      title="Delete Fuel Card"
+      :message="`Delete card ${deleteCardTarget?.cardNumber || ''}? Fuel entries and card-account transactions already recorded against it are kept and still show this card number — it just cannot be used on a new fill. Deactivate it instead if you only want it off the list.`"
+      confirm-text="Delete"
+      :loading="deletingCard"
+      @confirm="submitDeleteCard"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { useFuelEntryStore, useFuelCardStore } from '@/stores/fleet';
+import { useFuelCardAccountStore } from '@/stores/accounts/fuelCardAccount';
+import { useAuthStore } from '@/stores/auth.store';
 import { useVehicleStore } from '@/stores/masters';
 import { useTripStore } from '@/stores/operations';
 import { tripApi } from '@/services/operations';
@@ -364,15 +414,33 @@ import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import StatusChip from '@/components/masters/StatusChip.vue';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import FuelSummaryCard from '@/components/fleet/FuelSummaryCard.vue';
+import DieselCardAccount from '@/components/fleet/DieselCardAccount.vue';
 import {
   AppTabs, AppTab, AppWindow, AppWindowItem, AppBtn, AppSelect, AppTextField, AppChip,
-  AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput,
+  AppCard, AppCardTitle, AppCardText, AppCardActions, AppDialog, AppFileInput, AppAlert,
   ExcelExportButton,
 } from '@/components/ui';
 import type { VehicleFuelSummary, FuelSummary, DriverMileageRow } from '@/types/fleet.types';
 
 const entryStore = useFuelEntryStore();
 const cardStore = useFuelCardStore();
+const cardAccountStore = useFuelCardAccountStore();
+const authStore = useAuthStore();
+const canViewCardAccount = authStore.hasPermission('fuel_card_account.view');
+const canCreateCard = authStore.hasPermission('fuel_card.create');
+const canEditCard = authStore.hasPermission('fuel_card.edit');
+const canDeleteCard = authStore.hasPermission('fuel_card.delete');
+
+/**
+ * Recording or deleting a card-billed fill moves the shared card balance,
+ * so pull it again for the figure the fuel-entry dialog quotes. The Card
+ * Account tab needs nothing here — it only exists while it is open, and
+ * reloads itself every time it is.
+ */
+function refreshCardAccount() {
+  if (!canViewCardAccount) return;
+  cardAccountStore.fetchAccount().catch(() => undefined);
+}
 const vehicleStore = useVehicleStore();
 const tripStore = useTripStore();
 const { success, error } = useSnackbar();
@@ -387,6 +455,7 @@ const billingMethodOptions = [
 function billingMethodLabel(value: string) {
   return billingMethodOptions.find((o) => o.value === value)?.title || value;
 }
+
 
 const vehicleOptions = ref<{ id: string; registrationNumber: string }[]>([]);
 const tripOptions = ref<{ id: string; tripNumber: string }[]>([]);
@@ -540,6 +609,10 @@ const entryForm = reactive<{
 });
 const entryErrors = reactive({ vehicleId: '', totalAmount: '', odometerReading: '' });
 
+// Both a physical swipe and an OTP-authorized app transaction spend the
+// shared diesel card account; only Direct Payment is the driver's own money.
+const isCardBilled = computed(() => entryForm.billingMethod === 'FUEL_CARD' || entryForm.billingMethod === 'OTP');
+
 /**
  * Whichever two of amount/quantity/rate are filled in decide the third —
  * mirrors resolveFuelFigures() on the server, so what the dialog previews is
@@ -658,6 +731,7 @@ async function onSubmitEntry() {
     success('Fuel entry recorded');
     entryDialog.value = false;
     fetchEntries();
+    refreshCardAccount();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to record fuel entry'));
   } finally {
@@ -680,6 +754,7 @@ async function submitDeleteEntry() {
     success('Fuel entry deleted');
     deleteEntryDialog.value = false;
     fetchEntries();
+    refreshCardAccount();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to delete fuel entry'));
     deleteEntryDialog.value = false;
@@ -784,12 +859,17 @@ async function fetchCards() {
 }
 
 const cardDialog = ref(false);
+const cardEditTarget = ref<any>(null);
 const submittingCard = ref(false);
 const cardForm = reactive({ cardNumber: '', issuedTo: '' });
 const cardErrors = reactive({ cardNumber: '' });
 
-function openCardDialog() {
-  Object.assign(cardForm, { cardNumber: '', issuedTo: '' });
+function openCardDialog(card?: any) {
+  cardEditTarget.value = card ?? null;
+  Object.assign(cardForm, {
+    cardNumber: card?.cardNumber || '',
+    issuedTo: card?.issuedTo || '',
+  });
   cardErrors.cardNumber = '';
   cardDialog.value = true;
 }
@@ -799,12 +879,18 @@ async function onSubmitCard() {
   if (cardErrors.cardNumber) return;
   submittingCard.value = true;
   try {
-    await cardStore.create({ cardNumber: cardForm.cardNumber, issuedTo: cardForm.issuedTo || undefined });
-    success('Fuel card created');
+    const payload = { cardNumber: cardForm.cardNumber, issuedTo: cardForm.issuedTo || undefined };
+    if (cardEditTarget.value) {
+      await cardStore.update(cardEditTarget.value.id, payload);
+      success('Fuel card updated');
+    } else {
+      await cardStore.create(payload);
+      success('Fuel card created');
+    }
     cardDialog.value = false;
     fetchCards();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to create fuel card'));
+    error(extractErrorMessage(err, cardEditTarget.value ? 'Failed to update fuel card' : 'Failed to create fuel card'));
   } finally {
     submittingCard.value = false;
   }
@@ -820,6 +906,31 @@ async function onToggleCard(card: any) {
   }
 }
 
+const deleteCardDialog = ref(false);
+const deleteCardTarget = ref<any>(null);
+const deletingCard = ref(false);
+
+function openDeleteCard(card: any) {
+  deleteCardTarget.value = card;
+  deleteCardDialog.value = true;
+}
+
+async function submitDeleteCard() {
+  if (!deleteCardTarget.value) return;
+  deletingCard.value = true;
+  try {
+    await cardStore.remove(deleteCardTarget.value.id);
+    success('Fuel card deleted');
+    deleteCardDialog.value = false;
+    fetchCards();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete fuel card'));
+    deleteCardDialog.value = false;
+  } finally {
+    deletingCard.value = false;
+  }
+}
+
 onMounted(async () => {
   const [vehiclesRes, tripsRes] = await Promise.all([
     vehicleStore.fetchList({ pageSize: 200 }),
@@ -832,5 +943,8 @@ onMounted(async () => {
   fetchEntries();
   fetchCards();
   fetchMileage();
+  // Only used to show what a card-billed fill will draw on, so a missing
+  // permission should not take the page down with it.
+  if (canViewCardAccount) cardAccountStore.fetchAccount().catch(() => undefined);
 });
 </script>

@@ -73,10 +73,11 @@ export const createLoanSchema = z.object({
   body: loanBody.superRefine(assertTypeLinkage),
 });
 
-// Money terms (principal / rate / tenure / EMI / first EMI date) are absent
-// here on purpose: they define the generated schedule, and editing them
-// underneath posted payments would desync it. Change them by deleting an
-// unpaid loan and re-creating it.
+// Money terms (principal / rate / tenure / EMI / first EMI date) define the
+// generated schedule, so the service accepts them only for an OPENING loan
+// that has no paid EMI yet — a mistyped migration figure is corrected here
+// and the remaining schedule is regenerated. For a loan taken out through
+// this system they stay as issued.
 export const updateLoanSchema = z.object({
   query: z.object({}).optional(),
   params: z.object({ id: z.string().uuid('Invalid loan id') }),
@@ -92,6 +93,16 @@ export const updateLoanSchema = z.object({
       loanAccountRef: z.string().nullable().optional(),
       status: loanStatusEnum.optional(),
       remarks: z.string().nullable().optional(),
+      loanStartDate: z.string().min(1).optional(),
+      principalAmount: z.number().positive('Loan amount must be greater than 0').optional(),
+      interestRatePercent: z.number().min(0, 'Interest rate cannot be negative').max(100, 'Interest rate looks too high').optional(),
+      tenureMonths: z.number().int().positive('Tenure must be at least 1 month').optional(),
+      emiAmount: z.number().positive('EMI amount must be greater than 0').optional(),
+      firstEmiDate: z.string().min(1).optional(),
+      originalPrincipal: z.number().positive('Original loan amount must be greater than 0').optional(),
+      openingAsOfDate: z.string().min(1).optional(),
+      migrationSource: z.string().nullable().optional(),
+      migrationStatus: migrationRecordStatusEnum.optional(),
     })
     .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' }),
 });

@@ -5,6 +5,7 @@ import { tripRepository } from '../repositories/trip.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { vehicleExpenseInternalService } from './vehicle-expense.service';
+import { fuelCardAccountInternalService } from './fuel-card-account.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateFuelEntryInput, UpdateFuelEntryInput } from '../validators/fuel-entry.validator';
 
@@ -160,6 +161,10 @@ export const fuelEntryService = {
       throw new AppError('Vehicle not found', 404);
     }
 
+    if (input.fuelCardId) {
+      const fuelCard = await fuelEntryRepository.findFuelCardById(input.fuelCardId);
+      if (!fuelCard) throw new AppError('Fuel card not found', 404);
+    }
     if (input.supplierId) {
       const supplier = await fuelEntryRepository.findSupplierById(input.supplierId);
       if (!supplier) throw new AppError('Supplier not found', 404);
@@ -264,6 +269,19 @@ export const fuelEntryService = {
       });
     }
 
+    // A fill billed to a card was paid out of the fleet's one prepaid
+    // diesel card account, so it draws that balance down. This is the same
+    // money as the expense above, not a second cost.
+    await fuelCardAccountInternalService.syncFromFuelEntry({
+      fuelEntryId: entry.id,
+      vehicleId: input.vehicleId,
+      fuelCardId: input.fuelCardId ?? null,
+      billingMethod: input.billingMethod ?? null,
+      amount: figures.totalAmount,
+      entryDate,
+      actorId,
+    });
+
     return fuelEntryService.getById(entry.id);
   },
 
@@ -273,6 +291,10 @@ export const fuelEntryService = {
       throw new AppError('Fuel entry not found', 404);
     }
 
+    if (input.fuelCardId) {
+      const fuelCard = await fuelEntryRepository.findFuelCardById(input.fuelCardId);
+      if (!fuelCard) throw new AppError('Fuel card not found', 404);
+    }
     if (input.supplierId) {
       const supplier = await fuelEntryRepository.findSupplierById(input.supplierId);
       if (!supplier) throw new AppError('Supplier not found', 404);
@@ -314,6 +336,7 @@ export const fuelEntryService = {
 
     await fuelEntryRepository.update(id, {
       fuelType: input.fuelType,
+      fuelCardId: input.fuelCardId,
       billingMethod: input.billingMethod,
       location: input.location,
       tripId: tripTouched ? (tripId ?? null) : undefined,
@@ -358,6 +381,20 @@ export const fuelEntryService = {
       });
     }
 
+    // Re-point the diesel card drawdown at whatever the fill now says. An
+    // edit can start a drawdown (a cash fill corrected to a card one), end
+    // one (the reverse), or just resize it — syncFromFuelEntry covers all
+    // three, so the shared balance never drifts from the fills behind it.
+    await fuelCardAccountInternalService.syncFromFuelEntry({
+      fuelEntryId: id,
+      vehicleId: existing.vehicleId,
+      fuelCardId: input.fuelCardId !== undefined ? input.fuelCardId : existing.fuelCardId,
+      billingMethod: input.billingMethod ?? existing.billingMethod,
+      amount: figures.totalAmount,
+      entryDate,
+      actorId,
+    });
+
     await auditService.record({
       userId: actorId,
       action: 'UPDATE',
@@ -377,6 +414,8 @@ export const fuelEntryService = {
 
     await fuelEntryRepository.softDelete(id, actorId);
     await vehicleExpenseInternalService.removeFromSource({ referenceType: 'FuelEntry', referenceId: id, actorId });
+    // Deleting a card-billed fill puts its money back on the shared account.
+    await fuelCardAccountInternalService.removeFromFuelEntry(id, actorId);
 
     await auditService.record({
       userId: actorId,

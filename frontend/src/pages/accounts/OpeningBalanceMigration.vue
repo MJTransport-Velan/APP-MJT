@@ -108,7 +108,7 @@
                 <AppBtn size="small" variant="outlined" prepend-icon="mdi-open-in-new" @click="router.push('/accounts/fixed-assets')">
                   Asset Register
                 </AppBtn>
-                <AppBtn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openAssetDialog">
+                <AppBtn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openAssetDialog()">
                   Register Opening Asset
                 </AppBtn>
               </div>
@@ -124,6 +124,7 @@
                     <th class="text-right">Accumulated Depreciation</th>
                     <th class="text-right">Opening Book Value</th>
                     <th>Opening Date</th><th>Source</th>
+                    <th class="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,6 +137,10 @@
                     <td class="text-right">{{ formatCurrency(asset.currentValue) }}</td>
                     <td>{{ asset.openingDate ? formatDate(asset.openingDate) : formatDate(asset.purchaseDate) }}</td>
                     <td class="text-caption">{{ asset.migrationSource || 'Tally Migration' }}</td>
+                    <td class="text-right text-no-wrap">
+                      <AppBtn icon="mdi-pencil-outline" variant="text" size="small" title="Edit opening asset" @click="openAssetDialog(asset)" />
+                      <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete opening asset" @click="onRemoveAsset(asset)" />
+                    </td>
                   </tr>
                 </tbody>
               </AppTable>
@@ -171,7 +176,7 @@
                 <AppBtn size="small" variant="outlined" prepend-icon="mdi-open-in-new" @click="router.push('/accounts/loans')">
                   Loans &amp; EMI
                 </AppBtn>
-                <AppBtn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openLoanDialog">
+                <AppBtn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openLoanDialog()">
                   Register Opening Loan
                 </AppBtn>
               </div>
@@ -187,6 +192,7 @@
                     <th class="text-right">Opening Outstanding</th>
                     <th class="text-right">Outstanding Now</th>
                     <th class="text-right">EMI</th><th>Next EMI</th>
+                    <th class="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -202,6 +208,10 @@
                     <td class="text-right">{{ formatCurrency(loan.totals.outstandingPrincipal) }}</td>
                     <td class="text-right">{{ formatCurrency(loan.emiAmount) }}</td>
                     <td>{{ loan.totals.nextEmiDate ? formatDate(loan.totals.nextEmiDate) : '—' }}</td>
+                    <td class="text-right text-no-wrap">
+                      <AppBtn icon="mdi-pencil-outline" variant="text" size="small" title="Edit opening loan" @click="openLoanDialog(loan)" />
+                      <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete opening loan" @click="onRemoveLoan(loan)" />
+                    </td>
                   </tr>
                 </tbody>
               </AppTable>
@@ -540,7 +550,12 @@
     </MasterFormDialog>
 
     <!-- -------------------------------------------- opening asset dialog -->
-    <MasterFormDialog v-model="assetDialog" title="Register Opening Asset" :loading="submitting" @submit="onSubmitAsset">
+    <MasterFormDialog
+      v-model="assetDialog"
+      :title="assetEditTarget ? 'Edit Opening Asset' : 'Register Opening Asset'"
+      :loading="submitting"
+      @submit="onSubmitAsset"
+    >
       <AppAlert type="info" variant="tonal" density="compact" class="mb-3">
         No payment is recorded for an opening asset — no bank or cash balance changes.
       </AppAlert>
@@ -562,14 +577,35 @@
     </MasterFormDialog>
 
     <!-- --------------------------------------------- opening loan dialog -->
-    <MasterFormDialog v-model="loanDialog" title="Register Opening Loan" :loading="submitting" @submit="onSubmitLoan">
+    <MasterFormDialog
+      v-model="loanDialog"
+      :title="loanEditTarget ? 'Edit Opening Loan' : 'Register Opening Loan'"
+      :loading="submitting"
+      @submit="onSubmitLoan"
+    >
       <AppAlert type="info" variant="tonal" density="compact" class="mb-3">
-        Enter what is still owed today and how many EMIs are left. The remaining EMI schedule is generated from there —
-        old EMIs are not recreated.
+        <template v-if="loanEditTarget">
+          Correcting any of the money figures below regenerates the remaining EMI schedule. Once an EMI has been paid
+          against this loan the figures are frozen — reverse the payment first.
+        </template>
+        <template v-else>
+          Enter what is still owed today and how many EMIs are left. The remaining EMI schedule is generated from there —
+          old EMIs are not recreated.
+        </template>
       </AppAlert>
       <AppTextField v-model="loanForm.loanName" label="Loan Name" :error-messages="loanErrors.loanName" class="mb-2" />
       <AppTextField v-model="loanForm.lenderName" label="Lender / Bank" :error-messages="loanErrors.lenderName" class="mb-2" />
-      <AppSelect v-model="loanForm.loanType" :items="loanTypeOptions" item-title="label" item-value="value" label="Loan Type" class="mb-2" />
+      <AppSelect
+        v-model="loanForm.loanType"
+        :items="loanTypeOptions"
+        item-title="label"
+        item-value="value"
+        label="Loan Type"
+        :disabled="!!loanEditTarget"
+        :hint="loanEditTarget ? 'Loan type cannot be changed after the schedule is generated' : undefined"
+        persistent-hint
+        class="mb-2"
+      />
       <AppSelect v-if="loanForm.loanType === 'VEHICLE_LOAN'" v-model="loanForm.vehicleId" :items="vehicleOptions" item-title="registrationNumber" item-value="id" label="Vehicle" :error-messages="loanErrors.link" class="mb-2" />
       <AppSelect v-if="loanForm.loanType === 'OWNER_LOAN'" v-model="loanForm.capitalPartnerId" :items="partnerOptions" item-title="name" item-value="id" label="Owner / Partner" :error-messages="loanErrors.link" class="mb-2" />
       <div class="d-flex ga-2">
@@ -933,6 +969,7 @@ async function onSubmitReclassify() {
 // --------------------------------------------------------- opening assets
 const openingAssets = ref<FixedAsset[]>([]);
 const assetDialog = ref(false);
+const assetEditTarget = ref<FixedAsset | null>(null);
 const assetForm = reactive({
   assetName: '',
   categoryId: '',
@@ -948,17 +985,33 @@ const assetBookValue = computed(() =>
   Math.max(Math.round(((assetForm.purchaseValue || 0) - (assetForm.accumulatedDepreciation || 0)) * 100) / 100, 0)
 );
 
-function openAssetDialog() {
-  Object.assign(assetForm, {
-    assetName: '',
-    categoryId: '',
-    vehicleId: '',
-    purchaseDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
-    purchaseValue: undefined,
-    accumulatedDepreciation: undefined,
-    openingDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
-    migrationStatus: 'UNVERIFIED',
-  });
+function openAssetDialog(asset?: FixedAsset) {
+  assetEditTarget.value = asset ?? null;
+  const migrationDate = migration.value ? String(migration.value.migrationDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  Object.assign(
+    assetForm,
+    asset
+      ? {
+          assetName: asset.assetName,
+          categoryId: asset.category?.id || '',
+          vehicleId: asset.vehicle?.id || '',
+          purchaseDate: String(asset.purchaseDate).slice(0, 10),
+          purchaseValue: asset.purchaseValue,
+          accumulatedDepreciation: asset.accumulatedDepreciation,
+          openingDate: String(asset.openingDate || asset.purchaseDate).slice(0, 10),
+          migrationStatus: asset.migrationStatus || 'UNVERIFIED',
+        }
+      : {
+          assetName: '',
+          categoryId: '',
+          vehicleId: '',
+          purchaseDate: migrationDate,
+          purchaseValue: undefined,
+          accumulatedDepreciation: undefined,
+          openingDate: migrationDate,
+          migrationStatus: 'UNVERIFIED',
+        }
+  );
   Object.assign(assetErrors, { assetName: '', categoryId: '', purchaseValue: '' });
   assetDialog.value = true;
 }
@@ -971,31 +1024,49 @@ async function onSubmitAsset() {
 
   submitting.value = true;
   try {
-    await fixedAssetApi.register({
+    const payload = {
       assetName: assetForm.assetName,
       categoryId: assetForm.categoryId,
-      vehicleId: assetForm.vehicleId || undefined,
+      vehicleId: assetForm.vehicleId || null,
       purchaseDate: assetForm.purchaseDate,
       purchaseValue: assetForm.purchaseValue,
-      assetOrigin: 'OPENING',
       accumulatedDepreciation: assetForm.accumulatedDepreciation || 0,
       openingDate: assetForm.openingDate,
       migrationSource: migration.value?.previousSystem ? `${migration.value.previousSystem} Migration` : 'Tally Migration',
       migrationStatus: assetForm.migrationStatus,
-    });
-    success('Opening asset registered — no payment was recorded');
+    };
+    if (assetEditTarget.value) {
+      await fixedAssetApi.update(assetEditTarget.value.id, payload);
+      success('Opening asset updated');
+    } else {
+      // assetOrigin is only meaningful at registration — an opening asset
+      // never becomes a purchase made through this system.
+      await fixedAssetApi.register({ ...payload, vehicleId: assetForm.vehicleId || undefined, assetOrigin: 'OPENING' });
+      success('Opening asset registered — no payment was recorded');
+    }
     assetDialog.value = false;
     await reload();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to register the opening asset'));
+    error(extractErrorMessage(err, assetEditTarget.value ? 'Failed to update the opening asset' : 'Failed to register the opening asset'));
   } finally {
     submitting.value = false;
+  }
+}
+
+async function onRemoveAsset(asset: FixedAsset) {
+  try {
+    await fixedAssetApi.remove(asset.id);
+    success('Opening asset deleted');
+    await reload();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete the opening asset'));
   }
 }
 
 // ---------------------------------------------------------- opening loans
 const openingLoans = ref<Loan[]>([]);
 const loanDialog = ref(false);
+const loanEditTarget = ref<Loan | null>(null);
 const loanForm = reactive({
   loanName: '',
   lenderName: '',
@@ -1013,22 +1084,44 @@ const loanForm = reactive({
 });
 const loanErrors = reactive({ loanName: '', lenderName: '', link: '', principalAmount: '', tenureMonths: '', fundAccountKey: '' });
 
-function openLoanDialog() {
-  Object.assign(loanForm, {
-    loanName: '',
-    lenderName: '',
-    loanType: 'VEHICLE_LOAN',
-    vehicleId: '',
-    capitalPartnerId: '',
-    loanStartDate: new Date().toISOString().slice(0, 10),
-    originalPrincipal: undefined,
-    principalAmount: undefined,
-    interestRatePercent: undefined,
-    tenureMonths: undefined,
-    emiAmount: undefined,
-    firstEmiDate: '',
-    fundAccountKey: '',
-  });
+function openLoanDialog(loan?: Loan) {
+  loanEditTarget.value = loan ?? null;
+  Object.assign(
+    loanForm,
+    loan
+      ? {
+          loanName: loan.loanName,
+          lenderName: loan.lenderName,
+          loanType: loan.loanType,
+          vehicleId: loan.vehicle?.id || '',
+          capitalPartnerId: loan.capitalPartner?.id || '',
+          loanStartDate: String(loan.loanStartDate).slice(0, 10),
+          originalPrincipal: loan.originalPrincipal ?? undefined,
+          principalAmount: loan.principalAmount,
+          interestRatePercent: loan.interestRatePercent,
+          // The remaining EMIs, not the original tenure — the schedule this
+          // loan was brought in with only ever covers what is left.
+          tenureMonths: loan.tenureMonths,
+          emiAmount: loan.emiAmount,
+          firstEmiDate: String(loan.firstEmiDate).slice(0, 10),
+          fundAccountKey: `${loan.fundAccountType}:${loan.fundAccountId}`,
+        }
+      : {
+          loanName: '',
+          lenderName: '',
+          loanType: 'VEHICLE_LOAN',
+          vehicleId: '',
+          capitalPartnerId: '',
+          loanStartDate: new Date().toISOString().slice(0, 10),
+          originalPrincipal: undefined,
+          principalAmount: undefined,
+          interestRatePercent: undefined,
+          tenureMonths: undefined,
+          emiAmount: undefined,
+          firstEmiDate: '',
+          fundAccountKey: '',
+        }
+  );
   Object.assign(loanErrors, { loanName: '', lenderName: '', link: '', principalAmount: '', tenureMonths: '', fundAccountKey: '' });
   loanDialog.value = true;
 }
@@ -1050,31 +1143,72 @@ async function onSubmitLoan() {
   const [fundAccountType, fundAccountId] = loanForm.fundAccountKey.split(':');
   submitting.value = true;
   try {
-    await loanApi.create({
-      loanName: loanForm.loanName,
-      lenderName: loanForm.lenderName,
-      loanType: loanForm.loanType,
-      vehicleId: loanForm.loanType === 'VEHICLE_LOAN' ? loanForm.vehicleId : undefined,
-      capitalPartnerId: loanForm.loanType === 'OWNER_LOAN' ? loanForm.capitalPartnerId : undefined,
-      loanStartDate: loanForm.loanStartDate,
-      principalAmount: loanForm.principalAmount,
-      interestRatePercent: loanForm.interestRatePercent ?? 0,
-      tenureMonths: loanForm.tenureMonths,
-      emiAmount: loanForm.emiAmount || undefined,
-      firstEmiDate: loanForm.firstEmiDate || loanForm.loanStartDate,
-      fundAccountType,
-      fundAccountId,
-      origin: 'OPENING',
-      originalPrincipal: loanForm.originalPrincipal || undefined,
-      openingAsOfDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : undefined,
-    });
-    success('Opening loan registered with its remaining EMI schedule');
+    if (loanEditTarget.value) {
+      // A money term is sent only when it actually changed: the server
+      // regenerates the remaining schedule whenever one arrives, and refuses
+      // once an EMI has been paid — which must not block a name-only fix.
+      const target = loanEditTarget.value;
+      const changed = <T>(value: T, current: T) => (value === current ? undefined : value);
+      const money = {
+        principalAmount: changed(loanForm.principalAmount, target.principalAmount),
+        interestRatePercent: changed(loanForm.interestRatePercent || 0, target.interestRatePercent),
+        tenureMonths: changed(loanForm.tenureMonths, target.tenureMonths),
+        // A cleared EMI is not a change to send — it means "recalculate it",
+        // which is what the server does when the other terms move.
+        emiAmount: changed(loanForm.emiAmount || undefined, target.emiAmount),
+        firstEmiDate: changed(loanForm.firstEmiDate, String(target.firstEmiDate).slice(0, 10)),
+      };
+      const rescheduling = Object.values(money).some((v) => v !== undefined);
+
+      await loanApi.update(target.id, {
+        loanName: loanForm.loanName,
+        lenderName: loanForm.lenderName,
+        vehicleId: loanForm.loanType === 'VEHICLE_LOAN' ? loanForm.vehicleId : null,
+        capitalPartnerId: loanForm.loanType === 'OWNER_LOAN' ? loanForm.capitalPartnerId : null,
+        loanStartDate: changed(loanForm.loanStartDate, String(target.loanStartDate).slice(0, 10)),
+        ...money,
+        fundAccountType,
+        fundAccountId,
+        originalPrincipal: changed(loanForm.originalPrincipal || undefined, target.originalPrincipal ?? undefined),
+      });
+      success(rescheduling ? 'Opening loan updated — its remaining EMI schedule was regenerated' : 'Opening loan updated');
+    } else {
+      await loanApi.create({
+        loanName: loanForm.loanName,
+        lenderName: loanForm.lenderName,
+        loanType: loanForm.loanType,
+        vehicleId: loanForm.loanType === 'VEHICLE_LOAN' ? loanForm.vehicleId : undefined,
+        capitalPartnerId: loanForm.loanType === 'OWNER_LOAN' ? loanForm.capitalPartnerId : undefined,
+        loanStartDate: loanForm.loanStartDate,
+        principalAmount: loanForm.principalAmount,
+        interestRatePercent: loanForm.interestRatePercent ?? 0,
+        tenureMonths: loanForm.tenureMonths,
+        emiAmount: loanForm.emiAmount || undefined,
+        firstEmiDate: loanForm.firstEmiDate || loanForm.loanStartDate,
+        fundAccountType,
+        fundAccountId,
+        origin: 'OPENING',
+        originalPrincipal: loanForm.originalPrincipal || undefined,
+        openingAsOfDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : undefined,
+      });
+      success('Opening loan registered with its remaining EMI schedule');
+    }
     loanDialog.value = false;
     await reload();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to register the opening loan'));
+    error(extractErrorMessage(err, loanEditTarget.value ? 'Failed to update the opening loan' : 'Failed to register the opening loan'));
   } finally {
     submitting.value = false;
+  }
+}
+
+async function onRemoveLoan(loan: Loan) {
+  try {
+    await loanApi.remove(loan.id);
+    success('Opening loan deleted');
+    await reload();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete the opening loan'));
   }
 }
 

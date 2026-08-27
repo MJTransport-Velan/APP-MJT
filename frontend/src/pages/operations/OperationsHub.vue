@@ -45,20 +45,21 @@ const statRow = computed(() => {
 
 // Fleet has no independent workflow of its own — every fleet page exists to
 // support trip execution — so its pages are flattened directly into this
-// grid rather than drilling into a separate Fleet sub-hub. Underlying
-// routes/URLs (/fleet/...) are unchanged, only the navigation grouping is.
+// grid rather than drilling into a separate Fleet sub-hub. They live at
+// /operations/... too: a /fleet/... URL named a module the sidebar never
+// shows. The old URLs still redirect here.
 const cards = [
   { icon: 'mdi-file-check-outline', title: 'POD Management', description: 'Upload and verify proof of delivery documents', to: '/operations/pod' },
   { icon: 'mdi-cash-multiple', title: 'Trip Expenses', description: 'Record and review trip-related expenses', to: '/operations/expenses' },
   { icon: 'mdi-view-dashboard-variant-outline', title: 'Operations Analytics', description: 'Intent, trip and revenue analytics', to: '/operations/dashboard' },
-  { icon: 'mdi-truck-outline', title: 'Vehicles', description: 'Manage company vehicles, documents and status', to: '/fleet/vehicles' },
-  { icon: 'mdi-account-switch-outline', title: 'Vehicle Assignments', description: 'Assign vehicles to drivers and manage allocations', to: '/fleet/assignments' },
-  { icon: 'mdi-gas-station-outline', title: 'Diesel / Fuel', description: 'Record fuel purchases, track mileage and fuel cost per km', to: '/fleet/fuel' },
-  { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Toll transactions, wallet recharge and reconciliation', to: '/accounts/fasttag' },
-  { icon: 'mdi-wrench-outline', title: 'Maintenance', description: 'Schedule and track vehicle maintenance and services', to: '/fleet/maintenance' },
-  { icon: 'mdi-cog-outline', title: 'Spare Parts Usage', description: 'Track spare parts inventory and consumption', to: '/fleet/spare-parts-usage' },
-  { icon: 'mdi-cash-multiple', title: 'Vehicle Expenses', description: 'Track all vehicle-related expenses and payments', to: '/fleet/expenses' },
-  { icon: 'mdi-view-dashboard-variant-outline', title: 'Fleet Analytics', description: 'Utilization, efficiency and expense analytics', to: '/fleet/dashboard' },
+  { icon: 'mdi-truck-outline', title: 'Vehicles', description: 'Manage company vehicles, documents and status', to: '/operations/vehicles' },
+  { icon: 'mdi-account-switch-outline', title: 'Vehicle Assignments', description: 'Assign vehicles to drivers and manage allocations', to: '/operations/assignments' },
+  { icon: 'mdi-gas-station-outline', title: 'Diesel / Fuel', description: 'Fuel purchases, mileage and cost per km, plus the shared prepaid card account every fuel card spends from', to: '/operations/fuel' },
+  { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Toll transactions, wallet recharge and reconciliation', to: '/operations/fasttag' },
+  { icon: 'mdi-wrench-outline', title: 'Maintenance', description: 'Schedule and track vehicle maintenance and services', to: '/operations/maintenance' },
+  { icon: 'mdi-cog-outline', title: 'Spare Parts Usage', description: 'Track spare parts inventory and consumption', to: '/operations/spare-parts-usage' },
+  { icon: 'mdi-cash-multiple', title: 'Vehicle Expenses', description: 'Track all vehicle-related expenses and payments', to: '/operations/vehicle-expenses' },
+  { icon: 'mdi-view-dashboard-variant-outline', title: 'Fleet Analytics', description: 'Utilization, efficiency and expense analytics', to: '/operations/fleet-dashboard' },
 ];
 
 const filteredCards = computed(() => {

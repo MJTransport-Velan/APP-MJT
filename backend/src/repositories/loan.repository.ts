@@ -81,6 +81,19 @@ export const loanRepository = {
     return prisma.loanInstallment.update({ where: { id }, data });
   },
 
+  /**
+   * Swaps a loan's whole EMI schedule for a freshly generated one, in a
+   * transaction so the loan is never left without a schedule. Only ever
+   * called for a loan with no paid installment, so no payment history is
+   * discarded.
+   */
+  replaceSchedule(loanId: string, installments: Prisma.LoanInstallmentCreateManyInput[]) {
+    return prisma.$transaction([
+      prisma.loanInstallment.deleteMany({ where: { loanId } }),
+      prisma.loanInstallment.createMany({ data: installments }),
+    ]);
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.loan.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

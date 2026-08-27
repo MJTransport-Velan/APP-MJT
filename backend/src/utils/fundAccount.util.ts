@@ -142,6 +142,7 @@ export async function assertFundAccountUnreferenced(type: 'BANK' | 'CASH', id: s
     { label: 'loans', count: prisma.loan.count({ where: polymorphic }) },
     { label: 'loan installments', count: prisma.loanInstallment.count({ where: polymorphic }) },
     { label: 'fastag transactions', count: prisma.fastTagTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
+    { label: 'diesel card recharges', count: prisma.fuelCardTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
     { label: 'opening balances', count: type === 'BANK' ? prisma.openingBalance.count({ where: { bankAccountId: id } }) : prisma.openingBalance.count({ where: { cashAccountId: id } }) },
   ];
 

@@ -67,10 +67,12 @@ export const moduleRegistry: ModuleDef[] = [
   // 'Operations' (trip execution/POD/expenses) and 'Fleet' (vehicles, fuel,
   // maintenance, spare parts) used to be two separate sidebar sections —
   // Fleet has no independent workflow of its own; every fleet page exists to
-  // support trip execution. Merged into one 'Operations' entry; every
-  // underlying route/page/URL is unchanged, only the sidebar presentation is
-  // unified. Gated on either permission ("any of") so nobody who could see
-  // either half before loses access now.
+  // support trip execution. Merged into one 'Operations' entry, and the
+  // fleet pages moved to /operations/... to match: while they sat at
+  // /fleet/..., the breadcrumb named a module that is not in the sidebar.
+  // Gated on either permission ("any of") so nobody who could see either
+  // half before loses access now; each moved route keeps its own fleet.view
+  // gate so the move changed nothing about who can open it.
   {
     key: 'operations',
     title: 'Operations',
@@ -81,14 +83,14 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'POD Management', icon: 'mdi-file-check-outline', to: '/operations/pod' },
       { title: 'Trip Expenses', icon: 'mdi-cash-multiple', to: '/operations/expenses' },
       { title: 'Operations Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/operations/dashboard' },
-      { title: 'Vehicles', icon: 'mdi-truck-outline', to: '/fleet/vehicles' },
-      { title: 'Vehicle Assignments', icon: 'mdi-account-switch-outline', to: '/fleet/assignments' },
-      { title: 'Diesel / Fuel', icon: 'mdi-gas-station-outline', to: '/fleet/fuel' },
-      { title: 'FASTag', icon: 'mdi-credit-card-wireless-outline', to: '/accounts/fasttag' },
-      { title: 'Maintenance', icon: 'mdi-wrench-outline', to: '/fleet/maintenance' },
-      { title: 'Spare Parts Usage', icon: 'mdi-cog-outline', to: '/fleet/spare-parts-usage' },
-      { title: 'Vehicle Expenses', icon: 'mdi-cash-multiple', to: '/fleet/expenses' },
-      { title: 'Fleet Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/fleet/dashboard' },
+      { title: 'Vehicles', icon: 'mdi-truck-outline', to: '/operations/vehicles' },
+      { title: 'Vehicle Assignments', icon: 'mdi-account-switch-outline', to: '/operations/assignments' },
+      { title: 'Diesel / Fuel', icon: 'mdi-gas-station-outline', to: '/operations/fuel' },
+      { title: 'FASTag', icon: 'mdi-credit-card-wireless-outline', to: '/operations/fasttag' },
+      { title: 'Maintenance', icon: 'mdi-wrench-outline', to: '/operations/maintenance' },
+      { title: 'Spare Parts Usage', icon: 'mdi-cog-outline', to: '/operations/spare-parts-usage' },
+      { title: 'Vehicle Expenses', icon: 'mdi-cash-multiple', to: '/operations/vehicle-expenses' },
+      { title: 'Fleet Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/operations/fleet-dashboard' },
     ],
   },
   // 'Accounts' (business documents) and 'Accounting' (Banking/Organizations)
