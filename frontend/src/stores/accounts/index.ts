@@ -109,6 +109,9 @@ export const useSupplierBillStore = defineStore('acctsSupplierBills', {
       const response = await supplierBillApi.cancel(id);
       return response.data.data;
     },
+    async remove(id: string) {
+      await supplierBillApi.remove(id);
+    },
     async addCreditNote(id: string, payload: Record<string, unknown>) {
       const response = await supplierBillApi.addCreditNote(id, payload);
       return response.data.data;

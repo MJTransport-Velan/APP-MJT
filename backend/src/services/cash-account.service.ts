@@ -5,6 +5,8 @@ import { auditService } from './audit.service';
 import { AppError } from '../middlewares/error.middleware';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateCashAccountInput, UpdateCashAccountInput } from '../validators/cash-account.validator';
+import { hardDelete } from '../utils/hardDelete.util';
+import { assertFundAccountUnreferenced } from '../utils/fundAccount.util';
 
 export const cashAccountService = {
   async list(query: Request['query']) {
@@ -100,5 +102,27 @@ export const cashAccountService = {
     });
 
     return updated;
+  },
+
+  /** See bankAccountService.remove — same rule, same reason. */
+  async remove(id: string, actorId: string) {
+    const existing = await cashAccountRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Cash Account not found', 404);
+
+    await assertFundAccountUnreferenced('CASH', id);
+
+    await hardDelete(
+      'Cash Account',
+      () => cashAccountRepository.hardDelete(id),
+      'This cash account still has petty cash requests recorded against it, so it cannot be deleted. Delete those first, or deactivate the account instead.'
+    );
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'CashAccount',
+      entityId: id,
+      description: `Deleted ${existing.cashAccountType} cash account`,
+    });
   },
 };

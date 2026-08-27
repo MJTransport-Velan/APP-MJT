@@ -164,6 +164,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { moduleRegistry, moduleGrantsAccess } from '@/config/moduleRegistry';
 import { useTheme } from '@/composables/useTheme';
+import { useEscapeBack } from '@/composables/useEscapeBack';
 import mjLogo from '@/assets/login/MJ Transport Logo.png';
 import {
   AppIcon,
@@ -231,8 +232,17 @@ function onKeydown(event: KeyboardEvent) {
     event.preventDefault();
     globalSearchOpen.value = true;
     nextTick(() => globalSearchInputRef.value?.focus());
+  } else if (event.key === 'Escape' && globalSearchOpen.value) {
+    // Dismiss the search first; useEscapeBack() ignores Escape while a field
+    // has focus, so the next press is the one that navigates back.
+    globalSearchOpen.value = false;
+    globalSearchInputRef.value?.blur();
   }
 }
+
+// Escape = back, app-wide. Every module renders inside this layout, so one
+// call here covers all of them.
+useEscapeBack();
 
 // --- Dark mode: toggles the app-wide data-theme attribute already
 // wired up in styles/main.css (:root[data-theme='dark']). The sidebar

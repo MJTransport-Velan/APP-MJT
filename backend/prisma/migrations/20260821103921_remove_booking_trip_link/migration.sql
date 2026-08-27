@@ -3,14 +3,16 @@
 -- flow, with no auto-created Trip or Intent behind it.
 
 -- DropForeignKey
-ALTER TABLE "bookings" DROP CONSTRAINT "bookings_tripId_fkey";
+ALTER TABLE "bookings" DROP CONSTRAINT IF EXISTS "bookings_tripId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "bookings" DROP CONSTRAINT "bookings_intentId_fkey";
+ALTER TABLE "bookings" DROP CONSTRAINT IF EXISTS "bookings_intentId_fkey";
 
 -- DropIndex
-DROP INDEX "bookings_tripId_idx";
+-- The index this originally dropped only ever existed on a drifted dev
+-- database; on a clean history the unique index goes with the column below.
+DROP INDEX IF EXISTS "bookings_tripId_idx";
 
 -- AlterTable
-ALTER TABLE "bookings" DROP COLUMN "tripId",
-DROP COLUMN "intentId";
+ALTER TABLE "bookings" DROP COLUMN IF EXISTS "tripId",
+DROP COLUMN IF EXISTS "intentId";

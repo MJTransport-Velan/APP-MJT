@@ -35,6 +35,7 @@
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
 import { financialStateService } from './financial-state.service';
+import { openingBalanceService } from './opening-balance.service';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const EPS = 0.004;
@@ -65,8 +66,16 @@ interface PartyRow {
   net: number;
 }
 
-/** Billed(≤cutoff) − Received(≤cutoff) per Company. Positive = receivable, negative = advance. */
+/**
+ * Billed(≤cutoff) − Received(≤cutoff) per Company. Positive = receivable,
+ * negative = advance.
+ *
+ * An outstanding brought over from the old system is added to "billed"
+ * rather than faked as an Invoice: inventing invoices would put migrated
+ * amounts straight into current-period revenue (§23 rule 13).
+ */
 async function customerBreakdown(cutoff: Date): Promise<PartyRow[]> {
+  const opening = await openingBalanceService.openingReceivables(cutoff);
   const [billed, received, companies] = await Promise.all([
     prisma.invoice.groupBy({
       by: ['companyId'],
@@ -83,16 +92,27 @@ async function customerBreakdown(cutoff: Date): Promise<PartyRow[]> {
   const nameMap = new Map(companies.map((c) => [c.id, c.name]));
   const billedMap = new Map(billed.map((b) => [b.companyId, Number(b._sum.totalAmount ?? 0)]));
   const receivedMap = new Map(received.map((r) => [r.companyId, Number(r._sum.amount ?? 0)]));
-  const ids = new Set([...billedMap.keys(), ...receivedMap.keys()]);
+  const ids = new Set([...billedMap.keys(), ...receivedMap.keys(), ...opening.byCompany.keys()]);
   return Array.from(ids).map((id) => {
-    const b = billedMap.get(id) ?? 0;
+    const b = (billedMap.get(id) ?? 0) + (opening.byCompany.get(id)?.amount ?? 0);
     const s = receivedMap.get(id) ?? 0;
-    return { id, name: nameMap.get(id) ?? 'Unknown', billed: round2(b), settled: round2(s), net: round2(b - s) };
+    return {
+      id,
+      name: nameMap.get(id) ?? opening.byCompany.get(id)?.name ?? 'Unknown',
+      billed: round2(b),
+      settled: round2(s),
+      net: round2(b - s),
+    };
   });
 }
 
-/** Billed(≤cutoff) − Paid(≤cutoff) per Supplier. Positive = payable, negative = advance paid to supplier. */
+/**
+ * Billed(≤cutoff) − Paid(≤cutoff) per Supplier. Positive = payable,
+ * negative = advance paid to supplier. Opening payables from the old
+ * system are added to "billed" without inventing a Supplier Bill.
+ */
 async function supplierBreakdown(cutoff: Date): Promise<PartyRow[]> {
+  const opening = await openingBalanceService.openingPayables(cutoff);
   const [billed, paid, suppliers] = await Promise.all([
     prisma.supplierBill.groupBy({
       by: ['supplierId'],
@@ -109,11 +129,17 @@ async function supplierBreakdown(cutoff: Date): Promise<PartyRow[]> {
   const nameMap = new Map(suppliers.map((s) => [s.id, s.name]));
   const billedMap = new Map(billed.map((b) => [b.supplierId, Number(b._sum.totalAmount ?? 0)]));
   const paidMap = new Map(paid.map((p) => [p.supplierId, Number(p._sum.amount ?? 0)]));
-  const ids = new Set([...billedMap.keys(), ...paidMap.keys()]);
+  const ids = new Set([...billedMap.keys(), ...paidMap.keys(), ...opening.bySupplier.keys()]);
   return Array.from(ids).map((id) => {
-    const b = billedMap.get(id) ?? 0;
+    const b = (billedMap.get(id) ?? 0) + (opening.bySupplier.get(id)?.amount ?? 0);
     const s = paidMap.get(id) ?? 0;
-    return { id, name: nameMap.get(id) ?? 'Unknown', billed: round2(b), settled: round2(s), net: round2(b - s) };
+    return {
+      id,
+      name: nameMap.get(id) ?? opening.bySupplier.get(id)?.name ?? 'Unknown',
+      billed: round2(b),
+      settled: round2(s),
+      net: round2(b - s),
+    };
   });
 }
 
@@ -189,7 +215,13 @@ async function ownerFundsBreakdown(cutoff: Date): Promise<{
   capitalTotal: number;
   ownerLoanRows: NamedAmountRow[];
   ownerLoanTotal: number;
+  openingOtherLiability: number;
+  openingUnclassified: number;
+  openingUnclassifiedRows: NamedAmountRow[];
 }> {
+  // Owner money carried over from the old system sits in the migration
+  // table, already split into capital / owner loan / still-undecided.
+  const opening = await openingBalanceService.openingOwnerFunds(cutoff);
   const transactions = await prisma.capitalTransaction.findMany({
     where: { deletedAt: null, transactionDate: { lte: cutoff } },
     select: { partnerId: true, type: true, amount: true, partner: { select: { name: true } } },
@@ -218,29 +250,65 @@ async function ownerFundsBreakdown(cutoff: Date): Promise<{
       .filter((r) => Math.abs(r.amount) > EPS)
       .sort((a, b) => b.amount - a.amount);
 
-  const capitalRows = toRows(capitalNet);
-  const ownerLoanRows = toRows(loanNet);
+  const capitalRows = [...toRows(capitalNet), ...opening.capitalRows];
+  const ownerLoanRows = [...toRows(loanNet), ...opening.ownerLoanRows];
 
   return {
     capitalRows,
-    contributed: round2(contributed),
+    // Opening capital is contributed money the business already held on the
+    // migration date — it belongs with contributions, not with drawings.
+    contributed: round2(contributed + opening.capital),
     withdrawn: round2(withdrawn),
     capitalTotal: round2(capitalRows.reduce((s, r) => s + r.amount, 0)),
     ownerLoanRows,
     ownerLoanTotal: round2(ownerLoanRows.reduce((s, r) => s + r.amount, 0)),
+    openingOtherLiability: opening.otherLiability,
+    openingUnclassified: opening.unclassified,
+    openingUnclassifiedRows: opening.unclassifiedRows,
   };
 }
 
 interface FixedAssetRow extends NamedAmountRow {
   code: string;
   category: 'Vehicle' | 'Other';
+  /** OPENING = carried over from the old system; NEW_PURCHASE = bought in this system. */
+  origin: 'OPENING' | 'NEW_PURCHASE';
+  /** Original cost. `amount` is the book value. */
+  grossValue: number;
 }
 
-/** currentValue is today's depreciated book value (see file header limitation #2) — only capitalizationDate is cutoff-scoped. */
-async function fixedAssetsBreakdown(cutoff: Date): Promise<{ rows: FixedAssetRow[]; total: number; vehicleTotal: number; otherTotal: number }> {
+/**
+ * currentValue is the asset's book value (see file header limitation #2) —
+ * only capitalizationDate is cutoff-scoped.
+ *
+ * Assets migrated from the old system and assets bought since are both real
+ * assets and both belong here (§7): the origin split is reported so the
+ * register can be read either way, but the total is one number. Gross block
+ * is the original cost and accumulated depreciation is exactly
+ * gross − book value, so the two can never disagree.
+ */
+async function fixedAssetsBreakdown(cutoff: Date): Promise<{
+  rows: FixedAssetRow[];
+  total: number;
+  vehicleTotal: number;
+  otherTotal: number;
+  openingTotal: number;
+  newTotal: number;
+  grossBlock: number;
+  accumulatedDepreciation: number;
+}> {
   const assets = await prisma.fixedAsset.findMany({
     where: { deletedAt: null, isActive: true, capitalizationDate: { lte: cutoff } },
-    select: { id: true, assetCode: true, assetName: true, currentValue: true, vehicleId: true, vehicle: { select: { registrationNumber: true } } },
+    select: {
+      id: true,
+      assetCode: true,
+      assetName: true,
+      purchaseValue: true,
+      currentValue: true,
+      vehicleId: true,
+      assetOrigin: true,
+      vehicle: { select: { registrationNumber: true } },
+    },
   });
   const rows: FixedAssetRow[] = assets
     .map((a) => ({
@@ -248,14 +316,22 @@ async function fixedAssetsBreakdown(cutoff: Date): Promise<{ rows: FixedAssetRow
       name: a.vehicle ? `${a.assetName} (${a.vehicle.registrationNumber})` : a.assetName,
       code: a.assetCode,
       category: (a.vehicleId ? 'Vehicle' : 'Other') as 'Vehicle' | 'Other',
+      origin: a.assetOrigin as 'OPENING' | 'NEW_PURCHASE',
+      grossValue: round2(Number(a.purchaseValue)),
       amount: round2(Number(a.currentValue)),
     }))
     .sort((a, b) => b.amount - a.amount);
+  const grossBlock = round2(rows.reduce((s, r) => s + r.grossValue, 0));
+  const total = round2(rows.reduce((s, r) => s + r.amount, 0));
   return {
     rows,
-    total: round2(rows.reduce((s, r) => s + r.amount, 0)),
+    total,
     vehicleTotal: round2(rows.filter((r) => r.category === 'Vehicle').reduce((s, r) => s + r.amount, 0)),
     otherTotal: round2(rows.filter((r) => r.category === 'Other').reduce((s, r) => s + r.amount, 0)),
+    openingTotal: round2(rows.filter((r) => r.origin === 'OPENING').reduce((s, r) => s + r.amount, 0)),
+    newTotal: round2(rows.filter((r) => r.origin === 'NEW_PURCHASE').reduce((s, r) => s + r.amount, 0)),
+    grossBlock,
+    accumulatedDepreciation: round2(grossBlock - total),
   };
 }
 
@@ -308,7 +384,7 @@ export const balanceSheetService = {
   async get(asOfDateInput?: string) {
     const { dateStr, cutoff, isToday } = resolveAsOf(asOfDateInput);
 
-    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, ownerFunds, loans] = await Promise.all([
+    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, ownerFunds, loans, openingOther] = await Promise.all([
       financialStateService.bankAndCashState(undefined),
       customerBreakdown(cutoff),
       supplierBreakdown(cutoff),
@@ -318,6 +394,7 @@ export const balanceSheetService = {
       driverPayable(cutoff),
       ownerFundsBreakdown(cutoff),
       loansBreakdown(cutoff),
+      openingBalanceService.openingOther(cutoff),
     ]);
 
     const customerReceivable = customerRows.filter((r) => r.net > EPS);
@@ -343,6 +420,12 @@ export const balanceSheetService = {
     const fixedAssetsGroup = {
       vehicles: fixedAssets.vehicleTotal,
       equipmentAndOther: fixedAssets.otherTotal,
+      // Opening vs New is how the register is read after a migration; the
+      // two together are the Net Fixed Assets figure (§7).
+      openingAssets: fixedAssets.openingTotal,
+      newAssets: fixedAssets.newTotal,
+      grossBlock: fixedAssets.grossBlock,
+      accumulatedDepreciation: fixedAssets.accumulatedDepreciation,
       total: fixedAssets.total,
     };
     const currentAssetsGroup = {
@@ -355,7 +438,9 @@ export const balanceSheetService = {
     const assets = {
       fixedAssets: fixedAssetsGroup,
       currentAssets: currentAssetsGroup,
-      otherAssets: 0,
+      // Deposits, advances and anything else carried over from the old
+      // system that has no register of its own (§2 section G).
+      otherAssets: openingOther.otherAssets,
     };
     const totalAssets = round2(fixedAssetsGroup.total + currentAssetsGroup.total + assets.otherAssets);
 
@@ -380,11 +465,16 @@ export const balanceSheetService = {
       supplierPayables: totalSupplierPayable,
       employeePayables: driverEmployeePayables,
       customerAdvances: totalCustomerAdvance,
+      // Owner money from the migration whose nature is still undecided sits
+      // here rather than in Equity: counting it as capital would overstate
+      // what the owners actually own (§9). It clears itself the moment the
+      // user reclassifies the row on Opening Balance & Migration.
+      openingUnclassified: ownerFunds.openingUnclassified,
       // No statutory/tax accrual is tracked anywhere in this app — GST/TDS
       // filing was removed along with the ledger engine. Reported as 0
       // rather than omitted, so the section keeps the spec's shape.
       taxPayables: 0,
-      otherLiabilities: 0,
+      otherLiabilities: round2(openingOther.otherLiabilities + ownerFunds.openingOtherLiability),
     };
     const totalLiabilities = round2(
       liabilities.vehicleLoans +
@@ -394,6 +484,7 @@ export const balanceSheetService = {
         liabilities.supplierPayables +
         liabilities.employeePayables +
         liabilities.customerAdvances +
+        liabilities.openingUnclassified +
         liabilities.taxPayables +
         liabilities.otherLiabilities
     );
@@ -411,10 +502,15 @@ export const balanceSheetService = {
     // computed number.
     const ownerCapital = ownerFunds.contributed;
     const drawings = ownerFunds.withdrawn;
-    const retainedProfit = round2(totalAssets - totalLiabilities - ownerCapital + drawings);
+    // Opening equity adjustments are whatever the old system's closing
+    // position held as equity beyond owner capital (accumulated profit
+    // brought forward, revaluation, and so on) — entered by hand, never
+    // derived, so it does not silently absorb a migration error.
+    const openingEquityAdjustments = openingOther.otherEquity;
+    const retainedProfit = round2(totalAssets - totalLiabilities - ownerCapital - openingEquityAdjustments + drawings);
 
-    const equity = { ownerCapital, retainedProfit, drawings };
-    const totalEquity = round2(equity.ownerCapital + equity.retainedProfit - equity.drawings);
+    const equity = { ownerCapital, openingEquityAdjustments, retainedProfit, drawings };
+    const totalEquity = round2(equity.ownerCapital + equity.openingEquityAdjustments + equity.retainedProfit - equity.drawings);
 
     // Holds by construction (Retained Profit is the plug); this guards
     // against a future coding bug, not a genuine trial-balance mismatch.
@@ -426,6 +522,7 @@ export const balanceSheetService = {
       'Driver/Employee Advance settlement has no settlement timestamp in this system — a past-date view approximates using the record\'s creation date.',
       'Retained Profit is derived as Assets − Liabilities − Owner Capital + Drawings. This app keeps no cumulative retained-earnings figure (Profit & Loss reports one period at a time), so it balances the sheet by construction rather than being independently computed.',
       'Tax / Statutory Payables always reads 0 — no GST/TDS accrual is tracked in this system.',
+      'Opening balances brought over from the previous system are included from the migration date onwards. They are positions, not transactions, so they never appear as income, expense, receipts or payments.',
     ];
 
     return {
@@ -457,6 +554,12 @@ export const balanceSheetService = {
         fixedAssets: fixedAssets.rows,
         fixedAssetsVehicleTotal: fixedAssets.vehicleTotal,
         fixedAssetsOtherTotal: fixedAssets.otherTotal,
+        openingAssetRows: fixedAssets.rows.filter((r) => r.origin === 'OPENING'),
+        newAssetRows: fixedAssets.rows.filter((r) => r.origin === 'NEW_PURCHASE'),
+        openingOtherAssets: openingOther.otherAssetRows,
+        openingOtherLiabilities: openingOther.otherLiabilityRows,
+        openingOtherEquity: openingOther.otherEquityRows,
+        openingUnclassifiedOwnerFunds: ownerFunds.openingUnclassifiedRows,
         loans: loans.rows,
         ownerLoans: ownerFunds.ownerLoanRows,
         capitalAccount: ownerFunds.capitalRows,

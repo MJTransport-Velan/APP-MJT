@@ -19,6 +19,7 @@ router.get('/', authorize('supplierBill.view'), validate(listSupplierBillsSchema
 router.get('/:id', authorize('supplierBill.view'), validate(supplierBillIdParamSchema), supplierBillController.getById);
 router.post('/', authorize('supplierBill.create'), validate(generateSupplierBillSchema), supplierBillController.generate);
 router.put('/:id', authorize('supplierBill.edit'), validate(updateSupplierBillSchema), supplierBillController.update);
+router.delete('/:id', authorize('supplierBill.delete'), validate(supplierBillIdParamSchema), supplierBillController.remove);
 router.patch('/:id/cancel', authorize('supplierBill.edit'), validate(supplierBillIdParamSchema), supplierBillController.cancel);
 router.post('/:id/credit-notes', authorize('supplierCreditNote.create'), validate(createSupplierCreditNoteSchema), supplierBillController.addCreditNote);
 router.post('/:id/debit-notes', authorize('supplierDebitNote.create'), validate(createSupplierDebitNoteSchema), supplierBillController.addDebitNote);

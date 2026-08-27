@@ -37,6 +37,10 @@ export const useFinancialEntryStore = defineStore('financialEntries', {
       const response = await financialEntryApi.reverse(id, reason);
       return response.data.data;
     },
+    async correct(id: string, payload: CreateFinancialEntryInput) {
+      const response = await financialEntryApi.correct(id, payload);
+      return response.data.data;
+    },
     async remove(id: string) {
       await financialEntryApi.remove(id);
     },

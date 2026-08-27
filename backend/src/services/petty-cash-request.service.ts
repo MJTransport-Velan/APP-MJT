@@ -7,7 +7,13 @@ import { auditService } from './audit.service';
 import { AppError } from '../middlewares/error.middleware';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { adjustFundAccountBalance } from '../utils/fundAccount.util';
-import { CreatePettyCashRequestInput, DisbursePettyCashRequestInput, ClosePettyCashRequestInput } from '../validators/petty-cash-request.validator';
+import { hardDelete } from '../utils/hardDelete.util';
+import {
+  CreatePettyCashRequestInput,
+  UpdatePettyCashRequestInput,
+  DisbursePettyCashRequestInput,
+  ClosePettyCashRequestInput,
+} from '../validators/petty-cash-request.validator';
 
 export const pettyCashRequestService = {
   async list(query: Request['query']) {
@@ -59,6 +65,63 @@ export const pettyCashRequestService = {
     });
 
     return request;
+  },
+
+  /**
+   * Editable only while PENDING — once someone has approved it, the amount
+   * and purpose are what they approved, and after disbursement the cash has
+   * already left the drawer.
+   */
+  async update(id: string, input: UpdatePettyCashRequestInput, actorId: string) {
+    const existing = await pettyCashRequestRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Petty Cash Request not found', 404);
+    if (existing.status !== 'PENDING') throw new AppError(`Request is ${existing.status}, so it can no longer be edited`, 409);
+
+    if (input.cashAccountId && input.cashAccountId !== existing.cashAccountId) {
+      const account = await cashAccountRepository.findByIdBasic(input.cashAccountId);
+      if (!account || account.organizationId !== existing.organizationId) throw new AppError('Cash Account not found for this organization', 422);
+      if (!account.isActive) throw new AppError('Cash Account is inactive', 409);
+    }
+
+    const updated = await pettyCashRequestRepository.update(id, {
+      cashAccountId: input.cashAccountId,
+      amount: input.amount,
+      purpose: input.purpose,
+      updatedById: actorId,
+    });
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'PettyCashRequest',
+      entityId: id,
+      description: `Updated petty cash request for ${existing.purpose}`,
+    });
+
+    return updated;
+  },
+
+  /**
+   * Only a request that never released cash can be deleted. Once disbursed
+   * the cash account balance reflects it, and a delete here would not put
+   * that money back.
+   */
+  async remove(id: string, actorId: string) {
+    const existing = await pettyCashRequestRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Petty Cash Request not found', 404);
+    if (existing.status === 'DISBURSED' || existing.status === 'CLOSED') {
+      throw new AppError(`This request is ${existing.status} and has already moved cash, so it cannot be deleted`, 409);
+    }
+
+    await hardDelete('Petty Cash Request', () => pettyCashRequestRepository.hardDelete(id));
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'PettyCashRequest',
+      entityId: id,
+      description: `Deleted petty cash request for ${existing.purpose}`,
+    });
   },
 
   async decide(id: string, decision: 'APPROVED' | 'REJECTED', remarks: string | undefined, actorId: string) {

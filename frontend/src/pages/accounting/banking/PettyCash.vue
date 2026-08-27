@@ -30,12 +30,28 @@
         <AppBtn v-if="(item as any).status === 'PENDING' && canApprove" size="small" variant="text" color="error" @click="onDecide(item as any, 'REJECTED')">Reject</AppBtn>
         <AppBtn v-if="(item as any).status === 'APPROVED'" size="small" variant="text" @click="openDisburseDialog(item as any)">Disburse</AppBtn>
         <AppBtn v-if="(item as any).status === 'DISBURSED'" size="small" variant="text" @click="openCloseDialog(item as any)">Close / Settle</AppBtn>
+        <AppBtn
+          v-if="(item as any).status === 'PENDING'"
+          icon="mdi-pencil-outline"
+          variant="text"
+          size="small"
+          :disabled="!canEdit"
+          @click="openEditDialog(item as any)"
+        />
+        <AppBtn
+          v-if="isDeletable(item as any)"
+          icon="mdi-delete-outline"
+          variant="text"
+          size="small"
+          :disabled="!canDelete"
+          @click="openDeleteConfirm(item as any)"
+        />
       </template>
     </MasterDataTable>
 
     <AppDialog v-model="dialog" :max-width="520" persistent>
       <AppCard>
-        <AppCardTitle class="text-h6">New Petty Cash Request</AppCardTitle>
+        <AppCardTitle class="text-h6">{{ isEditing ? 'Edit Petty Cash Request' : 'New Petty Cash Request' }}</AppCardTitle>
         <AppCardText>
           <AppSelect v-model="form.cashAccountId" :items="cashAccountOptions" item-title="label" item-value="id" label="Cash Account" :error-messages="errors.cashAccountId" class="mb-2" />
           <AppTextField v-model.number="form.amount" type="number" label="Amount" :error-messages="errors.amount" class="mb-2" />
@@ -44,7 +60,7 @@
         <AppCardActions>
           <div class="spacer"></div>
           <AppBtn variant="text" @click="dialog = false">Cancel</AppBtn>
-          <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmit">Request</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmit">{{ isEditing ? 'Save Changes' : 'Request' }}</AppBtn>
         </AppCardActions>
       </AppCard>
     </AppDialog>
@@ -76,6 +92,15 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Petty Cash Request"
+      :message="`Delete this request for ${deleteTarget?.purpose}? Only a request that never disbursed can be removed.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -87,6 +112,7 @@ import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import MasterToolbar from '@/components/masters/MasterToolbar.vue';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import { AppBtn, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppTextField, AppTextarea, AppSelect, AppChip } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { PettyCashRequest } from '@/types/banking.types';
 
 const store = usePettyCashRequestStore();
@@ -97,6 +123,13 @@ const { success, error } = useSnackbar();
 
 const canCreate = authStore.hasPermission('pettyCashRequest.create');
 const canApprove = authStore.hasPermission('pettyCashRequest.approve');
+const canEdit = authStore.hasPermission('pettyCashRequest.edit');
+const canDelete = authStore.hasPermission('pettyCashRequest.delete');
+
+/** Once cash is out of the drawer the request is history, not a draft. */
+function isDeletable(request: PettyCashRequest) {
+  return request.status !== 'DISBURSED' && request.status !== 'CLOSED';
+}
 
 const headers = [
   { title: 'Purpose', key: 'purpose', sortable: false },
@@ -150,6 +183,8 @@ async function fetchData() {
 
 const dialog = ref(false);
 const submitting = ref(false);
+const isEditing = ref(false);
+const editingId = ref<string | null>(null);
 
 function blankForm() {
   return { cashAccountId: '', amount: undefined as number | undefined, purpose: '' };
@@ -160,6 +195,20 @@ const errors = reactive({ cashAccountId: '', amount: '', purpose: '' });
 function openCreateDialog() {
   Object.assign(form, blankForm());
   Object.assign(errors, { cashAccountId: '', amount: '', purpose: '' });
+  isEditing.value = false;
+  editingId.value = null;
+  dialog.value = true;
+}
+
+function openEditDialog(request: PettyCashRequest) {
+  Object.assign(form, {
+    cashAccountId: request.cashAccountId,
+    amount: Number(request.amount),
+    purpose: request.purpose,
+  });
+  Object.assign(errors, { cashAccountId: '', amount: '', purpose: '' });
+  isEditing.value = true;
+  editingId.value = request.id;
   dialog.value = true;
 }
 function validateForm(): boolean {
@@ -172,14 +221,44 @@ async function onSubmit() {
   if (!validateForm()) return;
   submitting.value = true;
   try {
-    await store.create({ ...form });
-    success('Petty Cash Request submitted');
+    if (isEditing.value && editingId.value) {
+      await store.update(editingId.value, { ...form });
+      success('Petty Cash Request updated');
+    } else {
+      await store.create({ ...form });
+      success('Petty Cash Request submitted');
+    }
     dialog.value = false;
     fetchData();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to submit request'));
+    error(extractErrorMessage(err, 'Failed to save request'));
   } finally {
     submitting.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<PettyCashRequest | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(request: PettyCashRequest) {
+  deleteTarget.value = request;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Petty Cash Request deleted');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete request'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

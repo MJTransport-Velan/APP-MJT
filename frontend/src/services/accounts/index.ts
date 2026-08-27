@@ -83,6 +83,9 @@ export const supplierBillApi = {
   cancel(id: string) {
     return api.patch<ApiResponse<SupplierBill>>(`/accounts/supplier-bills/${id}/cancel`);
   },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/accounts/supplier-bills/${id}`);
+  },
   addCreditNote(id: string, payload: Record<string, unknown>) {
     return api.post<ApiResponse<SupplierBill>>(`/accounts/supplier-bills/${id}/credit-notes`, payload);
   },

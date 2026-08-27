@@ -35,4 +35,12 @@ export const chequeBookRepository = {
   update(id: string, data: Prisma.ChequeBookUncheckedUpdateInput) {
     return prisma.chequeBook.update({ where: { id }, data });
   },
+
+  countCheques(chequeBookId: string) {
+    return prisma.cheque.count({ where: { chequeBookId } });
+  },
+
+  hardDelete(id: string) {
+    return prisma.chequeBook.delete({ where: { id } });
+  },
 };

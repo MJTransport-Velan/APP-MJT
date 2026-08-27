@@ -24,11 +24,15 @@
         {{ accountLabel((item as any).toAccountType, (item as any).toAccountId) }}
       </template>
       <template #item.amount="{ item }">{{ formatCurrency(Number((item as any).amount)) }}</template>
+      <template #item.actions="{ item }">
+        <AppBtn icon="mdi-pencil-outline" variant="text" size="small" :disabled="!canEdit" @click="openEditDialog(item as any)" />
+        <AppBtn icon="mdi-delete-outline" variant="text" size="small" :disabled="!canDelete" @click="openDeleteConfirm(item as any)" />
+      </template>
     </MasterDataTable>
 
     <AppDialog v-model="dialog" :max-width="640" persistent>
       <AppCard>
-        <AppCardTitle class="text-h6">New Bank Transfer</AppCardTitle>
+        <AppCardTitle class="text-h6">{{ isEditing ? 'Edit Bank Transfer' : 'New Bank Transfer' }}</AppCardTitle>
         <AppCardText>
           <AppTextField v-model="form.transferDate" type="date" label="Transfer Date" class="mb-2" />
           <AppSelect v-model="fromKey" :items="accountOptions" item-title="label" item-value="key" label="From Account" :error-messages="errors.from" class="mb-2" />
@@ -42,10 +46,19 @@
         <AppCardActions>
           <div class="spacer"></div>
           <AppBtn variant="text" @click="dialog = false">Cancel</AppBtn>
-          <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmit">Create Transfer</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmit">{{ isEditing ? 'Save Changes' : 'Create Transfer' }}</AppBtn>
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Bank Transfer"
+      :message="`Delete transfer ${deleteTarget?.transferNumber}? The money it moved goes back to where it came from.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -58,6 +71,8 @@ import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import MasterToolbar from '@/components/masters/MasterToolbar.vue';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import { AppBtn, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppTextField, AppTextarea, AppSelect, AppIcon } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import type { BankTransfer } from '@/types/banking.types';
 
 const store = useBankTransferStore();
 const bankAccountStore = useBankAccountStore();
@@ -67,11 +82,14 @@ const authStore = useAuthStore();
 const { success, error } = useSnackbar();
 
 const canCreate = authStore.hasPermission('bankTransfer.create');
+const canEdit = authStore.hasPermission('bankTransfer.edit');
+const canDelete = authStore.hasPermission('bankTransfer.delete');
 
 const headers = [
   { title: 'Transfer', key: 'transferNumber', sortable: false },
   { title: 'Route', key: 'route', sortable: false },
   { title: 'Amount', key: 'amount', sortable: false },
+  { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
 ];
 
 function formatCurrency(value: number) {
@@ -116,6 +134,8 @@ async function fetchData() {
 
 const dialog = ref(false);
 const submitting = ref(false);
+const isEditing = ref(false);
+const editingId = ref<string | null>(null);
 const fromKey = ref('');
 const toKey = ref('');
 
@@ -137,6 +157,26 @@ function openCreateDialog() {
   Object.assign(errors, { from: '', to: '', amount: '' });
   fromKey.value = '';
   toKey.value = '';
+  isEditing.value = false;
+  editingId.value = null;
+  dialog.value = true;
+}
+
+function openEditDialog(transfer: BankTransfer) {
+  Object.assign(form, {
+    ...blankForm(),
+    transferDate: transfer.transferDate?.slice(0, 10) ?? blankForm().transferDate,
+    amount: Number(transfer.amount),
+    transferCharges: Number(transfer.transferCharges ?? 0),
+    paymentModeId: transfer.paymentModeId || '',
+    referenceNumber: transfer.referenceNumber || '',
+    narration: transfer.narration || '',
+  });
+  Object.assign(errors, { from: '', to: '', amount: '' });
+  fromKey.value = `${transfer.fromAccountType}:${transfer.fromAccountId}`;
+  toKey.value = `${transfer.toAccountType}:${transfer.toAccountId}`;
+  isEditing.value = true;
+  editingId.value = transfer.id;
   dialog.value = true;
 }
 
@@ -153,7 +193,7 @@ async function onSubmit() {
   try {
     const [fromAccountType, fromAccountId] = fromKey.value.split(':');
     const [toAccountType, toAccountId] = toKey.value.split(':');
-    await store.create({
+    const payload = {
       transferDate: form.transferDate,
       fromAccountType,
       fromAccountId,
@@ -164,14 +204,45 @@ async function onSubmit() {
       paymentModeId: form.paymentModeId || undefined,
       referenceNumber: form.referenceNumber || undefined,
       narration: form.narration || undefined,
-    });
-    success('Bank Transfer created');
+    };
+    if (isEditing.value && editingId.value) {
+      await store.update(editingId.value, payload);
+      success('Bank Transfer updated');
+    } else {
+      await store.create(payload);
+      success('Bank Transfer created');
+    }
     dialog.value = false;
     fetchData();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to create Bank Transfer'));
+    error(extractErrorMessage(err, 'Failed to save Bank Transfer'));
   } finally {
     submitting.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<BankTransfer | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(transfer: BankTransfer) {
+  deleteTarget.value = transfer;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Bank Transfer deleted');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete Bank Transfer'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

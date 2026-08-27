@@ -56,4 +56,25 @@ export const createSalaryStructureSchema = z.object({
   }),
 });
 
+export const updateSalaryStructureSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    effectiveFrom: z.string().min(1).optional(),
+    components: z
+      .array(
+        z.object({
+          componentType: componentTypeEnum,
+          name: z.string().optional(),
+          calculationType: calculationTypeEnum.optional(),
+          value: z.number(),
+          isEarning: z.boolean(),
+          targetLedgerId: z.string().uuid().optional(),
+        })
+      )
+      .optional(),
+  }).strict(),
+});
+
 export type CreateSalaryStructureInput = z.infer<typeof createSalaryStructureSchema>['body'];
+export type UpdateSalaryStructureInput = z.infer<typeof updateSalaryStructureSchema>['body'];

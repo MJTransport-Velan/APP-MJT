@@ -253,6 +253,15 @@ const routes: RouteRecordRaw[] = [
               permission: 'loan.view',
             },
           },
+          // Opening Balance & Migration — the previous system's closing
+          // position brought in as this system's opening position. Nothing
+          // recorded there is a transaction.
+          {
+            path: 'opening-balance',
+            name: 'accounts-opening-balance',
+            component: () => import('@/pages/accounts/OpeningBalanceMigration.vue'),
+            meta: { breadcrumb: 'Opening Balance & Migration', permission: 'opening_balance.view' },
+          },
           {
             path: 'capital-account',
             name: 'accounts-capital-account',
@@ -551,7 +560,11 @@ const routes: RouteRecordRaw[] = [
         path: 'accounting',
         name: 'accounting',
         component: RouterView,
-        meta: { breadcrumb: 'Accounting', permission: 'bankAccount.view' },
+        // 'Accounting' stopped being a user-facing section when it was merged
+        // into 'Finance' in the sidebar. The pages under here still live at
+        // /accounting URLs, so the trail names their real parent explicitly and
+        // links to the Finance hub that lists them.
+        meta: { parentBreadcrumb: { title: 'Finance', to: '/accounts' }, permission: 'bankAccount.view' },
         children: [
           {
             path: '',

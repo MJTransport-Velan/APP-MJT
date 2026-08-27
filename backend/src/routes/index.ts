@@ -70,6 +70,7 @@ import payrollDashboardRoutes from './payroll-dashboard.routes';
 import assetCategoryRoutes from './asset-category.routes';
 import fixedAssetRoutes from './fixed-asset.routes';
 import loanRoutes from './loan.routes';
+import openingBalanceRoutes from './opening-balance.routes';
 import fastTagRoutes from './fasttag.routes';
 import profitabilityReportRoutes from './profitability-report.routes';
 import outstandingReportRoutes from './outstanding-report.routes';
@@ -216,6 +217,11 @@ router.use('/accounts/fasttag-accounts', fastTagRoutes);
 // generated EMI schedules, and the payment flow that debits the fund
 // account and writes the matching Financial Entry automatically.
 router.use('/accounts/loans', loanRoutes);
+
+// Opening Balance & Migration — the old system's closing position brought
+// in as this system's opening position. Nothing here is a transaction: no
+// Financial Entry is written, so opening amounts never reach the P&L.
+router.use('/accounts/opening-balance', openingBalanceRoutes);
 
 // Business Reporting — every report here reads directly from business
 // entities (Trip/Invoice/SupplierBill/VehicleExpense/DriverAdvance/...),

@@ -34,11 +34,23 @@ export const loanDashboardService = {
     ]);
 
     let totalOutstanding = 0;
+    let totalOriginalAmount = 0;
+    let totalOpeningOutstanding = 0;
+    let totalPrincipalPaid = 0;
+    let totalInterestPaid = 0;
+    let totalMonthlyEmi = 0;
     for (const loan of loans) {
-      const principalPaid = loan.installments
-        .filter((i) => i.status === 'PAID')
-        .reduce((s, i) => s + Number(i.principalComponent), 0);
+      const paid = loan.installments.filter((i) => i.status === 'PAID');
+      const principalPaid = paid.reduce((s, i) => s + Number(i.principalComponent), 0);
       totalOutstanding += Math.max(Number(loan.principalAmount) - principalPaid, 0);
+      totalPrincipalPaid += principalPaid;
+      totalInterestPaid += paid.reduce((s, i) => s + Number(i.interestComponent), 0);
+      totalMonthlyEmi += Number(loan.emiAmount);
+      // What the lender originally sanctioned: for a loan carried over from
+      // the old system that is originalPrincipal, and the balance it came
+      // across with is principalAmount.
+      totalOriginalAmount += Number(loan.originalPrincipal ?? loan.principalAmount);
+      if (loan.origin === 'OPENING') totalOpeningOutstanding += Number(loan.principalAmount);
     }
 
     const thisMonth = installments.filter((i) => i.dueDate >= monthStart && i.dueDate <= monthEnd);
@@ -70,6 +82,11 @@ export const loanDashboardService = {
       stats: {
         totalActiveLoans: loans.length,
         totalLoanOutstanding: round2(totalOutstanding),
+        totalOriginalLoanAmount: round2(totalOriginalAmount),
+        totalOpeningOutstanding: round2(totalOpeningOutstanding),
+        totalPrincipalPaid: round2(totalPrincipalPaid),
+        totalInterestPaid: round2(totalInterestPaid),
+        monthlyEmiCommitment: round2(totalMonthlyEmi),
         thisMonthEmi: round2(thisMonth.reduce((s, i) => s + Number(i.emiAmount), 0)),
         thisMonthPrincipal: round2(thisMonth.reduce((s, i) => s + Number(i.principalComponent), 0)),
         thisMonthInterest: round2(thisMonth.reduce((s, i) => s + Number(i.interestComponent), 0)),

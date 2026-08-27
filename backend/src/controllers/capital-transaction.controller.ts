@@ -17,6 +17,10 @@ export const capitalTransactionController = {
     const result = await capitalTransactionService.create(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Capital Transaction recorded', data: result });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const transaction = await capitalTransactionService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Capital Transaction updated', data: transaction });
+  }),
   remove: asyncHandler(async (req: AuthRequest, res: Response) => {
     await capitalTransactionService.remove(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Capital Transaction deleted', data: null });

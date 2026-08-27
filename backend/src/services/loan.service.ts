@@ -72,7 +72,14 @@ function serialize(loan: LoanWithRelations) {
     fixedAsset: loan.fixedAsset ? { id: loan.fixedAsset.id, assetCode: loan.fixedAsset.assetCode, assetName: loan.fixedAsset.assetName } : null,
     capitalPartner: loan.capitalPartner ? { id: loan.capitalPartner.id, name: loan.capitalPartner.name } : null,
     loanStartDate: loan.loanStartDate,
+    // For an OPENING loan this is what was still owed at migration; the
+    // amount the lender originally sanctioned is originalPrincipal.
     principalAmount: Number(loan.principalAmount),
+    origin: loan.origin,
+    originalPrincipal: loan.originalPrincipal === null ? null : Number(loan.originalPrincipal),
+    openingAsOfDate: loan.openingAsOfDate,
+    migrationSource: loan.migrationSource,
+    migrationStatus: loan.migrationStatus,
     interestRatePercent: Number(loan.interestRatePercent),
     tenureMonths: loan.tenureMonths,
     emiAmount: Number(loan.emiAmount),
@@ -167,6 +174,7 @@ export const loanService = {
       loanType: (query.loanType as string) || undefined,
       status: (query.status as string) || undefined,
       vehicleId: (query.vehicleId as string) || undefined,
+      origin: (query.origin as string) || undefined,
     });
     return { data: rows.map(serialize), meta: buildPaginationMeta(page, pageSize, total) };
   },
@@ -211,8 +219,18 @@ export const loanService = {
     }
 
     const firstEmiDate = toDateOnly(input.firstEmiDate);
+    // For an OPENING loan the schedule is generated from what is STILL owed
+    // over the EMIs that are LEFT — the old system's paid EMIs are history
+    // and are never recreated here (§10).
     const schedule = generateLoanSchedule(input.principalAmount, interestRatePercent, input.tenureMonths, emiAmount, firstEmiDate);
     const loanNumber = await loanRepository.nextLoanNumber();
+    const isOpening = input.origin === 'OPENING';
+    if (isOpening && input.originalPrincipal !== undefined && input.originalPrincipal < input.principalAmount) {
+      throw new AppError(
+        `The outstanding amount (${input.principalAmount}) cannot be more than the original loan amount (${input.originalPrincipal}).`,
+        422
+      );
+    }
 
     const loan = await loanRepository.createWithSchedule(
       {
@@ -233,6 +251,11 @@ export const loanService = {
         fundAccountId: fundAccount.id,
         loanAccountRef: input.loanAccountRef,
         remarks: input.remarks,
+        origin: input.origin ?? 'NEW',
+        originalPrincipal: isOpening ? input.originalPrincipal ?? input.principalAmount : null,
+        openingAsOfDate: isOpening ? toDateOnly(input.openingAsOfDate ?? input.loanStartDate) : null,
+        migrationSource: isOpening ? input.migrationSource ?? 'Tally Migration' : null,
+        migrationStatus: isOpening ? input.migrationStatus ?? 'UNVERIFIED' : null,
         organizationId,
         createdById: actorId,
         updatedById: actorId,
@@ -253,7 +276,9 @@ export const loanService = {
       action: 'CREATE',
       entityType: 'Loan',
       entityId: loan.id,
-      description: `Created ${input.loanType.replace(/_/g, ' ').toLowerCase()} ${loan.loanNumber} — ${input.lenderName}, ${input.principalAmount} over ${input.tenureMonths} months`,
+      description: isOpening
+        ? `Registered opening ${input.loanType.replace(/_/g, ' ').toLowerCase()} ${loan.loanNumber} — ${input.lenderName}, ${input.principalAmount} still owed over ${input.tenureMonths} remaining EMIs`
+        : `Created ${input.loanType.replace(/_/g, ' ').toLowerCase()} ${loan.loanNumber} — ${input.lenderName}, ${input.principalAmount} over ${input.tenureMonths} months`,
     });
 
     return loanService.getById(loan.id);

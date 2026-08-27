@@ -58,13 +58,20 @@
       <template #item.status="{ item }"><AppChip size="small" :color="statusColor((item as any).status)">{{ (item as any).status.replace('_', ' ') }}</AppChip></template>
       <template #item.actions="{ item }">
         <AppBtn v-if="!['CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-close-circle-outline" variant="text" size="small" color="error" title="Cancel" @click="openCancelDialog(item as any)" />
+        <AppBtn v-if="!['CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-pencil-outline" variant="text" size="small" title="Edit" @click="openEditDialog(item as any)" />
         <AppBtn v-if="!['CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-undo-variant" variant="text" size="small" title="Reverse" @click="onReverse(item as any)" />
         <AppBtn v-if="['DRAFT', 'CANCELLED', 'REVERSED'].includes((item as any).status)" icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete" @click="openDeleteConfirm(item as any)" />
       </template>
     </MasterDataTable>
 
     <!-- Record Financial Entry -->
-    <MasterFormDialog v-model="createDialog" title="Record Financial Entry" :loading="submitting" max-width="760" @submit="onSubmit">
+    <MasterFormDialog
+      v-model="createDialog"
+      :title="editingId ? 'Edit Financial Entry' : 'Record Financial Entry'"
+      :loading="submitting"
+      max-width="760"
+      @submit="onSubmit"
+    >
       <div class="fe-section">
         <div class="fe-section__title">What happened?</div>
         <AppSelect v-model="form.entryType" :items="entryTypeOptions" item-title="label" item-value="value" label="Entry Type" :error-messages="errors.entryType" class="mb-2" />
@@ -446,6 +453,13 @@ const dashboard = computed(() => store.dashboard);
 
 const createDialog = ref(false);
 const submitting = ref(false);
+/**
+ * Set while the dialog is correcting a posted entry. Saving then goes through
+ * the correct endpoint, which reverses what the original entry did to the
+ * balances and re-posts the new figures — an entry is never silently rewritten
+ * underneath the money it already moved.
+ */
+const editingId = ref<string | null>(null);
 const form = reactive({
   entryType: 'MONEY_RECEIVED' as FinancialEntryType,
   sourceType: 'CUSTOMER' as FinancialPartyType,
@@ -498,6 +512,34 @@ function openCreateDialog() {
     odometerReading: undefined,
   });
   clearErrors();
+  editingId.value = null;
+  createDialog.value = true;
+}
+
+function openEditDialog(entry: FinancialEntry) {
+  Object.assign(form, {
+    entryType: entry.entryType,
+    sourceType: entry.source.type,
+    sourceId: entry.source.id || '',
+    sourceLabel: entry.source.label || '',
+    destinationType: entry.destination.type,
+    destinationId: entry.destination.id || '',
+    destinationLabel: entry.destination.label || '',
+    amount: Number(entry.amount),
+    paymentModeId: entry.paymentMode?.id || '',
+    entryDate: String(entry.entryDate).slice(0, 10),
+    referenceNumber: entry.referenceNumber || '',
+    remarks: entry.remarks || '',
+    purpose: entry.purpose,
+    purposeNotes: entry.purposeNotes || '',
+    vehicleId: entry.fleet?.vehicleId || '',
+    tripId: entry.fleet?.tripId || '',
+    quantityLiters: entry.fleet?.quantityLiters ?? undefined,
+    ratePerLiter: entry.fleet?.ratePerLiter ?? undefined,
+    odometerReading: entry.fleet?.odometerReading ?? undefined,
+  });
+  clearErrors();
+  editingId.value = entry.id;
   createDialog.value = true;
 }
 
@@ -510,7 +552,7 @@ async function onSubmit() {
 
   submitting.value = true;
   try {
-    await store.create({
+    const payload = {
       entryType: form.entryType,
       entryDate: form.entryDate,
       sourceType: form.sourceType,
@@ -530,13 +572,19 @@ async function onSubmit() {
       quantityLiters: form.quantityLiters || undefined,
       ratePerLiter: form.ratePerLiter || undefined,
       odometerReading: form.odometerReading || undefined,
-    });
-    success('Financial entry recorded');
+    };
+    if (editingId.value) {
+      await store.correct(editingId.value, payload);
+      success('Financial entry corrected');
+    } else {
+      await store.create(payload);
+      success('Financial entry recorded');
+    }
     createDialog.value = false;
     fetchEntries();
     store.fetchDashboard();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to record financial entry'));
+    error(extractErrorMessage(err, editingId.value ? 'Failed to correct financial entry' : 'Failed to record financial entry'));
   } finally {
     submitting.value = false;
   }

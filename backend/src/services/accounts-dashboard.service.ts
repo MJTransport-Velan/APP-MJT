@@ -2,6 +2,7 @@ import { prisma } from '../config/db';
 import { balanceSheetService } from './balance-sheet.service';
 import { loanDashboardService } from './loan-dashboard.service';
 import { profitLossService } from './profit-loss.service';
+import { openingBalanceService } from './opening-balance.service';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -35,6 +36,26 @@ async function financeOverview() {
     nextEmiAmount: loans.stats.nextEmiAmount,
     upcomingEmis: loans.upcomingEmis.slice(0, 8),
   };
+}
+
+/**
+ * Folds opening balances into a party-wise outstanding list: a customer who
+ * only has an opening balance still belongs on the list, and one who has
+ * both gets a single combined figure rather than two rows.
+ */
+function mergeOpening(
+  rows: { id: string; name: string; outstanding: number }[],
+  opening: Map<string, { name: string; amount: number }>
+) {
+  const merged = new Map(rows.map((r) => [r.id, { ...r }]));
+  for (const [id, v] of opening.entries()) {
+    const existing = merged.get(id);
+    if (existing) existing.outstanding = round2(existing.outstanding + v.amount);
+    else merged.set(id, { id, name: v.name, outstanding: round2(v.amount) });
+  }
+  return Array.from(merged.values())
+    .filter((r) => r.outstanding > 0)
+    .sort((a, b) => b.outstanding - a.outstanding);
 }
 
 /** First and last day of the month `offset` months back from now, as YYYY-MM-DD. */
@@ -268,12 +289,24 @@ export const accountsDashboardService = {
 
     const overview = await financeOverview();
 
+    // Balances brought over from the old system are still owed / still
+    // owing — they belong in these figures, and they are added rather than
+    // faked as invoices or bills so they cannot touch revenue or expenses.
+    const [openingReceivables, openingPayables] = await Promise.all([
+      openingBalanceService.openingReceivables(),
+      openingBalanceService.openingPayables(),
+    ]);
+
     return {
       ...overview,
-      outstandingReceivables: Number(outstandingReceivables._sum.outstandingAmount || 0),
+      outstandingReceivables: round2(Number(outstandingReceivables._sum.outstandingAmount || 0) + openingReceivables.total),
       // Now sourced from SupplierBill (Phase 10) where it exists — falls back
       // to the legacy trip-based estimate for suppliers with no bill yet.
-      outstandingPayables: Number(supplierBillOutstanding._sum.outstandingAmount || 0) || totalOutstandingPayables,
+      outstandingPayables: round2(
+        (Number(supplierBillOutstanding._sum.outstandingAmount || 0) || totalOutstandingPayables) + openingPayables.total
+      ),
+      openingReceivables: openingReceivables.total,
+      openingPayables: openingPayables.total,
       monthlyRevenue,
       monthlyExpenses: monthlyExpensesTotal,
       profit: monthlyRevenue - monthlyExpensesTotal,
@@ -288,15 +321,22 @@ export const accountsDashboardService = {
         supplier: Number(advancePayments._sum.amount || 0),
       },
       creditLimitAlerts,
-      customerOutstanding: customerOutstanding
-        .map((c) => ({
-          companyId: c.companyId,
-          companyName: companyNameMap.get(c.companyId) || 'Unknown',
+      customerOutstanding: mergeOpening(
+        customerOutstanding.map((c) => ({
+          id: c.companyId,
+          name: companyNameMap.get(c.companyId) || 'Unknown',
           outstanding: Number(c._sum.outstandingAmount || 0),
-        }))
-        .sort((a, b) => b.outstanding - a.outstanding)
+        })),
+        openingReceivables.byCompany
+      )
+        .map((r) => ({ companyId: r.id, companyName: r.name, outstanding: r.outstanding }))
         .slice(0, 10),
-      supplierOutstanding,
+      supplierOutstanding: mergeOpening(
+        supplierOutstanding.map((s) => ({ id: s.supplierId, name: s.supplierName, outstanding: s.outstanding })),
+        openingPayables.bySupplier
+      )
+        .map((r) => ({ supplierId: r.id, supplierName: r.name, outstanding: r.outstanding }))
+        .slice(0, 10),
       recentPayments: recentPayments.map((p) => ({
         id: p.id,
         paymentNumber: p.paymentNumber,

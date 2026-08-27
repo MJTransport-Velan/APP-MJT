@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 const depreciationMethodEnum = z.enum(['STRAIGHT_LINE', 'WRITTEN_DOWN_VALUE', 'CUSTOM']);
 const fixedAssetStatusEnum = z.enum(['ACTIVE', 'WRITTEN_OFF']);
+// OPENING = already owned when the business moved off its old system;
+// NEW_PURCHASE = bought through this system, which is what the funding /
+// approval flow below is for.
+const assetOriginEnum = z.enum(['OPENING', 'NEW_PURCHASE']);
+const migrationRecordStatusEnum = z.enum(['CONFIRMED', 'NEEDS_REVIEW', 'UNVERIFIED', 'RECLASSIFIED']);
 
 export const listFixedAssetsSchema = z.object({
   body: z.object({}).optional(),
@@ -13,6 +18,8 @@ export const listFixedAssetsSchema = z.object({
     categoryId: z.string().uuid().optional(),
     status: fixedAssetStatusEnum.optional(),
     approvalStatus: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+    assetOrigin: assetOriginEnum.optional(),
+    assetType: z.string().optional(),
   }),
 });
 
@@ -40,6 +47,16 @@ export const createFixedAssetSchema = z.object({
     departmentId: z.string().uuid().optional(),
     locationText: z.string().optional(),
     responsiblePersonId: z.string().uuid().optional(),
+    // Migration fields. For an OPENING asset, purchaseValue is the ORIGINAL
+    // cost and accumulatedDepreciation is what had been written off by the
+    // opening date, so the book value carried into this system is the
+    // difference. No funding is recorded: how the asset was originally paid
+    // for is often unknown and must never be guessed.
+    assetOrigin: assetOriginEnum.optional(),
+    accumulatedDepreciation: z.number().min(0).optional(),
+    openingDate: z.string().optional(),
+    migrationSource: z.string().optional(),
+    migrationStatus: migrationRecordStatusEnum.optional(),
   }),
 });
 
@@ -63,6 +80,10 @@ export const updateFixedAssetSchema = z.object({
       locationText: z.string().nullable().optional(),
       responsiblePersonId: z.string().uuid().nullable().optional(),
       status: fixedAssetStatusEnum.optional(),
+      accumulatedDepreciation: z.number().min(0).optional(),
+      openingDate: z.string().nullable().optional(),
+      migrationSource: z.string().nullable().optional(),
+      migrationStatus: migrationRecordStatusEnum.optional(),
     })
     .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required' }),
 });

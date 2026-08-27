@@ -130,6 +130,12 @@
               <td>{{ t.remarks || "-" }}</td>
               <td class="text-right">
                 <AppBtn
+                  icon="mdi-pencil-outline"
+                  variant="text"
+                  size="small"
+                  @click="openEdit(t)"
+                />
+                <AppBtn
                   icon="mdi-delete-outline"
                   variant="text"
                   size="small"
@@ -152,7 +158,11 @@
     <!-- Record owner money in / out -->
     <AppDialog v-model="recordDialog.open" max-width="480">
       <AppCardTitle>{{
-        isMoneyIn ? "Record Owner Funds Received" : "Record Withdrawal / Repayment"
+        editingId
+          ? "Edit Owner Transaction"
+          : isMoneyIn
+            ? "Record Owner Funds Received"
+            : "Record Withdrawal / Repayment"
       }}</AppCardTitle>
       <AppCardText>
         <AppSelect
@@ -206,7 +216,7 @@
           :color="isMoneyIn ? 'success' : 'error'"
           :loading="saving"
           @click="submitRecord"
-          >Save</AppBtn
+          >{{ editingId ? "Save Changes" : "Save" }}</AppBtn
         >
       </AppCardActions>
     </AppDialog>
@@ -459,6 +469,8 @@ const recordDialog = ref<{ open: boolean; type: CapitalTransactionType }>({
   open: false,
   type: "CONTRIBUTION",
 });
+/** Set while the dialog is correcting an existing transaction rather than recording a new one. */
+const editingId = ref<string | null>(null);
 const form = ref({
   partnerId: "",
   type: "CONTRIBUTION" as CapitalTransactionType,
@@ -510,7 +522,22 @@ function openRecord(type: CapitalTransactionType) {
     fundAccountId: "",
     remarks: "",
   };
+  editingId.value = null;
   recordDialog.value = { open: true, type };
+}
+
+function openEdit(transaction: CapitalTransaction) {
+  form.value = {
+    partnerId: transaction.partner.id,
+    type: transaction.type,
+    amount: Number(transaction.amount),
+    transactionDate: transaction.transactionDate?.slice(0, 10) || localDateStr(),
+    fundAccountType: transaction.fundAccountType as "BANK" | "CASH",
+    fundAccountId: transaction.fundAccountId,
+    remarks: transaction.remarks || "",
+  };
+  editingId.value = transaction.id;
+  recordDialog.value = { open: true, type: transaction.type };
 }
 
 async function submitRecord() {
@@ -520,7 +547,7 @@ async function submitRecord() {
   }
   saving.value = true;
   try {
-    await capitalTransactionApi.create({
+    const payload = {
       partnerId: form.value.partnerId,
       type: form.value.type,
       amount: form.value.amount,
@@ -528,12 +555,18 @@ async function submitRecord() {
       fundAccountType: form.value.fundAccountType,
       fundAccountId: form.value.fundAccountId,
       remarks: form.value.remarks || undefined,
-    });
-    success(`${CAPITAL_TRANSACTION_LABELS[form.value.type]} recorded`);
+    };
+    if (editingId.value) {
+      await capitalTransactionApi.update(editingId.value, payload);
+      success(`${CAPITAL_TRANSACTION_LABELS[form.value.type]} updated`);
+    } else {
+      await capitalTransactionApi.create(payload);
+      success(`${CAPITAL_TRANSACTION_LABELS[form.value.type]} recorded`);
+    }
     recordDialog.value.open = false;
     await loadAll();
   } catch (e) {
-    showError("Failed to record transaction");
+    showError(editingId.value ? "Failed to update transaction" : "Failed to record transaction");
   } finally {
     saving.value = false;
   }

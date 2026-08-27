@@ -226,6 +226,9 @@ export interface AccountsDashboardSummary {
   }[];
   outstandingReceivables: number;
   outstandingPayables: number;
+  /** The slice of the two figures above that was carried over from the previous system. */
+  openingReceivables?: number;
+  openingPayables?: number;
   monthlyRevenue: number;
   monthlyExpenses: number;
   profit: number;

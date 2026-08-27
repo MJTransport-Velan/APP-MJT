@@ -4,7 +4,7 @@ import {
 } from '../repositories/driver-salary-structure.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
-import { CreateDriverSalaryStructureInput } from '../validators/driver-salary-structure.validator';
+import { CreateDriverSalaryStructureInput, UpdateDriverSalaryStructureInput } from '../validators/driver-salary-structure.validator';
 
 function serialize(s: DriverSalaryStructureWithRelations) {
   return {
@@ -64,6 +64,33 @@ export const driverSalaryStructureService = {
     });
 
     return serialize(structure);
+  },
+
+  /** Corrects the current structure rather than versioning a new one — use create for a genuine change of terms. */
+  async update(id: string, input: UpdateDriverSalaryStructureInput, actorId: string) {
+    const existing = await driverSalaryStructureRepository.findById(id);
+    if (!existing) throw new AppError('Driver Salary Structure not found', 404);
+
+    const updated = await driverSalaryStructureRepository.update(id, {
+      salaryType: input.salaryType,
+      fixedAmount: input.salaryType === 'FIXED' ? input.fixedAmount : null,
+      percentValue: input.salaryType === 'PERCENT_OF_FREIGHT' ? input.percentValue : null,
+      effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : undefined,
+      updatedById: actorId,
+    });
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'DriverSalaryStructure',
+      entityId: id,
+      description:
+        input.salaryType === 'FIXED'
+          ? `Updated fixed monthly salary to ${input.fixedAmount}`
+          : `Updated salary to ${input.percentValue}% of freight`,
+    });
+
+    return serialize(updated);
   },
 
   async remove(id: string, actorId: string) {

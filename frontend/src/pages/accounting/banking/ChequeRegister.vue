@@ -65,6 +65,22 @@
           color="error"
           @click="openCancelDialog(item as any, 'stop')"
         >Stop Payment</AppBtn>
+        <AppBtn
+          v-if="isEditable(item as any)"
+          icon="mdi-pencil-outline"
+          variant="text"
+          size="small"
+          :disabled="!canEdit"
+          @click="openEditDialog(item as any)"
+        />
+        <AppBtn
+          v-if="isDeletable(item as any)"
+          icon="mdi-delete-outline"
+          variant="text"
+          size="small"
+          :disabled="!canDelete"
+          @click="openDeleteConfirm(item as any)"
+        />
       </template>
     </MasterDataTable>
 
@@ -88,6 +104,25 @@
           <div class="spacer"></div>
           <AppBtn variant="text" @click="issueDialog = false">Cancel</AppBtn>
           <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmitIssue">Issue</AppBtn>
+        </AppCardActions>
+      </AppCard>
+    </AppDialog>
+
+    <!-- Edit Cheque — only while it is still in hand -->
+    <AppDialog v-model="editDialog" :max-width="640" persistent>
+      <AppCard>
+        <AppCardTitle class="text-h6">Edit Cheque</AppCardTitle>
+        <AppCardText>
+          <AppTextField v-model="editForm.chequeNumber" label="Cheque Number" :error-messages="editErrors.chequeNumber" class="mb-2" />
+          <AppTextField v-model="editForm.chequeDate" type="date" label="Cheque Date" class="mb-2" />
+          <AppCheckbox v-model="editForm.isPostDated" label="Post-Dated Cheque" class="mb-2" />
+          <AppTextField v-model="editForm.payeeOrPayerName" label="Payee / Payer Name" class="mb-2" />
+          <AppTextField v-model.number="editForm.amount" type="number" label="Amount" :error-messages="editErrors.amount" class="mb-2" />
+        </AppCardText>
+        <AppCardActions>
+          <div class="spacer"></div>
+          <AppBtn variant="text" @click="editDialog = false">Cancel</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="submitting" @click="onSubmitEdit">Save Changes</AppBtn>
         </AppCardActions>
       </AppCard>
     </AppDialog>
@@ -145,6 +180,15 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Cheque"
+      :message="`Delete cheque ${deleteTarget?.chequeNumber}? Only a cheque that never cleared or bounced can be removed.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -155,6 +199,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import { AppBtn, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppTextField, AppTextarea, AppSelect, AppChip, AppCheckbox } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { Cheque } from '@/types/banking.types';
 
 const store = useChequeStore();
@@ -164,6 +209,17 @@ const authStore = useAuthStore();
 const { success, error } = useSnackbar();
 
 const canCreate = authStore.hasPermission('cheque.create');
+const canEdit = authStore.hasPermission('cheque.edit');
+const canDelete = authStore.hasPermission('cheque.delete');
+
+/** In hand: nothing has been sent to a bank yet, so the details are still ours to fix. */
+function isEditable(cheque: Cheque) {
+  return cheque.status === 'ISSUED' || cheque.status === 'RECEIVED';
+}
+/** A cleared or bounced cheque has already moved a bank balance — cancel it instead. */
+function isDeletable(cheque: Cheque) {
+  return cheque.status !== 'CLEARED' && cheque.status !== 'BOUNCED';
+}
 
 const headers = [
   { title: 'Cheque', key: 'chequeNumber', sortable: false },
@@ -302,6 +358,80 @@ async function onSubmitIssue() {
     error(extractErrorMessage(err, 'Failed to issue cheque'));
   } finally {
     submitting.value = false;
+  }
+}
+
+// --- Edit / Delete ---
+const editDialog = ref(false);
+const editingId = ref<string | null>(null);
+const editForm = reactive({
+  chequeNumber: '',
+  chequeDate: '',
+  isPostDated: false,
+  payeeOrPayerName: '',
+  amount: undefined as number | undefined,
+});
+const editErrors = reactive({ chequeNumber: '', amount: '' });
+
+function openEditDialog(cheque: Cheque) {
+  Object.assign(editForm, {
+    chequeNumber: cheque.chequeNumber,
+    chequeDate: cheque.chequeDate?.slice(0, 10) ?? '',
+    isPostDated: Boolean(cheque.isPostDated),
+    payeeOrPayerName: cheque.payeeOrPayerName || '',
+    amount: Number(cheque.amount),
+  });
+  Object.assign(editErrors, { chequeNumber: '', amount: '' });
+  editingId.value = cheque.id;
+  editDialog.value = true;
+}
+
+async function onSubmitEdit() {
+  editErrors.chequeNumber = editForm.chequeNumber.trim() ? '' : 'Cheque number is required';
+  editErrors.amount = editForm.amount && editForm.amount > 0 ? '' : 'Amount must be greater than 0';
+  if (editErrors.chequeNumber || editErrors.amount || !editingId.value) return;
+
+  submitting.value = true;
+  try {
+    await store.update(editingId.value, {
+      chequeNumber: editForm.chequeNumber,
+      chequeDate: editForm.chequeDate || undefined,
+      isPostDated: editForm.isPostDated,
+      payeeOrPayerName: editForm.payeeOrPayerName || undefined,
+      amount: editForm.amount,
+    });
+    success('Cheque updated');
+    editDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to update cheque'));
+  } finally {
+    submitting.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<Cheque | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(cheque: Cheque) {
+  deleteTarget.value = cheque;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Cheque deleted');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete cheque'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

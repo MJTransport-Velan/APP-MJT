@@ -14,7 +14,11 @@
       <AppCard v-for="structure in store.items" :key="structure.id" class="mb-3">
         <AppCardTitle class="d-flex justify-space-between align-center">
           <span>Effective {{ new Date(structure.effectiveFrom).toLocaleDateString() }}<span v-if="structure.effectiveTo"> to {{ new Date(structure.effectiveTo).toLocaleDateString() }}</span></span>
-          <AppChip size="small" :color="structure.isActive ? 'success' : 'default'">{{ structure.isActive ? 'Active' : 'Superseded' }}</AppChip>
+          <div class="d-flex align-center ga-1">
+            <AppChip size="small" :color="structure.isActive ? 'success' : 'default'">{{ structure.isActive ? 'Active' : 'Superseded' }}</AppChip>
+            <AppBtn icon="mdi-pencil-outline" variant="text" size="small" @click="openEditDialog(structure)" />
+            <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" @click="openDeleteConfirm(structure)" />
+          </div>
         </AppCardTitle>
         <AppCardText>
           <AppTable density="compact">
@@ -66,7 +70,7 @@
 
     <AppDialog v-model="createDialog" max-width="640" persistent>
       <AppCard>
-        <AppCardTitle class="text-h6">New Salary Structure</AppCardTitle>
+        <AppCardTitle class="text-h6">{{ editingId ? 'Edit Salary Structure' : 'New Salary Structure' }}</AppCardTitle>
         <AppCardText>
           <AppTextField v-model="form.effectiveFrom" type="date" label="Effective From" class="mb-3" />
 
@@ -81,10 +85,19 @@
         <AppCardActions>
           <div class="spacer"></div>
           <AppBtn variant="text" @click="createDialog = false">Cancel</AppBtn>
-          <AppBtn color="primary" variant="flat" :loading="creating" @click="onCreate">Save</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="creating" @click="onSubmit">Save</AppBtn>
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Salary Structure"
+      message="Delete this salary structure? Payments already made against it are not changed."
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -95,6 +108,7 @@ import { employeeApi } from '@/services/masters';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import { AppCard, AppCardTitle, AppCardText, AppCardActions, AppSelect, AppTextField, AppCheckbox, AppBtn, AppChip, AppTable, AppDialog } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { SalaryStructure } from '@/types/phase5.types';
 
 const store = useSalaryStructureStore();
@@ -123,6 +137,8 @@ async function fetchForEmployee() {
 
 const createDialog = ref(false);
 const creating = ref(false);
+/** Set while the dialog is correcting an existing structure instead of adding one. */
+const editingId = ref<string | null>(null);
 const form = reactive<{ effectiveFrom: string; components: { componentType: string; value: number; isEarning: boolean }[] }>({
   effectiveFrom: new Date().toISOString().slice(0, 10),
   components: [
@@ -141,15 +157,30 @@ function openCreateDialog() {
       { componentType: 'PF', value: 0, isEarning: false },
     ],
   });
+  editingId.value = null;
   createDialog.value = true;
 }
+
+function openEditDialog(structure: SalaryStructure) {
+  Object.assign(form, {
+    effectiveFrom: String(structure.effectiveFrom).slice(0, 10),
+    components: structure.components.map((c) => ({
+      componentType: c.componentType,
+      value: Number(c.value),
+      isEarning: c.isEarning,
+    })),
+  });
+  editingId.value = structure.id;
+  createDialog.value = true;
+}
+
 function addComponent() {
   form.components.push({ componentType: 'CUSTOM', value: 0, isEarning: true });
 }
 function removeComponent(idx: number) {
   form.components.splice(idx, 1);
 }
-async function onCreate() {
+async function onSubmit() {
   if (!employeeId.value) return;
   if (form.components.length === 0) {
     error('Add at least one component');
@@ -157,14 +188,44 @@ async function onCreate() {
   }
   creating.value = true;
   try {
-    await store.create({ employeeId: employeeId.value, effectiveFrom: form.effectiveFrom, components: form.components });
-    success('Salary structure created');
+    if (editingId.value) {
+      await store.update(editingId.value, { effectiveFrom: form.effectiveFrom, components: form.components });
+      success('Salary structure updated');
+    } else {
+      await store.create({ employeeId: employeeId.value, effectiveFrom: form.effectiveFrom, components: form.components });
+      success('Salary structure created');
+    }
     createDialog.value = false;
     fetchForEmployee();
   } catch (err) {
-    error(extractErrorMessage(err, 'Failed to create salary structure'));
+    error(extractErrorMessage(err, 'Failed to save salary structure'));
   } finally {
     creating.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<SalaryStructure | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(structure: SalaryStructure) {
+  deleteTarget.value = structure;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Salary structure deleted');
+    deleteDialog.value = false;
+    fetchForEmployee();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete salary structure'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

@@ -38,6 +38,14 @@ export const salaryStructureRepository = {
     return prisma.salaryStructureComponent.createMany({ data });
   },
 
+  update(id: string, data: Prisma.SalaryStructureUncheckedUpdateInput) {
+    return prisma.salaryStructure.update({ where: { id }, data, include: structureWithRelations });
+  },
+
+  deleteComponents(salaryStructureId: string) {
+    return prisma.salaryStructureComponent.deleteMany({ where: { salaryStructureId } });
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.salaryStructure.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

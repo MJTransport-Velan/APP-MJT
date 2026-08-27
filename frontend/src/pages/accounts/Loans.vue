@@ -53,6 +53,22 @@
               </AppCard>
             </div>
             <div class="col-12 col-sm-6 col-md-3">
+              <ProfitCard label="Monthly EMI Commitment" :value="dashboard.stats.monthlyEmiCommitment" icon="mdi-calendar-sync-outline" color="primary" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-3">
+              <ProfitCard label="Original Loan Amount" :value="dashboard.stats.totalOriginalLoanAmount" icon="mdi-file-document-outline" color="info" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-3">
+              <ProfitCard label="Principal Paid" :value="dashboard.stats.totalPrincipalPaid" icon="mdi-cash-check" color="success" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-3">
+              <ProfitCard label="Interest Paid" :value="dashboard.stats.totalInterestPaid" icon="mdi-percent-outline" color="warning" />
+            </div>
+            <!-- What the loans were carrying when they came across from the old system. -->
+            <div v-if="dashboard.stats.totalOpeningOutstanding > 0" class="col-12 col-sm-6 col-md-3">
+              <ProfitCard label="Opening Outstanding" :value="dashboard.stats.totalOpeningOutstanding" icon="mdi-database-import-outline" color="info" />
+            </div>
+            <div class="col-12 col-sm-6 col-md-3">
               <AppCard class="pa-4">
                 <div class="text-caption text-medium-emphasis">Next EMI</div>
                 <div class="text-h6 font-weight-bold">
@@ -123,6 +139,7 @@
           <template #filters>
             <AppSelect v-model="listFilters.loanType" :items="loanTypeOptions" item-title="label" item-value="value" label="Loan Type" clearable density="compact" hide-details @update:model-value="fetchList" />
             <AppSelect v-model="listFilters.status" :items="loanStatusOptions" label="Status" clearable density="compact" hide-details @update:model-value="fetchList" />
+            <AppSelect v-model="listFilters.origin" :items="originOptions" item-title="label" item-value="value" label="Origin" clearable density="compact" hide-details @update:model-value="fetchList" />
           </template>
           <template #item.loanNumber="{ item }">
             <RouterLink :to="`/accounts/loans/${(item as any).id}`" class="text-primary">{{ (item as any).loanNumber }}</RouterLink>
@@ -133,7 +150,14 @@
           <template #item.linkedTo="{ item }">
             {{ (item as any).vehicle?.registrationNumber || (item as any).capitalPartner?.name || '—' }}
           </template>
-          <template #item.principalAmount="{ item }">{{ formatCurrency((item as any).principalAmount) }}</template>
+          <template #item.origin="{ item }">
+            <AppChip size="x-small" variant="outlined" :color="(item as any).origin === 'OPENING' ? 'info' : 'default'">
+              {{ (item as any).origin === 'OPENING' ? 'Opening' : 'New' }}
+            </AppChip>
+          </template>
+          <template #item.principalAmount="{ item }">
+            {{ formatCurrency((item as any).originalPrincipal ?? (item as any).principalAmount) }}
+          </template>
           <template #item.emiAmount="{ item }">{{ formatCurrency((item as any).emiAmount) }}</template>
           <template #item.outstanding="{ item }">{{ formatCurrency((item as any).totals.outstandingPrincipal) }}</template>
           <template #item.status="{ item }">
@@ -186,13 +210,44 @@
 
       <!-- Money terms define the generated schedule, so they are set once. -->
       <template v-if="!editTarget">
+        <AppSelect v-model="form.origin" :items="originOptions" item-title="label" item-value="value" label="Loan Origin" class="mb-2" />
+        <!--
+          An existing loan is not re-entered EMI by EMI: it comes in at what
+          is still owed, over the EMIs that are left, and the schedule picks
+          up from the next due date.
+        -->
+        <AppAlert v-if="isOpeningLoan" type="info" variant="tonal" density="compact" class="mb-3">
+          Enter what is still owed today and how many EMIs are left — old EMIs already paid in the previous system are not recreated.
+        </AppAlert>
         <div class="d-flex ga-2">
-          <AppTextField v-model="form.loanStartDate" type="date" label="Loan Start Date" class="mb-2 flex-1-1" />
-          <AppTextField v-model.number="form.principalAmount" type="number" label="Loan Amount" :error-messages="errors.principalAmount" class="mb-2 flex-1-1" />
+          <AppTextField v-model="form.loanStartDate" type="date" :label="isOpeningLoan ? 'Original Loan Start Date' : 'Loan Start Date'" class="mb-2 flex-1-1" />
+          <AppTextField
+            v-if="isOpeningLoan"
+            v-model.number="form.originalPrincipal"
+            type="number"
+            label="Original Loan Amount"
+            class="mb-2 flex-1-1"
+          />
+        </div>
+        <div class="d-flex ga-2">
+          <AppTextField
+            v-model.number="form.principalAmount"
+            type="number"
+            :label="isOpeningLoan ? 'Outstanding on Migration Date' : 'Loan Amount'"
+            :error-messages="errors.principalAmount"
+            class="mb-2 flex-1-1"
+          />
+          <AppTextField v-if="isOpeningLoan" v-model="form.openingAsOfDate" type="date" label="Opening Date" class="mb-2 flex-1-1" />
         </div>
         <div class="d-flex ga-2">
           <AppTextField v-model.number="form.interestRatePercent" type="number" label="Interest Rate (% p.a.)" class="mb-2 flex-1-1" />
-          <AppTextField v-model.number="form.tenureMonths" type="number" label="Tenure (months)" :error-messages="errors.tenureMonths" class="mb-2 flex-1-1" />
+          <AppTextField
+            v-model.number="form.tenureMonths"
+            type="number"
+            :label="isOpeningLoan ? 'Remaining EMIs' : 'Tenure (months)'"
+            :error-messages="errors.tenureMonths"
+            class="mb-2 flex-1-1"
+          />
         </div>
         <div class="d-flex ga-2">
           <AppTextField
@@ -203,7 +258,7 @@
             persistent-hint
             class="mb-2 flex-1-1"
           />
-          <AppTextField v-model="form.firstEmiDate" type="date" label="First EMI Date" class="mb-2 flex-1-1" />
+          <AppTextField v-model="form.firstEmiDate" type="date" :label="isOpeningLoan ? 'Next EMI Date' : 'First EMI Date'" class="mb-2 flex-1-1" />
         </div>
       </template>
 
@@ -226,7 +281,7 @@ import { formatCurrency, formatDate } from '@/utils/format';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
-import { AppBtn, AppSelect, AppTextField, AppTextarea, AppChip, AppCard, AppTable, AppTabs, AppTab, AppWindow, AppWindowItem, AppProgressCircular } from '@/components/ui';
+import { AppBtn, AppSelect, AppTextField, AppTextarea, AppChip, AppCard, AppTable, AppTabs, AppTab, AppWindow, AppWindowItem, AppProgressCircular, AppAlert } from '@/components/ui';
 import { LOAN_TYPE_LABELS, type Loan, type LoanType, type LoanInstallmentStatus } from '@/types/loans.types';
 import { createMasterApi } from '@/services/masterApiFactory';
 
@@ -270,12 +325,17 @@ async function loadDashboard() {
 // ------------------------------------------------------------------- list
 const page = ref(1);
 const pageSize = ref(10);
-const listFilters = reactive({ loanType: null as string | null, status: null as string | null });
+const listFilters = reactive({ loanType: null as string | null, status: null as string | null, origin: null as string | null });
+const originOptions = [
+  { value: 'NEW', label: 'New Loan' },
+  { value: 'OPENING', label: 'Opening / Existing' },
+];
 
 const headers = [
   { title: 'Loan No.', key: 'loanNumber', sortable: false },
   { title: 'Loan Name', key: 'loanName', sortable: false },
   { title: 'Type', key: 'loanType', sortable: false },
+  { title: 'Origin', key: 'origin', sortable: false },
   { title: 'Vehicle / Owner', key: 'linkedTo', sortable: false },
   { title: 'Lender', key: 'lenderName', sortable: false },
   { title: 'Loan Amount', key: 'principalAmount', sortable: false },
@@ -293,6 +353,7 @@ async function fetchList() {
     pageSize: pageSize.value,
     loanType: listFilters.loanType || undefined,
     status: listFilters.status || undefined,
+    origin: listFilters.origin || undefined,
   });
 }
 
@@ -326,8 +387,13 @@ const form = reactive({
   loanAccountRef: '',
   status: 'ACTIVE',
   remarks: '',
+  origin: 'NEW',
+  originalPrincipal: undefined as number | undefined,
+  openingAsOfDate: new Date().toISOString().slice(0, 10),
 });
 const errors = reactive({ loanName: '', lenderName: '', vehicleId: '', capitalPartnerId: '', principalAmount: '', tenureMonths: '', fundAccountKey: '' });
+
+const isOpeningLoan = computed(() => form.origin === 'OPENING');
 
 const bankAccountOptions = computed(() => bankAccountStore.items.map((b: any) => ({ key: `BANK:${b.id}`, label: `Bank — ${b.accountHolderName} (${b.accountNumber})` })));
 const cashAccountOptions = computed(() => cashAccountStore.items.map((c: any) => ({ key: `CASH:${c.id}`, label: `Cash — ${c.ledger?.name || c.cashAccountType}` })));
@@ -351,6 +417,7 @@ function resetForm() {
     loanStartDate: new Date().toISOString().slice(0, 10),
     principalAmount: undefined, interestRatePercent: undefined, tenureMonths: undefined,
     emiAmount: undefined, firstEmiDate: '', fundAccountKey: '', loanAccountRef: '', status: 'ACTIVE', remarks: '',
+    origin: 'NEW', originalPrincipal: undefined, openingAsOfDate: new Date().toISOString().slice(0, 10),
   });
   Object.assign(errors, { loanName: '', lenderName: '', vehicleId: '', capitalPartnerId: '', principalAmount: '', tenureMonths: '', fundAccountKey: '' });
 }
@@ -425,8 +492,15 @@ async function onSubmit() {
         fundAccountId,
         loanAccountRef: form.loanAccountRef || undefined,
         remarks: form.remarks || undefined,
+        origin: form.origin,
+        originalPrincipal: isOpeningLoan.value ? form.originalPrincipal || undefined : undefined,
+        openingAsOfDate: isOpeningLoan.value ? form.openingAsOfDate : undefined,
       });
-      success('Loan created and its EMI schedule generated');
+      success(
+        isOpeningLoan.value
+          ? 'Opening loan registered — its remaining EMI schedule was generated'
+          : 'Loan created and its EMI schedule generated'
+      );
     }
     formDialog.value = false;
     await Promise.all([fetchList(), loadDashboard()]);

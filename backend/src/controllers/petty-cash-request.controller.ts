@@ -17,6 +17,14 @@ export const pettyCashRequestController = {
     const request = await pettyCashRequestService.create(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Petty Cash Request created', data: request });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const request = await pettyCashRequestService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Petty Cash Request updated', data: request });
+  }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await pettyCashRequestService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Petty Cash Request deleted', data: null });
+  }),
   decide: asyncHandler(async (req: AuthRequest, res: Response) => {
     const request = await pettyCashRequestService.decide(req.params.id, req.body.decision, req.body.remarks, req.user!.userId);
     return sendSuccess(res, 200, { message: `Petty Cash Request ${req.body.decision.toLowerCase()}`, data: request });

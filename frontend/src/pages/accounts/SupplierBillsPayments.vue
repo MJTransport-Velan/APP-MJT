@@ -46,10 +46,26 @@
             <AppBtn icon="mdi-eye-outline" variant="text" size="small" @click="openPreview(item as any)" />
             <AppBtn
               v-if="!['PAID', 'CANCELLED'].includes((item as any).status)"
+              icon="mdi-pencil-outline"
+              variant="text"
+              size="small"
+              title="Edit due date / notes"
+              @click="openBillEdit(item as any)"
+            />
+            <AppBtn
+              v-if="!['PAID', 'CANCELLED'].includes((item as any).status)"
               icon="mdi-close-circle-outline"
               variant="text"
               size="small"
               @click="onBillCancel(item as any)"
+            />
+            <AppBtn
+              icon="mdi-delete-outline"
+              variant="text"
+              size="small"
+              color="error"
+              title="Delete"
+              @click="openBillDeleteConfirm(item as any)"
             />
           </template>
         </MasterDataTable>
@@ -327,6 +343,32 @@
       :bill-options="billOptionsForAllocation"
       :loading="allocating"
       @submit="onAllocateSubmit"
+    />
+
+    <!-- Only the due date and notes are editable on a posted bill; the amounts
+         come from the trip it was generated from. -->
+    <AppDialog v-model="billEditDialog" max-width="420" persistent>
+      <AppCard>
+        <AppCardTitle class="text-h6">Edit Supplier Bill</AppCardTitle>
+        <AppCardText>
+          <AppTextField v-model="billEditForm.dueDate" type="date" label="Due Date" class="mb-3" />
+          <AppTextarea v-model="billEditForm.notes" label="Notes" rows="3" />
+        </AppCardText>
+        <AppCardActions>
+          <div class="spacer"></div>
+          <AppBtn variant="text" @click="billEditDialog = false">Cancel</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="savingBill" @click="submitBillEdit">Save Changes</AppBtn>
+        </AppCardActions>
+      </AppCard>
+    </AppDialog>
+
+    <ConfirmDialog
+      v-model="billDeleteDialog"
+      title="Delete Supplier Bill"
+      :message="`Delete bill ${billDeleteTarget?.billNumber}? A bill with payments or notes against it cannot be deleted.`"
+      confirm-text="Delete"
+      :loading="deletingBill"
+      @confirm="submitBillDelete"
     />
 
     <ConfirmDialog
@@ -806,6 +848,62 @@ onMounted(async () => {
   fetchBills();
   fetchPayments();
 });
+// --- Supplier bill edit (due date / notes) and delete ---
+const billEditDialog = ref(false);
+const billEditingId = ref<string | null>(null);
+const billEditForm = reactive({ dueDate: '', notes: '' });
+const savingBill = ref(false);
+
+function openBillEdit(bill: SupplierBill) {
+  billEditForm.dueDate = bill.dueDate ? String(bill.dueDate).slice(0, 10) : '';
+  billEditForm.notes = bill.notes || '';
+  billEditingId.value = bill.id;
+  billEditDialog.value = true;
+}
+
+async function submitBillEdit() {
+  if (!billEditingId.value) return;
+  savingBill.value = true;
+  try {
+    await billStore.update(billEditingId.value, {
+      dueDate: billEditForm.dueDate || undefined,
+      notes: billEditForm.notes || undefined,
+    });
+    success('Supplier bill updated');
+    billEditDialog.value = false;
+    fetchBills();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to update supplier bill'));
+  } finally {
+    savingBill.value = false;
+  }
+}
+
+const billDeleteDialog = ref(false);
+const billDeleteTarget = ref<SupplierBill | null>(null);
+const deletingBill = ref(false);
+
+function openBillDeleteConfirm(bill: SupplierBill) {
+  billDeleteTarget.value = bill;
+  billDeleteDialog.value = true;
+}
+
+async function submitBillDelete() {
+  if (!billDeleteTarget.value) return;
+  deletingBill.value = true;
+  try {
+    await billStore.remove(billDeleteTarget.value.id);
+    success('Supplier bill deleted');
+    billDeleteDialog.value = false;
+    fetchBills();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete supplier bill'));
+    billDeleteDialog.value = false;
+  } finally {
+    deletingBill.value = false;
+  }
+}
+
 </script>
 
 <style scoped>

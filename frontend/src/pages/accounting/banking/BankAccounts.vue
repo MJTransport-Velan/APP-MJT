@@ -39,6 +39,7 @@
           :disabled="!canEdit"
           @click="onToggleStatus(item as any)"
         />
+        <AppBtn icon="mdi-delete-outline" variant="text" size="small" :disabled="!canDelete" @click="openDeleteConfirm(item as any)" />
       </template>
     </MasterDataTable>
 
@@ -65,6 +66,15 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Bank Account"
+      :message="`Delete bank account '${deleteTarget?.accountHolderName}' (${deleteTarget?.accountNumber})? This cannot be undone.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -77,6 +87,7 @@ import MasterToolbar from '@/components/masters/MasterToolbar.vue';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import StatusChip from '@/components/masters/StatusChip.vue';
 import { AppBtn, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppTextField, AppSelect, AppChip, AppCheckbox } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { BankAccount } from '@/types/banking.types';
 
 const store = useBankAccountStore();
@@ -85,6 +96,7 @@ const { success, error } = useSnackbar();
 
 const canCreate = authStore.hasPermission('bankAccount.create');
 const canEdit = authStore.hasPermission('bankAccount.edit');
+const canDelete = authStore.hasPermission('bankAccount.delete');
 
 const headers = [
   { title: 'Account', key: 'accountNumber', sortable: false },
@@ -225,6 +237,31 @@ async function onToggleStatus(account: BankAccount) {
     fetchData();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to update status'));
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<BankAccount | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(account: BankAccount) {
+  deleteTarget.value = account;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Bank Account deleted successfully');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete Bank Account'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

@@ -25,4 +25,8 @@ export const bankAccountController = {
     const account = await bankAccountService.toggleStatus(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Bank Account status updated', data: account });
   }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await bankAccountService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Bank Account deleted', data: null });
+  }),
 };

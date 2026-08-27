@@ -49,4 +49,12 @@ export const bankTransferRepository = {
   create(data: Prisma.BankTransferUncheckedCreateInput) {
     return prisma.bankTransfer.create({ data, include: detailInclude });
   },
+
+  update(id: string, data: Prisma.BankTransferUncheckedUpdateInput) {
+    return prisma.bankTransfer.update({ where: { id }, data, include: detailInclude });
+  },
+
+  hardDelete(id: string) {
+    return prisma.bankTransfer.delete({ where: { id } });
+  },
 };

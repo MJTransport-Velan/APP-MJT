@@ -37,4 +37,8 @@ export const driverSettlementController = {
     const s = await driverSettlementService.revertToDraft(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Driver Settlement reverted to draft', data: s });
   }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await driverSettlementService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Driver Settlement deleted', data: null });
+  }),
 };

@@ -5,6 +5,8 @@ import { auditService } from './audit.service';
 import { AppError } from '../middlewares/error.middleware';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateBankAccountInput, UpdateBankAccountInput } from '../validators/bank-account.validator';
+import { hardDelete } from '../utils/hardDelete.util';
+import { assertFundAccountUnreferenced } from '../utils/fundAccount.util';
 
 export const bankAccountService = {
   async list(query: Request['query']) {
@@ -130,5 +132,31 @@ export const bankAccountService = {
     });
 
     return updated;
+  },
+
+  /**
+   * Removes the account outright. Anything that ever moved money through it
+   * blocks the delete — the balances on those receipts, transfers and cheques
+   * are only meaningful while the account they name still exists.
+   */
+  async remove(id: string, actorId: string) {
+    const existing = await bankAccountRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Bank Account not found', 404);
+
+    await assertFundAccountUnreferenced('BANK', id);
+
+    await hardDelete(
+      'Bank Account',
+      () => bankAccountRepository.hardDelete(id),
+      'This account still has cheque books or cheques recorded against it, so it cannot be deleted. Delete those first, or deactivate the account instead.'
+    );
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'BankAccount',
+      entityId: id,
+      description: `Deleted bank account ${existing.accountHolderName} (${existing.accountNumber})`,
+    });
   },
 };

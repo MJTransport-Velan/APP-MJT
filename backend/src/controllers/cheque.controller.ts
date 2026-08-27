@@ -13,6 +13,14 @@ export const chequeController = {
     const cheque = await chequeService.getById(req.params.id);
     return sendSuccess(res, 200, { message: 'Cheque fetched', data: cheque });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const cheque = await chequeService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Cheque updated', data: cheque });
+  }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await chequeService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Cheque deleted', data: null });
+  }),
   issue: asyncHandler(async (req: AuthRequest, res: Response) => {
     const cheque = await chequeService.issue(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Cheque issued', data: cheque });

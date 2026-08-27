@@ -41,6 +41,10 @@ export const driverSalaryStructureRepository = {
     return prisma.driverSalaryStructure.create({ data, include: structureWithRelations });
   },
 
+  update(id: string, data: Prisma.DriverSalaryStructureUncheckedUpdateInput) {
+    return prisma.driverSalaryStructure.update({ where: { id }, data, include: structureWithRelations });
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.driverSalaryStructure.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

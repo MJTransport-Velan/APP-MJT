@@ -32,6 +32,10 @@ export const cashAccountRepository = {
     return prisma.cashAccount.update({ where: { id }, data });
   },
 
+  hardDelete(id: string) {
+    return prisma.cashAccount.delete({ where: { id } });
+  },
+
   countOpenRequests(cashAccountId: string) {
     return prisma.pettyCashRequest.count({ where: { cashAccountId, status: { in: ['PENDING', 'APPROVED'] } } });
   },

@@ -20,6 +20,14 @@ export const chequeBookController = {
     const next = await chequeBookService.nextAvailableNumber(req.params.id);
     return sendSuccess(res, 200, { message: 'Next available cheque number', data: { nextNumber: next } });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const chequeBook = await chequeBookService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Cheque Book updated', data: chequeBook });
+  }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await chequeBookService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Cheque Book deleted', data: null });
+  }),
   toggleStatus: asyncHandler(async (req: AuthRequest, res: Response) => {
     const chequeBook = await chequeBookService.toggleStatus(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Cheque Book status updated', data: chequeBook });

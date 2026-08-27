@@ -17,6 +17,14 @@
       <template #item.status="{ item }"><AppChip size="small" :color="statusColor((item as any).status)">{{ (item as any).status }}</AppChip></template>
       <template #item.actions="{ item }">
         <AppBtn icon="mdi-eye-outline" variant="text" size="small" @click="openDetail(item as any)" />
+        <AppBtn
+          v-if="(item as any).status !== 'PAID'"
+          icon="mdi-delete-outline"
+          variant="text"
+          size="small"
+          color="error"
+          @click="openDeleteConfirm(item as any)"
+        />
       </template>
     </MasterDataTable>
 
@@ -89,11 +97,35 @@
         </AppCardText>
         <AppCardActions>
           <div class="spacer"></div>
+          <!-- Editing a settlement means putting it back to draft and
+               recalculating: the lines are derived from the driver's
+               advances, earnings and penalties, never typed in by hand. -->
+          <AppBtn
+            v-if="['CALCULATED', 'APPROVED'].includes(detailTarget.status)"
+            variant="text"
+            :loading="acting"
+            @click="onRevert"
+          >Revert to Draft</AppBtn>
+          <AppBtn
+            v-if="['DRAFT', 'CALCULATED'].includes(detailTarget.status)"
+            variant="text"
+            :loading="acting"
+            @click="onRecalculate"
+          >Recalculate</AppBtn>
           <AppBtn v-if="detailTarget.status === 'CALCULATED'" color="primary" variant="flat" :loading="acting" @click="onApprove">Approve</AppBtn>
           <AppBtn v-if="detailTarget.status === 'APPROVED'" color="primary" variant="flat" :loading="acting" @click="onPay">Pay</AppBtn>
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Settlement"
+      :message="`Delete settlement ${deleteTarget?.settlementNumber}? The advances, earnings and penalties it claimed go back to unsettled.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -105,6 +137,7 @@ import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import { AppBtn, AppSelect, AppTextField, AppChip, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppDivider, AppTable } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { DriverSettlement, DriverSettlementPreview } from '@/types/phase5.types';
 
 const store = useDriverSettlementStore();
@@ -205,6 +238,34 @@ async function openDetail(settlement: DriverSettlement) {
   detailTarget.value = await store.getById(settlement.id);
   detailDialog.value = true;
 }
+async function onRevert() {
+  if (!detailTarget.value) return;
+  acting.value = true;
+  try {
+    detailTarget.value = await store.revert(detailTarget.value.id);
+    success('Settlement reverted to draft');
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to revert settlement'));
+  } finally {
+    acting.value = false;
+  }
+}
+
+async function onRecalculate() {
+  if (!detailTarget.value) return;
+  acting.value = true;
+  try {
+    detailTarget.value = await store.calculate(detailTarget.value.id);
+    success('Settlement recalculated');
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to recalculate settlement'));
+  } finally {
+    acting.value = false;
+  }
+}
+
 async function onApprove() {
   if (!detailTarget.value) return;
   acting.value = true;
@@ -229,6 +290,31 @@ async function onPay() {
     error(extractErrorMessage(err, 'Failed to pay settlement'));
   } finally {
     acting.value = false;
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<DriverSettlement | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(settlement: DriverSettlement) {
+  deleteTarget.value = settlement;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Settlement deleted');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete settlement'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

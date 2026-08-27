@@ -33,6 +33,10 @@ export const pettyCashRequestRepository = {
     return prisma.pettyCashRequest.create({ data, include: detailInclude });
   },
 
+  hardDelete(id: string) {
+    return prisma.pettyCashRequest.delete({ where: { id } });
+  },
+
   update(id: string, data: Prisma.PettyCashRequestUncheckedUpdateInput) {
     return prisma.pettyCashRequest.update({ where: { id }, data, include: detailInclude });
   },

@@ -95,7 +95,23 @@ export const cancelChequeSchema = z.object({
   }),
 });
 
+export const updateChequeSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    chequeNumber: z.string().min(1).optional(),
+    chequeDate: isoDate.optional(),
+    isPostDated: z.boolean().optional(),
+    partyType: partyTypeEnum.optional(),
+    partyId: z.string().uuid().optional(),
+    payeeOrPayerName: z.string().optional(),
+    amount: z.number().positive('Amount must be greater than 0').optional(),
+    narration: z.string().optional(),
+  }).strict(),
+});
+
 export type IssueChequeInput = z.infer<typeof issueChequeSchema>['body'];
+export type UpdateChequeInput = z.infer<typeof updateChequeSchema>['body'];
 export type ReceiveChequeInput = z.infer<typeof receiveChequeSchema>['body'];
 export type DepositChequeInput = z.infer<typeof depositChequeSchema>['body'];
 export type ClearChequeInput = z.infer<typeof clearChequeSchema>['body'];

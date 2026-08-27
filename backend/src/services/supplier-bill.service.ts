@@ -2,6 +2,7 @@ import { Request } from 'express';
 import { SupplierBillStatus } from '@prisma/client';
 import { supplierBillRepository, SupplierBillWithRelations } from '../repositories/supplier-bill.repository';
 import { AppError } from '../middlewares/error.middleware';
+import { hardDelete } from '../utils/hardDelete.util';
 import { auditService } from './audit.service';
 import { organizationService } from './organization.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
@@ -228,4 +229,34 @@ export const supplierBillService = {
   },
 
   recalc: recalcBill,
+
+  /**
+   * Deletes a bill outright. Payments, credit notes and debit notes recorded
+   * against it block the delete — those documents carry their own balances
+   * and would be left pointing at a bill that no longer exists.
+   */
+  async remove(id: string, actorId: string) {
+    const existing = await supplierBillRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Supplier Bill not found', 404);
+
+    const linked = await supplierBillRepository.countLinkedDocuments(id);
+    const blocking = [
+      linked.payments ? `${linked.payments} payment(s)` : null,
+      linked.creditNotes ? `${linked.creditNotes} credit note(s)` : null,
+      linked.debitNotes ? `${linked.debitNotes} debit note(s)` : null,
+    ].filter(Boolean);
+    if (blocking.length) {
+      throw new AppError(`This bill has ${blocking.join(' and ')} recorded against it and cannot be deleted. Cancel it instead.`, 409);
+    }
+
+    await hardDelete('Supplier Bill', () => supplierBillRepository.hardDelete(id));
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'SupplierBill',
+      entityId: id,
+      description: `Deleted supplier bill ${existing.billNumber}`,
+    });
+  },
 };

@@ -8,6 +8,7 @@ import {
   capitalTransactionIdParamSchema,
   partnerIdParamSchema,
   createCapitalTransactionSchema,
+  updateCapitalTransactionSchema,
 } from '../validators/capital-transaction.validator';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.get('/', authorize('capital_transaction.view'), validate(listCapitalTrans
 router.get('/partner/:partnerId', authorize('capital_transaction.view'), validate(partnerIdParamSchema), capitalTransactionController.partnerState);
 router.get('/:id', authorize('capital_transaction.view'), validate(capitalTransactionIdParamSchema), capitalTransactionController.getById);
 router.post('/', authorize('capital_transaction.create'), validate(createCapitalTransactionSchema), capitalTransactionController.create);
+router.put('/:id', authorize('capital_transaction.edit'), validate(updateCapitalTransactionSchema), capitalTransactionController.update);
 router.delete('/:id', authorize('capital_transaction.delete'), validate(capitalTransactionIdParamSchema), capitalTransactionController.remove);
 
 export default router;

@@ -60,6 +60,7 @@ const cards = [
   { icon: 'mdi-cash-fast', title: 'Financial Entries', description: 'Record money received, paid, transferred or spent — pick source, destination and purpose, done', to: '/accounts/financial-entry' },
   { icon: 'mdi-bank-outline', title: 'Loans & EMI', description: 'Vehicle, bank, business and owner loans — EMI schedules, payments and outstanding', to: '/accounts/loans' },
   { icon: 'mdi-wallet-outline', title: 'Capital & Owner Funds', description: 'Owner capital (equity) and owner loans (liability), kept separate — plus withdrawals', to: '/accounts/capital-account' },
+  { icon: 'mdi-database-import-outline', title: 'Opening Balance & Migration', description: 'Bring bank, cash, assets, loans, receivables, payables and owner funds across from your previous books', to: '/accounts/opening-balance' },
   { icon: 'mdi-cash-plus', title: 'Receivables', description: 'Customer invoices, receipts, aging, credit control and collections', to: '/accounts/receivables' },
   { icon: 'mdi-cash-minus', title: 'Payables', description: 'Supplier bills and payments for market-vehicle hires', to: '/accounts/payables' },
   { icon: 'mdi-account-cash-outline', title: 'Driver & Employee Accounts', description: 'Driver advances and settlements; salary structures and salary payments', to: '/accounts/driver-payroll' },

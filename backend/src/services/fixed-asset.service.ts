@@ -24,6 +24,13 @@ function serialize(a: FixedAssetWithRelations) {
     usefulLifeMonths: a.usefulLifeMonths,
     depreciationMethod: a.depreciationMethod,
     currentValue: a.currentValue,
+    // Original cost minus book value — derived, never stored, so the two
+    // figures can never drift apart.
+    accumulatedDepreciation: Math.round((Number(a.purchaseValue) - Number(a.currentValue)) * 100) / 100,
+    assetOrigin: a.assetOrigin,
+    openingDate: a.openingDate,
+    migrationSource: a.migrationSource,
+    migrationStatus: a.migrationStatus,
     locationText: a.locationText,
     status: a.status,
     approvalStatus: a.approvalStatus,
@@ -42,6 +49,8 @@ export const fixedAssetService = {
       categoryId: (query.categoryId as string) || undefined,
       status: (query.status as never) || undefined,
       approvalStatus: (query.approvalStatus as string) || undefined,
+      assetOrigin: (query.assetOrigin as string) || undefined,
+      assetType: (query.assetType as string) || undefined,
     });
     return { data: rows.map(serialize), meta: buildPaginationMeta(page, pageSize, total) };
   },
@@ -52,7 +61,16 @@ export const fixedAssetService = {
     return serialize(asset);
   },
 
-  /** Registers the asset — no funding is recorded yet, until approve() records how the purchase was paid for. */
+  /**
+   * Registers the asset — no funding is recorded yet, until approve()
+   * records how the purchase was paid for.
+   *
+   * An OPENING asset is the exception: it was bought long before this
+   * system existed, often paid for in a way nobody can now reconstruct, so
+   * it is registered already-approved with no funding lines at all. Nothing
+   * is debited from any bank or cash account and no purchase transaction is
+   * invented for it.
+   */
   async register(input: CreateFixedAssetInput, actorId: string) {
     const category = await fixedAssetRepository.findCategoryById(input.categoryId);
     if (!category) throw new AppError('Asset Category not found', 404);
@@ -65,6 +83,16 @@ export const fixedAssetService = {
     const residualValue = input.residualValue ?? Number((input.purchaseValue * Number(category.residualValuePercent)) / 100);
     const usefulLifeMonths = input.usefulLifeMonths ?? category.usefulLifeMonths;
     const depreciationMethod = input.depreciationMethod ?? category.depreciationMethod;
+
+    const isOpening = input.assetOrigin === 'OPENING';
+    // Book value at migration = original cost − what had already been
+    // depreciated. Entering the depreciation is the natural way round for
+    // the user; currentValue stays the single stored book value.
+    const openingBookValue =
+      input.accumulatedDepreciation !== undefined
+        ? Math.max(Math.round((input.purchaseValue - input.accumulatedDepreciation) * 100) / 100, 0)
+        : undefined;
+    const organizationId = isOpening ? await organizationService.resolveOrganizationId(undefined) : undefined;
 
     const assetCode = await fixedAssetRepository.nextAssetCode(category.code);
     const asset = await fixedAssetRepository.create({
@@ -79,15 +107,30 @@ export const fixedAssetService = {
       residualValue,
       usefulLifeMonths,
       depreciationMethod,
-      currentValue: input.currentValue ?? input.purchaseValue,
+      currentValue: input.currentValue ?? openingBookValue ?? input.purchaseValue,
       departmentId: input.departmentId,
       locationText: input.locationText,
       responsiblePersonId: input.responsiblePersonId,
+      assetOrigin: input.assetOrigin ?? 'NEW_PURCHASE',
+      openingDate: isOpening ? new Date(input.openingDate ?? input.purchaseDate) : null,
+      migrationSource: isOpening ? input.migrationSource ?? 'Tally Migration' : null,
+      migrationStatus: isOpening ? input.migrationStatus ?? 'UNVERIFIED' : null,
+      approvalStatus: isOpening ? 'APPROVED' : undefined,
+      approvedById: isOpening ? actorId : undefined,
+      organizationId,
       createdById: actorId,
       updatedById: actorId,
     });
 
-    await auditService.record({ userId: actorId, action: 'CREATE', entityType: 'FixedAsset', entityId: asset.id, description: `Registered fixed asset ${asset.assetCode} — ${asset.assetName}` });
+    await auditService.record({
+      userId: actorId,
+      action: 'CREATE',
+      entityType: 'FixedAsset',
+      entityId: asset.id,
+      description: isOpening
+        ? `Registered opening asset ${asset.assetCode} — ${asset.assetName} at book value ${Number(asset.currentValue)} (no funding recorded)`
+        : `Registered fixed asset ${asset.assetCode} — ${asset.assetName}`,
+    });
     return fixedAssetService.getById(asset.id);
   },
 
@@ -110,9 +153,22 @@ export const fixedAssetService = {
       if (existingForVehicle) throw new AppError('This vehicle already has a Fixed Asset record', 409);
     }
 
-    if (input.purchaseValue !== undefined && Number(input.purchaseValue) !== Number(existing.purchaseValue) && existing.approvalStatus === 'APPROVED') {
+    // An opening asset was never funded through this system, so correcting
+    // a mistyped migration figure desyncs nothing.
+    if (
+      input.purchaseValue !== undefined &&
+      Number(input.purchaseValue) !== Number(existing.purchaseValue) &&
+      existing.approvalStatus === 'APPROVED' &&
+      existing.assetOrigin !== 'OPENING'
+    ) {
       throw new AppError('Purchase value cannot be changed after the purchase has been approved and funded', 409);
     }
+
+    const purchaseValue = input.purchaseValue ?? Number(existing.purchaseValue);
+    const bookValueFromDepreciation =
+      input.accumulatedDepreciation !== undefined
+        ? Math.max(Math.round((purchaseValue - input.accumulatedDepreciation) * 100) / 100, 0)
+        : undefined;
 
     await fixedAssetRepository.update(id, {
       assetName: input.assetName,
@@ -125,11 +181,14 @@ export const fixedAssetService = {
       residualValue: input.residualValue,
       usefulLifeMonths: input.usefulLifeMonths,
       depreciationMethod: input.depreciationMethod,
-      currentValue: input.currentValue,
+      currentValue: input.currentValue ?? bookValueFromDepreciation,
       departmentId: input.departmentId,
       locationText: input.locationText,
       responsiblePersonId: input.responsiblePersonId,
       status: input.status,
+      openingDate: input.openingDate === undefined ? undefined : input.openingDate === null ? null : new Date(input.openingDate),
+      migrationSource: input.migrationSource,
+      migrationStatus: input.migrationStatus,
       updatedById: actorId,
     });
 
@@ -147,6 +206,12 @@ export const fixedAssetService = {
   async approve(id: string, input: ApproveFixedAssetInput, actorId: string) {
     const existing = await fixedAssetRepository.findByIdBasic(id);
     if (!existing) throw new AppError('Fixed Asset not found', 404);
+    if (existing.assetOrigin === 'OPENING') {
+      throw new AppError(
+        'This asset was carried over from the previous system, not bought through this one — there is no payment to record against it.',
+        409
+      );
+    }
     if (existing.approvalStatus !== 'PENDING') throw new AppError(`Asset has already been ${existing.approvalStatus.toLowerCase()}`, 409);
 
     const totalFunding = input.fundingLines.reduce((sum, l) => sum + l.amount, 0);
@@ -200,7 +265,11 @@ export const fixedAssetService = {
   async remove(id: string, actorId: string) {
     const existing = await fixedAssetRepository.findByIdBasic(id);
     if (!existing) throw new AppError('Fixed Asset not found', 404);
-    if (existing.approvalStatus === 'APPROVED') throw new AppError('Cannot delete an approved asset that has already been funded', 409);
+    // An opening asset never moved money, so deleting a mis-entered one
+    // cannot leave a bank balance stranded.
+    if (existing.approvalStatus === 'APPROVED' && existing.assetOrigin !== 'OPENING') {
+      throw new AppError('Cannot delete an approved asset that has already been funded', 409);
+    }
 
     await fixedAssetRepository.softDelete(id, actorId);
     await auditService.record({ userId: actorId, action: 'DELETE', entityType: 'FixedAsset', entityId: id, description: `Deleted fixed asset ${existing.assetCode}` });

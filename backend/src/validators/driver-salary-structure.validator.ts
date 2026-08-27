@@ -31,4 +31,22 @@ export const createDriverSalaryStructureSchema = z.object({
   ]),
 });
 
+export const updateDriverSalaryStructureSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.discriminatedUnion('salaryType', [
+    z.object({
+      salaryType: z.literal('FIXED'),
+      fixedAmount: z.number().positive('Fixed amount must be greater than zero'),
+      effectiveFrom: z.string().min(1, 'Effective date is required').optional(),
+    }),
+    z.object({
+      salaryType: z.literal('PERCENT_OF_FREIGHT'),
+      percentValue: z.number().positive('Percentage must be greater than zero').max(100, 'Percentage cannot exceed 100'),
+      effectiveFrom: z.string().min(1, 'Effective date is required').optional(),
+    }),
+  ]),
+});
+
 export type CreateDriverSalaryStructureInput = z.infer<typeof createDriverSalaryStructureSchema>['body'];
+export type UpdateDriverSalaryStructureInput = z.infer<typeof updateDriverSalaryStructureSchema>['body'];

@@ -18,5 +18,6 @@ router.get('/:id', authorize('cashAccount.view'), validate(cashAccountIdParamSch
 router.post('/', authorize('cashAccount.create'), validate(createCashAccountSchema), cashAccountController.create);
 router.put('/:id', authorize('cashAccount.edit'), validate(updateCashAccountSchema), cashAccountController.update);
 router.patch('/:id/status', authorize('cashAccount.edit'), validate(cashAccountIdParamSchema), cashAccountController.toggleStatus);
+router.delete('/:id', authorize('cashAccount.delete'), validate(cashAccountIdParamSchema), cashAccountController.remove);
 
 export default router;

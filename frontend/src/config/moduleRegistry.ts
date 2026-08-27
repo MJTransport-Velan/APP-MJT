@@ -112,6 +112,7 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Financial Entries', icon: 'mdi-cash-fast', to: '/accounts/financial-entry' },
       { title: 'Loans & EMI', icon: 'mdi-bank-outline', to: '/accounts/loans' },
       { title: 'Capital & Owner Funds', icon: 'mdi-wallet-outline', to: '/accounts/capital-account' },
+      { title: 'Opening Balance & Migration', icon: 'mdi-database-import-outline', to: '/accounts/opening-balance' },
       { title: 'Finance Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounts/dashboard' },
       // Transactions
       { title: 'Customer Invoices & Receipts', icon: 'mdi-receipt-text-outline', to: '/accounts/invoices' },

@@ -44,6 +44,13 @@ export interface FixedAsset {
   usefulLifeMonths: number;
   depreciationMethod: DepreciationMethod;
   currentValue: number;
+  /** Original cost - book value. Derived server-side, never stored. */
+  accumulatedDepreciation: number;
+  /** OPENING = carried over from the previous system; NEW_PURCHASE = bought through this one. */
+  assetOrigin: 'OPENING' | 'NEW_PURCHASE';
+  openingDate: string | null;
+  migrationSource: string | null;
+  migrationStatus: 'CONFIRMED' | 'NEEDS_REVIEW' | 'UNVERIFIED' | 'RECLASSIFIED' | null;
   locationText: string | null;
   status: FixedAssetStatus;
   approvalStatus: ApprovalStatus;

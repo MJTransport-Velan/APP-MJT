@@ -60,4 +60,8 @@ export const bankAccountRepository = {
   softDelete(id: string, updatedById: string) {
     return prisma.bankAccount.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },
+
+  hardDelete(id: string) {
+    return prisma.bankAccount.delete({ where: { id } });
+  },
 };

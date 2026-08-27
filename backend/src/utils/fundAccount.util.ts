@@ -116,3 +116,45 @@ export async function adjustFundAccountBalance(
 
   await prisma.cashAccount.update({ where: { id }, data: { currentBalance: { increment: delta } } });
 }
+
+/**
+ * Refuses to let a BankAccount/CashAccount be hard-deleted while anything
+ * still points at it.
+ *
+ * Only some of those pointers are real foreign keys the database can defend
+ * (ChequeBook, Cheque, PettyCashRequest) — every "which account did this
+ * money move through" field listed at the top of this file is polymorphic,
+ * so Postgres sees nothing to restrict and the row would delete cleanly,
+ * silently orphaning receipts, transfers and loan installments. This is the
+ * guard that stands in for the missing constraints.
+ */
+export async function assertFundAccountUnreferenced(type: 'BANK' | 'CASH', id: string): Promise<void> {
+  const polymorphic = { fundAccountType: type, fundAccountId: id };
+
+  const checks: { label: string; count: Promise<number> }[] = [
+    { label: 'bank transfers', count: prisma.bankTransfer.count({ where: { OR: [{ fromAccountType: type, fromAccountId: id }, { toAccountType: type, toAccountId: id }] } }) },
+    { label: 'financial entries', count: prisma.financialEntry.count({ where: { OR: [{ sourceType: type, sourceId: id }, { destinationType: type, destinationId: id }] } }) },
+    { label: 'receipts', count: prisma.receipt.count({ where: polymorphic }) },
+    { label: 'supplier payments', count: prisma.supplierPayment.count({ where: polymorphic }) },
+    { label: 'capital transactions', count: prisma.capitalTransaction.count({ where: polymorphic }) },
+    { label: 'driver advances', count: prisma.driverAdvance.count({ where: polymorphic }) },
+    { label: 'employee advances', count: prisma.employeeAdvance.count({ where: polymorphic }) },
+    { label: 'loans', count: prisma.loan.count({ where: polymorphic }) },
+    { label: 'loan installments', count: prisma.loanInstallment.count({ where: polymorphic }) },
+    { label: 'fastag transactions', count: prisma.fastTagTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
+    { label: 'opening balances', count: type === 'BANK' ? prisma.openingBalance.count({ where: { bankAccountId: id } }) : prisma.openingBalance.count({ where: { cashAccountId: id } }) },
+  ];
+
+  const counts = await Promise.all(checks.map((check) => check.count));
+  const blocking = checks
+    .map((check, index) => ({ label: check.label, count: counts[index] }))
+    .filter((entry) => entry.count > 0)
+    .map((entry) => `${entry.count} ${entry.label}`);
+
+  if (blocking.length) {
+    throw new AppError(
+      `This account has already been used by ${blocking.join(', ')} and cannot be deleted. Deactivate it instead.`,
+      409
+    );
+  }
+}

@@ -3,6 +3,10 @@ import { z } from 'zod';
 const loanTypeEnum = z.enum(['VEHICLE_LOAN', 'BANK_LOAN', 'BUSINESS_LOAN', 'OWNER_LOAN', 'OTHER_LOAN']);
 const loanStatusEnum = z.enum(['ACTIVE', 'CLOSED', 'FORECLOSED']);
 const fundAccountTypeEnum = z.enum(['BANK', 'CASH']);
+// OPENING = a loan that was already running when the business moved off its
+// old system; NEW = taken out through this system.
+const loanOriginEnum = z.enum(['OPENING', 'NEW']);
+const migrationRecordStatusEnum = z.enum(['CONFIRMED', 'NEEDS_REVIEW', 'UNVERIFIED', 'RECLASSIFIED']);
 
 export const listLoansSchema = z.object({
   body: z.object({}).optional(),
@@ -14,6 +18,7 @@ export const listLoansSchema = z.object({
     loanType: loanTypeEnum.optional(),
     status: loanStatusEnum.optional(),
     vehicleId: z.string().uuid().optional(),
+    origin: loanOriginEnum.optional(),
   }),
 });
 
@@ -41,6 +46,15 @@ const loanBody = z.object({
   fundAccountId: z.string().uuid('A valid payment account is required'),
   loanAccountRef: z.string().optional(),
   remarks: z.string().optional(),
+  // Migration fields. For an OPENING loan, principalAmount is what is STILL
+  // OWED on openingAsOfDate and tenureMonths is the number of EMIs LEFT, so
+  // the generated schedule picks up where the old system left off. Old EMIs
+  // are never recreated.
+  origin: loanOriginEnum.optional(),
+  originalPrincipal: z.number().positive('Original loan amount must be greater than 0').optional(),
+  openingAsOfDate: z.string().optional(),
+  migrationSource: z.string().optional(),
+  migrationStatus: migrationRecordStatusEnum.optional(),
 });
 
 /** A Vehicle Loan is meaningless without its vehicle; an Owner Loan without its partner (spec §28). */

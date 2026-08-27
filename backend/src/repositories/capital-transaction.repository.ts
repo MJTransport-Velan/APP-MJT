@@ -49,6 +49,10 @@ export const capitalTransactionRepository = {
     return prisma.capitalTransaction.create({ data, include: capitalTransactionWithRelations });
   },
 
+  update(id: string, data: Prisma.CapitalTransactionUncheckedUpdateInput) {
+    return prisma.capitalTransaction.update({ where: { id }, data });
+  },
+
   softDelete(id: string, updatedById: string) {
     return prisma.capitalTransaction.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },

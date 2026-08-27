@@ -323,6 +323,9 @@ function onKeydown(event: KeyboardEvent) {
     }
     activeIndex.value = Math.max(activeIndex.value - 1, 0);
   } else if (event.key === 'Escape') {
+    // An open dropdown consumes the press: without this it would travel on to
+    // the dialog / go-back handlers and close the page behind the list.
+    if (open.value) event.preventDefault();
     close();
     inputRef.value?.blur();
   } else if (event.key === 'Tab') {

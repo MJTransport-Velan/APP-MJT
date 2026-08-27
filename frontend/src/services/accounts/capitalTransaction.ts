@@ -13,6 +13,9 @@ export const capitalTransactionApi = {
   create(payload: CreateCapitalTransactionInput) {
     return api.post<ApiResponse<CapitalTransaction>>('/accounts/capital-transactions', payload);
   },
+  update(id: string, payload: Partial<CreateCapitalTransactionInput>) {
+    return api.put<ApiResponse<CapitalTransaction>>(`/accounts/capital-transactions/${id}`, payload);
+  },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/capital-transactions/${id}`);
   },

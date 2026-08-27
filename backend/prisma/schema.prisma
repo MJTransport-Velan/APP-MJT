@@ -40,7 +40,7 @@ model User {
   // JWT and compared on every authenticated request (auth.middleware.ts),
   // so administrative action takes effect immediately instead of waiting
   // for the token to expire on its own.
-  tokenVersion       Int       @default(0)
+  tokenVersion Int @default(0)
 
   userRoles UserRole[]
   userTeams UserTeam[]
@@ -155,7 +155,7 @@ model Department {
   teams Team[]
 
   // Phase 12 — Vehicle Assets, Loans & Expense Management (docs Phase 6).
-  fixedAssets        FixedAsset[]
+  fixedAssets FixedAsset[]
 
   @@map("departments")
 }
@@ -220,6 +220,7 @@ model Company {
   invoices             Invoice[]
   receipts             Receipt[]
   collectionActivities CollectionActivity[]
+  openingBalances      OpeningBalance[]
 
   @@index([groupId])
   @@map("companies")
@@ -487,6 +488,8 @@ model Supplier {
   vehicleExpenses VehicleExpense[]
 
   fuelEntries FuelEntry[]
+
+  openingBalances OpeningBalance[]
 
   @@map("suppliers")
 }
@@ -1764,10 +1767,11 @@ model BankAccount {
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
 
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  openingBalances  OpeningBalance[]
   chequeBooks      ChequeBook[]
-  chequesDrawn     Cheque[]     @relation("ChequeBankAccount")
-  chequesDeposited Cheque[]     @relation("ChequeDepositedIntoBankAccount")
+  chequesDrawn     Cheque[]         @relation("ChequeBankAccount")
+  chequesDeposited Cheque[]         @relation("ChequeDepositedIntoBankAccount")
 
   @@unique([organizationId, accountNumber])
   @@index([organizationId])
@@ -1802,6 +1806,7 @@ model CashAccount {
   updatedAt           DateTime        @updatedAt
 
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  openingBalances   OpeningBalance[]
   pettyCashRequests PettyCashRequest[]
 
   @@index([organizationId])
@@ -2006,8 +2011,9 @@ model CapitalPartner {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  transactions CapitalTransaction[]
-  loans        Loan[]
+  transactions    CapitalTransaction[]
+  loans           Loan[]
+  openingBalances OpeningBalance[]
 
   @@map("capital_partners")
 }
@@ -2617,32 +2623,42 @@ model AssetCategory {
 // Building, Furniture, Computer, ...). currentValue is entered/edited by
 // hand — nothing derives it, since this system runs no depreciation.
 model FixedAsset {
-  id                  String             @id @default(uuid())
-  assetCode           String             @unique
+  id                  String                 @id @default(uuid())
+  assetCode           String                 @unique
   assetName           String
   categoryId          String
-  vehicleId           String?            @unique
+  vehicleId           String?                @unique
   supplierId          String?
   purchaseDate        DateTime
   capitalizationDate  DateTime
-  purchaseValue       Decimal            @db.Decimal(14, 2)
-  residualValue       Decimal            @db.Decimal(14, 2)
+  purchaseValue       Decimal                @db.Decimal(14, 2)
+  residualValue       Decimal                @db.Decimal(14, 2)
   usefulLifeMonths    Int
   depreciationMethod  DepreciationMethod
-  currentValue        Decimal            @db.Decimal(14, 2)
+  currentValue        Decimal                @db.Decimal(14, 2)
   departmentId        String?
   locationText        String?
   responsiblePersonId String?
-  status              FixedAssetStatus   @default(ACTIVE)
-  approvalStatus      ApprovalStatus     @default(PENDING)
+  status              FixedAssetStatus       @default(ACTIVE)
+  // Migration (Phase 18): an OPENING asset came across from the old Tally
+  // books - purchaseValue is its ORIGINAL cost and currentValue its book
+  // value on openingDate, so accumulated depreciation is exactly
+  // purchaseValue - currentValue and is never stored separately. It is
+  // registered already-approved because how it was originally paid for is
+  // unknown and must not be guessed: no funding line, no money moved.
+  assetOrigin         AssetOrigin            @default(NEW_PURCHASE)
+  openingDate         DateTime?
+  migrationSource     String?
+  migrationStatus     MigrationRecordStatus?
+  approvalStatus      ApprovalStatus         @default(PENDING)
   approvedById        String?
   organizationId      String?
-  isActive            Boolean            @default(true)
+  isActive            Boolean                @default(true)
   deletedAt           DateTime?
   createdById         String?
   updatedById         String?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   category   AssetCategory @relation(fields: [categoryId], references: [id])
   vehicle    Vehicle?      @relation(fields: [vehicleId], references: [id])
@@ -2691,8 +2707,8 @@ enum LoanInstallmentStatus {
 }
 
 model Loan {
-  id                  String     @id @default(uuid())
-  loanNumber          String     @unique
+  id                  String                 @id @default(uuid())
+  loanNumber          String                 @unique
   loanName            String
   lenderName          String
   loanType            LoanType
@@ -2703,24 +2719,34 @@ model Loan {
   fixedAssetId        String?
   capitalPartnerId    String?
   loanStartDate       DateTime
-  principalAmount     Decimal    @db.Decimal(14, 2)
-  interestRatePercent Decimal    @default(0) @db.Decimal(5, 2)
+  principalAmount     Decimal                @db.Decimal(14, 2)
+  interestRatePercent Decimal                @default(0) @db.Decimal(5, 2)
   tenureMonths        Int
-  emiAmount           Decimal    @db.Decimal(14, 2)
+  emiAmount           Decimal                @db.Decimal(14, 2)
   firstEmiDate        DateTime
   // The account EMIs are paid FROM by default; each payment may override it.
   fundAccountType     FundAccountType
   fundAccountId       String
   loanAccountRef      String?
-  status              LoanStatus @default(ACTIVE)
+  // Migration (Phase 18): for an OPENING loan carried over from Tally,
+  // principalAmount holds the amount STILL OWED on openingAsOfDate (so the
+  // live outstanding maths needs no special case) and originalPrincipal
+  // remembers what the lender originally sanctioned. EMIs paid before the
+  // migration are never recreated.
+  origin              LoanOrigin             @default(NEW)
+  originalPrincipal   Decimal?               @db.Decimal(14, 2)
+  openingAsOfDate     DateTime?
+  migrationSource     String?
+  migrationStatus     MigrationRecordStatus?
+  status              LoanStatus             @default(ACTIVE)
   remarks             String?
   organizationId      String?
-  isActive            Boolean    @default(true)
+  isActive            Boolean                @default(true)
   deletedAt           DateTime?
   createdById         String?
   updatedById         String?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   vehicle        Vehicle?        @relation(fields: [vehicleId], references: [id])
   fixedAsset     FixedAsset?     @relation(fields: [fixedAssetId], references: [id])
@@ -3832,4 +3858,142 @@ model DocumentCounter {
   updatedAt DateTime @updatedAt
 
   @@map("document_counters")
+}
+
+// ===========================================================
+// PHASE 18 - OPENING BALANCE & MIGRATION
+// ===========================================================
+// Brings the financial position across from the old Tally books without
+// recreating a single historical transaction: Tally's CLOSING position
+// becomes this system's OPENING position, and live transactions start from
+// the migration date.
+//
+// An opening balance is NOT income, expense, receipt or payment - nothing
+// here writes a FinancialEntry, so opening amounts can never distort
+// current-period Profit & Loss.
+//
+// Where an opening amount belongs to a register that already exists, it is
+// stored THERE rather than duplicated here:
+//   - opening assets -> FixedAsset.assetOrigin = OPENING
+//   - opening loans  -> Loan.origin = OPENING
+// The rows below cover what has no register of its own: bank/cash balances,
+// customer/supplier outstandings, owner funds and free-form adjustments.
+
+enum MigrationStatus {
+  DRAFT
+  FINALIZED
+}
+
+enum AssetOrigin {
+  OPENING
+  NEW_PURCHASE
+}
+
+enum LoanOrigin {
+  OPENING
+  NEW
+}
+
+/// Per-row audit trail for the migration: how sure the user is about a
+/// figure typed in from the old system.
+enum MigrationRecordStatus {
+  CONFIRMED
+  NEEDS_REVIEW
+  UNVERIFIED
+  RECLASSIFIED
+}
+
+enum OpeningBalanceCategory {
+  BANK
+  CASH
+  RECEIVABLE
+  PAYABLE
+  OWNER_FUNDS
+  OTHER_ASSET
+  OTHER_LIABILITY
+  OTHER_EQUITY
+}
+
+/// Money an owner handed the business before the migration is not
+/// necessarily capital - part of it is often a debt the business owes back.
+/// Until the user says which, it stays UNCLASSIFIED and is reported as an
+/// unreconciled opening amount rather than silently boosting equity.
+enum OpeningFundClassification {
+  CAPITAL
+  OWNER_LOAN
+  OTHER_LIABILITY
+  UNCLASSIFIED
+}
+
+model FinancialMigration {
+  id                  String          @id @default(uuid())
+  migrationDate       DateTime        @db.Date
+  previousSystem      String          @default("Tally")
+  previousClosingDate DateTime?       @db.Date
+  notes               String?
+  status              MigrationStatus @default(DRAFT)
+  finalizedAt         DateTime?
+  finalizedById       String?
+  organizationId      String?
+  isActive            Boolean         @default(true)
+  deletedAt           DateTime?
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  openingBalances OpeningBalance[]
+
+  @@map("financial_migrations")
+}
+
+model OpeningBalance {
+  id          String                 @id @default(uuid())
+  migrationId String
+  category    OpeningBalanceCategory
+  amount      Decimal                @db.Decimal(18, 2)
+
+  // Exactly one of these is set, decided by `category`; validated in the
+  // service layer the same way every other polymorphic link in this app is.
+  bankAccountId    String?
+  cashAccountId    String?
+  companyId        String?
+  supplierId       String?
+  capitalPartnerId String?
+  /// Name of a free-form OTHER_ASSET / OTHER_LIABILITY / OTHER_EQUITY row.
+  label            String?
+
+  classification  OpeningFundClassification?
+  status          MigrationRecordStatus      @default(UNVERIFIED)
+  source          String                     @default("Tally Migration")
+  referenceNumber String?
+  /// The old invoice/bill date where known - used for receivable/payable aging.
+  referenceDate   DateTime?
+  remarks         String?
+
+  /// What has already been pushed into BankAccount/CashAccount.currentBalance,
+  /// so an edited opening balance moves the account by the DIFFERENCE instead
+  /// of adding the whole amount a second time.
+  appliedAmount Decimal @default(0) @db.Decimal(18, 2)
+
+  organizationId String?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  migration      FinancialMigration @relation(fields: [migrationId], references: [id], onDelete: Cascade)
+  bankAccount    BankAccount?       @relation(fields: [bankAccountId], references: [id])
+  cashAccount    CashAccount?       @relation(fields: [cashAccountId], references: [id])
+  company        Company?           @relation(fields: [companyId], references: [id])
+  supplier       Supplier?          @relation(fields: [supplierId], references: [id])
+  capitalPartner CapitalPartner?    @relation(fields: [capitalPartnerId], references: [id])
+
+  @@index([migrationId])
+  @@index([category])
+  @@index([companyId])
+  @@index([supplierId])
+  @@map("opening_balances")
 }

@@ -91,6 +91,42 @@
             </div>
           </AppCard>
 
+          <!-- Fixed assets read as a block: what they cost, what has been
+               written off, and what is left — with the migration split shown
+               so opening assets are never mistaken for this year's purchases. -->
+          <AppCard class="pa-4 mt-4">
+            <div class="text-subtitle-2 mb-2">Fixed Assets</div>
+            <div class="bs-row bs-row--disabled">
+              <span>Gross Block (original cost)</span><span>{{ formatCurrency(result.assets.fixedAssets.grossBlock) }}</span>
+            </div>
+            <div class="bs-row bs-row--disabled">
+              <span>Less: Accumulated Depreciation</span><span>({{ formatCurrency(result.assets.fixedAssets.accumulatedDepreciation) }})</span>
+            </div>
+            <div class="d-flex justify-space-between font-weight-bold pt-2 mt-1 bs-total-row">
+              <span>Net Fixed Assets</span><span>{{ formatCurrency(result.assets.fixedAssets.total) }}</span>
+            </div>
+            <div class="bs-row" @click="openSection('openingAssets', 'Existing / Opening Assets')">
+              <span class="d-flex align-center ga-2">
+                <AppIcon icon="mdi-database-import-outline" size="small" class="text-medium-emphasis" />
+                <span>Existing / Opening Assets</span>
+              </span>
+              <span class="d-flex align-center ga-1">
+                <span class="font-weight-medium">{{ formatCurrency(result.assets.fixedAssets.openingAssets) }}</span>
+                <AppIcon icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
+              </span>
+            </div>
+            <div class="bs-row" @click="openSection('newAssets', 'New Assets')">
+              <span class="d-flex align-center ga-2">
+                <AppIcon icon="mdi-plus-box-outline" size="small" class="text-medium-emphasis" />
+                <span>New Assets</span>
+              </span>
+              <span class="d-flex align-center ga-1">
+                <span class="font-weight-medium">{{ formatCurrency(result.assets.fixedAssets.newAssets) }}</span>
+                <AppIcon icon="mdi-chevron-right" size="small" class="text-medium-emphasis" />
+              </span>
+            </div>
+          </AppCard>
+
           <AppCard class="pa-4 mt-4">
             <div class="text-subtitle-2 mb-2">Asset Composition</div>
             <div class="bs-comp-bar">
@@ -261,7 +297,8 @@ const assetLines: SectionLine[] = [
   { key: 'bank', label: 'Bank', icon: 'mdi-bank-outline', value: (r) => r.assets.currentAssets.bank },
   { key: 'customerReceivables', label: 'Receivables', icon: 'mdi-account-cash-outline', value: (r) => r.assets.currentAssets.receivables },
   { key: 'advancesRecoverable', label: 'Advances Recoverable', icon: 'mdi-cash-fast', value: (r) => r.assets.currentAssets.advances },
-  { key: 'otherAssets', label: 'Other Assets', icon: 'mdi-shape-outline', value: (r) => r.assets.otherAssets, disabled: true },
+  // Deposits and similar balances carried over from the previous system.
+  { key: 'otherAssets', label: 'Other Assets', icon: 'mdi-shape-outline', value: (r) => r.assets.otherAssets },
 ];
 
 const liabilityLines: SectionLine[] = [
@@ -272,12 +309,16 @@ const liabilityLines: SectionLine[] = [
   { key: 'supplierPayables', label: 'Supplier Payables', icon: 'mdi-truck-delivery-outline', value: (r) => r.liabilities.supplierPayables },
   { key: 'employeePayables', label: 'Driver / Employee Payables', icon: 'mdi-account-group-outline', value: (r) => r.liabilities.employeePayables },
   { key: 'customerAdvances', label: 'Customer Advances', icon: 'mdi-cash-refund', value: (r) => r.liabilities.customerAdvances },
+  // Owner money from the migration whose nature is still undecided sits in
+  // liabilities, never in equity, until the user classifies it.
+  { key: 'openingUnclassified', label: 'Owner Funds — Needs Review', icon: 'mdi-help-circle-outline', value: (r) => r.liabilities.openingUnclassified },
   { key: 'taxPayables', label: 'Tax / Statutory Payables', icon: 'mdi-file-percent-outline', value: (r) => r.liabilities.taxPayables, disabled: true },
-  { key: 'otherLiabilities', label: 'Other Liabilities', icon: 'mdi-alert-circle-outline', value: (r) => r.liabilities.otherLiabilities, disabled: true },
+  { key: 'otherLiabilities', label: 'Other Liabilities', icon: 'mdi-alert-circle-outline', value: (r) => r.liabilities.otherLiabilities },
 ];
 
 const equityLines: SectionLine[] = [
   { key: 'ownerCapital', label: 'Owner Capital', icon: 'mdi-wallet-outline', value: (r) => r.equity.ownerCapital },
+  { key: 'openingEquity', label: 'Opening Equity (brought forward)', icon: 'mdi-database-import-outline', value: (r) => r.equity.openingEquityAdjustments },
   { key: 'retainedProfit', label: 'Retained Profit', icon: 'mdi-chart-line', value: (r) => r.equity.retainedProfit, disabled: true },
   { key: 'drawings', label: 'Drawings', icon: 'mdi-cash-minus', value: (r) => r.equity.drawings, negative: true },
 ];
@@ -366,6 +407,16 @@ const assetComposition = computed(() => {
 // --- Section breakdown dialog ---
 const sectionDialog = ref<{ open: boolean; title: string; groups: SectionGroup[] }>({ open: false, title: '', groups: [] });
 
+/** Splits one asset list into its opening and newly-purchased halves, dropping an empty half. */
+function assetGroups(rows: { id: string; name: string; amount: number; origin: string }[], label: string): SectionGroup[] {
+  const opening = rows.filter((a) => a.origin === 'OPENING').map((a) => ({ id: a.id, name: a.name, amount: a.amount }));
+  const fresh = rows.filter((a) => a.origin !== 'OPENING').map((a) => ({ id: a.id, name: a.name, amount: a.amount }));
+  const groups: SectionGroup[] = [];
+  if (opening.length) groups.push({ title: `${label} — Existing / Opening`, partyType: null, rows: opening });
+  groups.push({ title: opening.length ? `${label} — New` : label, partyType: null, rows: fresh });
+  return groups;
+}
+
 function sectionGroups(key: string): SectionGroup[] {
   if (!result.value) return [];
   const b = result.value.breakdown;
@@ -382,10 +433,24 @@ function sectionGroups(key: string): SectionGroup[] {
         { title: 'Driver Advances', partyType: 'driver', rows: b.driverAdvances },
         { title: 'Employee Advances', partyType: 'employee', rows: b.employeeAdvances },
       ];
+    // Each asset group is listed opening-first, so a migrated asset is never
+    // mistaken for something bought this year.
     case 'fixedAssetsVehicles':
-      return [{ title: 'Vehicle Assets', partyType: null, rows: b.fixedAssets.filter((a) => a.category === 'Vehicle').map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
+      return assetGroups(b.fixedAssets.filter((a) => a.category === 'Vehicle'), 'Vehicle Assets');
     case 'fixedAssetsOther':
-      return [{ title: 'Equipment & Other Assets', partyType: null, rows: b.fixedAssets.filter((a) => a.category !== 'Vehicle').map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
+      return assetGroups(b.fixedAssets.filter((a) => a.category !== 'Vehicle'), 'Equipment & Other Assets');
+    case 'openingAssets':
+      return [{ title: 'Carried over from the previous system', partyType: null, rows: b.openingAssetRows.map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
+    case 'newAssets':
+      return [{ title: 'Bought through this system', partyType: null, rows: b.newAssetRows.map((a) => ({ id: a.id, name: a.name, amount: a.amount })) }];
+    case 'otherAssets':
+      return [{ title: 'Opening adjustments', partyType: null, rows: b.openingOtherAssets }];
+    case 'otherLiabilities':
+      return [{ title: 'Opening adjustments', partyType: null, rows: b.openingOtherLiabilities }];
+    case 'openingEquity':
+      return [{ title: 'Opening adjustments', partyType: null, rows: b.openingOtherEquity }];
+    case 'openingUnclassified':
+      return [{ title: 'Owner funds still to classify', partyType: null, rows: b.openingUnclassifiedOwnerFunds }];
     case 'supplierPayables':
       return [{ title: 'Supplier-wise', partyType: 'supplier', rows: b.supplierPayables }];
     case 'employeePayables':

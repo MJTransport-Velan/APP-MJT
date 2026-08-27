@@ -34,6 +34,7 @@
           :disabled="!canEdit"
           @click="onToggleStatus(item as any)"
         />
+        <AppBtn icon="mdi-delete-outline" variant="text" size="small" :disabled="!canDelete" @click="openDeleteConfirm(item as any)" />
       </template>
     </MasterDataTable>
 
@@ -61,6 +62,15 @@
         </AppCardActions>
       </AppCard>
     </AppDialog>
+
+    <ConfirmDialog
+      v-model="deleteDialog"
+      title="Delete Cash Account"
+      :message="`Delete this ${deleteTarget?.cashAccountType} cash account? This cannot be undone.`"
+      confirm-text="Delete"
+      :loading="deleting"
+      @confirm="submitDelete"
+    />
   </div>
 </template>
 
@@ -74,6 +84,7 @@ import MasterToolbar from '@/components/masters/MasterToolbar.vue';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import StatusChip from '@/components/masters/StatusChip.vue';
 import { AppBtn, AppDialog, AppCard, AppCardTitle, AppCardText, AppCardActions, AppTextField, AppSelect, AppChip } from '@/components/ui';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { CashAccount } from '@/types/banking.types';
 
 const store = useCashAccountStore();
@@ -83,6 +94,7 @@ const { success, error } = useSnackbar();
 
 const canCreate = authStore.hasPermission('cashAccount.create');
 const canEdit = authStore.hasPermission('cashAccount.edit');
+const canDelete = authStore.hasPermission('cashAccount.delete');
 
 const headers = [
   { title: 'Type', key: 'cashAccountType', sortable: false },
@@ -192,6 +204,31 @@ async function onToggleStatus(account: CashAccount) {
     fetchData();
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to update status'));
+  }
+}
+
+const deleteDialog = ref(false);
+const deleteTarget = ref<CashAccount | null>(null);
+const deleting = ref(false);
+
+function openDeleteConfirm(account: CashAccount) {
+  deleteTarget.value = account;
+  deleteDialog.value = true;
+}
+
+async function submitDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.remove(deleteTarget.value.id);
+    success('Cash Account deleted successfully');
+    deleteDialog.value = false;
+    fetchData();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete Cash Account'));
+    deleteDialog.value = false;
+  } finally {
+    deleting.value = false;
   }
 }
 

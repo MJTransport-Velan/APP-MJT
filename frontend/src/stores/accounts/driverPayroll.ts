@@ -175,6 +175,9 @@ export const useDriverSettlementStore = defineStore('driverSettlements', {
       const response = await driverSettlementApi.revert(id);
       return response.data.data;
     },
+    async remove(id: string) {
+      await driverSettlementApi.remove(id);
+    },
   },
 });
 
@@ -220,6 +223,10 @@ export const useSalaryStructureStore = defineStore('salaryStructures', {
       const response = await salaryStructureApi.create(payload);
       return response.data.data;
     },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await salaryStructureApi.update(id, payload);
+      return response.data.data;
+    },
     async remove(id: string) {
       await salaryStructureApi.remove(id);
     },
@@ -250,6 +257,10 @@ export const useDriverSalaryStructureStore = defineStore('driverSalaryStructures
     },
     async create(payload: Record<string, unknown>) {
       const response = await driverSalaryStructureApi.create(payload);
+      return response.data.data;
+    },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await driverSalaryStructureApi.update(id, payload);
       return response.data.data;
     },
     async remove(id: string) {

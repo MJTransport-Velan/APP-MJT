@@ -25,4 +25,8 @@ export const cashAccountController = {
     const account = await cashAccountService.toggleStatus(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Cash Account status updated', data: account });
   }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await cashAccountService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Cash Account deleted', data: null });
+  }),
 };

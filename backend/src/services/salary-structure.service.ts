@@ -1,7 +1,7 @@
 import { salaryStructureRepository, SalaryStructureWithRelations } from '../repositories/salary-structure.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
-import { CreateSalaryStructureInput } from '../validators/salary-structure.validator';
+import { CreateSalaryStructureInput, UpdateSalaryStructureInput } from '../validators/salary-structure.validator';
 
 function serialize(s: SalaryStructureWithRelations) {
   return {
@@ -78,6 +78,46 @@ export const salaryStructureService = {
     });
 
     return salaryStructureService.getById(structure.id);
+  },
+
+  /**
+   * Corrects a structure in place. Components are replaced wholesale rather
+   * than patched line by line — a structure is only meaningful as a complete
+   * set of earnings and deductions, and a half-updated set would pay wrong.
+   */
+  async update(id: string, input: UpdateSalaryStructureInput, actorId: string) {
+    const existing = await salaryStructureRepository.findById(id);
+    if (!existing) throw new AppError('Salary Structure not found', 404);
+    if (input.components && input.components.length === 0) throw new AppError('At least one salary component is required', 422);
+
+    await salaryStructureRepository.update(id, {
+      effectiveFrom: input.effectiveFrom ? new Date(input.effectiveFrom) : undefined,
+      updatedById: actorId,
+    });
+
+    if (input.components) {
+      await salaryStructureRepository.deleteComponents(id);
+      await salaryStructureRepository.createComponents(
+        input.components.map((c) => ({
+          salaryStructureId: id,
+          componentType: c.componentType,
+          name: c.name,
+          calculationType: c.calculationType ?? 'FIXED_AMOUNT',
+          value: c.value,
+          isEarning: c.isEarning,
+        }))
+      );
+    }
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'SalaryStructure',
+      entityId: id,
+      description: `Updated salary structure for ${existing.employee.name}`,
+    });
+
+    return salaryStructureService.getById(id);
   },
 
   async remove(id: string, actorId: string) {

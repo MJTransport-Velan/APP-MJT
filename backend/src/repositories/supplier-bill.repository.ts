@@ -92,6 +92,19 @@ export const supplierBillRepository = {
     return prisma.supplierBill.update({ where: { id }, data: { deletedAt: new Date(), isActive: false, updatedById } });
   },
 
+  hardDelete(id: string) {
+    return prisma.supplierBill.delete({ where: { id } });
+  },
+
+  async countLinkedDocuments(billId: string) {
+    const [payments, creditNotes, debitNotes] = await Promise.all([
+      prisma.supplierPayment.count({ where: { billId } }),
+      prisma.supplierCreditNote.count({ where: { billId } }),
+      prisma.supplierDebitNote.count({ where: { billId } }),
+    ]);
+    return { payments, creditNotes, debitNotes };
+  },
+
   sumPaymentsForBill(billId: string) {
     return prisma.supplierPayment.aggregate({ where: { billId, deletedAt: null }, _sum: { amount: true } });
   },

@@ -12,7 +12,7 @@ const loanWithRelations = Prisma.validator<Prisma.LoanInclude>()({
 export type LoanWithRelations = Prisma.LoanGetPayload<{ include: typeof loanWithRelations }>;
 
 export const loanRepository = {
-  async findManyPaginated(params: { skip: number; take: number; search?: string; loanType?: string; status?: string; vehicleId?: string }) {
+  async findManyPaginated(params: { skip: number; take: number; search?: string; loanType?: string; status?: string; vehicleId?: string; origin?: string }) {
     const where: Prisma.LoanWhereInput = {
       deletedAt: null,
       AND: [
@@ -28,6 +28,7 @@ export const loanRepository = {
         params.loanType ? { loanType: params.loanType as never } : {},
         params.status ? { status: params.status as never } : {},
         params.vehicleId ? { vehicleId: params.vehicleId } : {},
+        params.origin ? { origin: params.origin as never } : {},
       ],
     };
 

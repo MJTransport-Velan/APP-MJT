@@ -7,6 +7,7 @@ import {
   driverIdParamSchema,
   driverSalaryStructureIdParamSchema,
   createDriverSalaryStructureSchema,
+  updateDriverSalaryStructureSchema,
 } from '../validators/driver-salary-structure.validator';
 
 const router = Router();
@@ -29,6 +30,12 @@ router.post(
   authorize('driverSalaryStructure.create'),
   validate(createDriverSalaryStructureSchema),
   driverSalaryStructureController.create
+);
+router.put(
+  '/:id',
+  authorize('driverSalaryStructure.edit'),
+  validate(updateDriverSalaryStructureSchema),
+  driverSalaryStructureController.update
 );
 router.delete(
   '/:id',

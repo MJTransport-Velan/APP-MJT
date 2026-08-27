@@ -9,12 +9,20 @@
 
     <MasterDataTable :headers="headers" :items="store.items" :items-length="store.meta?.total || 0" :loading="store.loading" :page="page" :page-size="pageSize" @update:page="onPageUpdate" @update:page-size="onPageSizeUpdate">
       <template #filters>
+        <AppSelect v-model="originFilter" :items="originOptions" item-title="label" item-value="value" label="Origin" clearable density="compact" hide-details @update:model-value="fetchData" />
+        <AppSelect v-model="assetTypeFilter" :items="assetTypeOptions" item-title="label" item-value="value" label="Asset Type" clearable density="compact" hide-details @update:model-value="fetchData" />
         <AppSelect v-model="approvalStatusFilter" :items="approvalStatusOptions" label="Approval" clearable density="compact" hide-details @update:model-value="fetchData" />
         <AppSelect v-model="statusFilter" :items="statusOptions" label="Status" clearable density="compact" hide-details @update:model-value="fetchData" />
       </template>
       <template #item.category="{ item }">{{ (item as any).category.name }}</template>
+      <template #item.assetOrigin="{ item }">
+        <AppChip size="x-small" variant="outlined" :color="(item as any).assetOrigin === 'OPENING' ? 'info' : 'default'">
+          {{ (item as any).assetOrigin === 'OPENING' ? 'Opening' : 'New' }}
+        </AppChip>
+      </template>
       <template #item.vehicle="{ item }">{{ (item as any).vehicle?.registrationNumber || '-' }}</template>
       <template #item.purchaseValue="{ item }">{{ formatCurrency((item as any).purchaseValue) }}</template>
+      <template #item.accumulatedDepreciation="{ item }">{{ formatCurrency((item as any).accumulatedDepreciation ?? 0) }}</template>
       <template #item.currentValue="{ item }">{{ formatCurrency((item as any).currentValue) }}</template>
       <template #item.approvalStatus="{ item }"><AppChip size="small" :color="approvalColor((item as any).approvalStatus)">{{ (item as any).approvalStatus }}</AppChip></template>
       <template #item.status="{ item }"><AppChip size="small" variant="outlined">{{ (item as any).status }}</AppChip></template>
@@ -30,14 +38,43 @@
     </MasterDataTable>
 
     <MasterFormDialog v-model="formDialog" :title="editTarget ? 'Edit Fixed Asset' : 'Register Fixed Asset'" :loading="submitting" @submit="onSubmit">
+      <AppSelect
+        v-if="!editTarget"
+        v-model="form.assetOrigin"
+        :items="originOptions"
+        item-title="label"
+        item-value="value"
+        label="Asset Origin"
+        class="mb-2"
+      />
+      <!--
+        An opening asset was bought long before this system existed, often
+        paid for in a way nobody can now reconstruct — so it is registered at
+        its book value with no payment recorded at all, and no bank or cash
+        balance moves.
+      -->
+      <AppAlert v-if="isOpeningForm" type="info" variant="tonal" density="compact" class="mb-3">
+        Carried over from the old system. Nothing is paid for it here — no bank or cash balance changes.
+      </AppAlert>
       <AppTextField v-model="form.assetName" label="Asset Name" :error-messages="errors.assetName" class="mb-2" />
       <AppSelect v-model="form.categoryId" :items="categoryOptions" item-title="name" item-value="id" label="Asset Category" :error-messages="errors.categoryId" class="mb-2" />
       <AppSelect v-model="form.vehicleId" :items="vehicleOptions" item-title="registrationNumber" item-value="id" label="Vehicle (if a vehicle asset)" clearable class="mb-2" />
       <AppSelect v-model="form.supplierId" :items="supplierOptions" item-title="name" item-value="id" label="Vendor / Supplier" clearable class="mb-2" />
       <div class="d-flex ga-2">
-        <AppTextField v-model="form.purchaseDate" type="date" label="Purchase Date" class="mb-2 flex-1-1" />
-        <AppTextField v-model.number="form.purchaseValue" type="number" label="Purchase Value" :error-messages="errors.purchaseValue" :disabled="purchaseValueLocked" :hint="purchaseValueLocked ? 'Locked — the purchase was already approved and funded' : undefined" persistent-hint class="mb-2 flex-1-1" />
+        <AppTextField v-model="form.purchaseDate" type="date" :label="isOpeningForm ? 'Original Purchase Date' : 'Purchase Date'" class="mb-2 flex-1-1" />
+        <AppTextField v-model.number="form.purchaseValue" type="number" :label="isOpeningForm ? 'Original Cost' : 'Purchase Value'" :error-messages="errors.purchaseValue" :disabled="purchaseValueLocked" :hint="purchaseValueLocked ? 'Locked — the purchase was already approved and funded' : undefined" persistent-hint class="mb-2 flex-1-1" />
       </div>
+      <template v-if="isOpeningForm">
+        <div class="d-flex ga-2">
+          <AppTextField v-model.number="form.accumulatedDepreciation" type="number" label="Accumulated Depreciation" class="mb-2 flex-1-1" />
+          <AppTextField :model-value="openingBookValue" type="number" label="Opening Book Value" readonly hint="Original cost − accumulated depreciation" persistent-hint class="mb-2 flex-1-1" />
+        </div>
+        <div class="d-flex ga-2">
+          <AppTextField v-model="form.openingDate" type="date" label="Opening Date" class="mb-2 flex-1-1" />
+          <AppTextField v-model="form.migrationSource" label="Source" class="mb-2 flex-1-1" />
+        </div>
+        <AppSelect v-model="form.migrationStatus" :items="migrationStatusOptions" item-title="label" item-value="value" label="Migration Status" class="mb-2" />
+      </template>
       <div v-if="editTarget" class="d-flex ga-2">
         <AppTextField v-model.number="form.currentValue" type="number" label="Current Value" class="mb-2 flex-1-1" />
         <AppSelect v-model="form.status" :items="statusOptions" label="Status" class="mb-2 flex-1-1" />
@@ -101,7 +138,7 @@ import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { formatCurrency } from '@/utils/format';
 import MasterDataTable from '@/components/masters/MasterDataTable.vue';
 import MasterFormDialog from '@/components/masters/MasterFormDialog.vue';
-import { AppBtn, AppSelect, AppTextField, AppChip, AppDialog, AppCard, AppCardTitle, AppCardText } from '@/components/ui';
+import { AppBtn, AppSelect, AppTextField, AppChip, AppDialog, AppCard, AppCardTitle, AppCardText, AppAlert } from '@/components/ui';
 import type { FixedAsset, VehicleCostSummary, FundingLine } from '@/types/phase6.types';
 
 const store = useFixedAssetStore();
@@ -118,6 +155,23 @@ const approvalStatusFilter = ref<string | null>(null);
 const statusFilter = ref<string | null>(null);
 const approvalStatusOptions = ['PENDING', 'APPROVED', 'REJECTED'];
 const statusOptions = ['ACTIVE', 'WRITTEN_OFF'];
+// Assets carried over from the old system and assets bought since are both
+// real assets — the register keeps them apart without hiding either.
+const originFilter = ref<string | null>(null);
+const assetTypeFilter = ref<string | null>(null);
+const originOptions = [
+  { value: 'NEW_PURCHASE', label: 'New Purchase' },
+  { value: 'OPENING', label: 'Opening / Existing' },
+];
+const assetTypeOptions = [
+  { value: 'VEHICLE', label: 'Vehicles' },
+  { value: 'OTHER', label: 'Other Assets' },
+];
+const migrationStatusOptions = [
+  { value: 'UNVERIFIED', label: 'Unverified' },
+  { value: 'NEEDS_REVIEW', label: 'Needs Review' },
+  { value: 'CONFIRMED', label: 'Confirmed' },
+];
 const fundingTypeOptions = ['BANK', 'CASH', 'SUPPLIER'];
 
 const categoryOptions = computed(() => categoryStore.items);
@@ -131,10 +185,12 @@ function approvalColor(status: string) {
 const headers = [
   { title: 'Asset Code', key: 'assetCode', sortable: false },
   { title: 'Name', key: 'assetName', sortable: false },
+  { title: 'Origin', key: 'assetOrigin', sortable: false },
   { title: 'Category', key: 'category', sortable: false },
   { title: 'Vehicle', key: 'vehicle', sortable: false },
-  { title: 'Purchase Value', key: 'purchaseValue', sortable: false },
-  { title: 'Current Value', key: 'currentValue', sortable: false },
+  { title: 'Cost', key: 'purchaseValue', sortable: false },
+  { title: 'Depreciation', key: 'accumulatedDepreciation', sortable: false },
+  { title: 'Book Value', key: 'currentValue', sortable: false },
   { title: 'Approval', key: 'approvalStatus', sortable: false },
   { title: 'Status', key: 'status', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false, align: 'end' as const },
@@ -143,7 +199,14 @@ const headers = [
 function onPageUpdate(v: number) { page.value = v; fetchData(); }
 function onPageSizeUpdate(v: number) { pageSize.value = v; fetchData(); }
 async function fetchData() {
-  await store.fetchList({ page: page.value, pageSize: pageSize.value, approvalStatus: approvalStatusFilter.value || undefined, status: statusFilter.value || undefined });
+  await store.fetchList({
+    page: page.value,
+    pageSize: pageSize.value,
+    approvalStatus: approvalStatusFilter.value || undefined,
+    status: statusFilter.value || undefined,
+    assetOrigin: originFilter.value || undefined,
+    assetType: assetTypeFilter.value || undefined,
+  });
 }
 
 const formDialog = ref(false);
@@ -159,12 +222,25 @@ const form = reactive({
   currentValue: undefined as number | undefined,
   status: 'ACTIVE',
   locationText: '',
+  assetOrigin: 'NEW_PURCHASE',
+  accumulatedDepreciation: undefined as number | undefined,
+  openingDate: new Date().toISOString().slice(0, 10),
+  migrationSource: 'Tally Migration',
+  migrationStatus: 'UNVERIFIED',
 });
 const errors = reactive({ assetName: '', categoryId: '', purchaseValue: '' });
 
 // The backend refuses a purchase-value change once the purchase has been
 // approved — the Bank/Cash balances were already adjusted for it.
-const purchaseValueLocked = computed(() => editTarget.value?.approvalStatus === 'APPROVED');
+// An opening asset was never funded through this system, so its figures
+// stay correctable even though it is registered already-approved.
+const purchaseValueLocked = computed(
+  () => editTarget.value?.approvalStatus === 'APPROVED' && (editTarget.value as any)?.assetOrigin !== 'OPENING'
+);
+const isOpeningForm = computed(() => form.assetOrigin === 'OPENING' || (editTarget.value as any)?.assetOrigin === 'OPENING');
+const openingBookValue = computed(() =>
+  Math.max(Math.round(((form.purchaseValue || 0) - (form.accumulatedDepreciation || 0)) * 100) / 100, 0)
+);
 
 function resetForm() {
   Object.assign(form, {
@@ -177,6 +253,11 @@ function resetForm() {
     currentValue: undefined,
     status: 'ACTIVE',
     locationText: '',
+    assetOrigin: 'NEW_PURCHASE',
+    accumulatedDepreciation: undefined,
+    openingDate: new Date().toISOString().slice(0, 10),
+    migrationSource: 'Tally Migration',
+    migrationStatus: 'UNVERIFIED',
   });
   Object.assign(errors, { assetName: '', categoryId: '', purchaseValue: '' });
 }
@@ -200,6 +281,11 @@ function openEditDialog(asset: FixedAsset) {
     currentValue: Number(asset.currentValue),
     status: asset.status,
     locationText: asset.locationText || '',
+    assetOrigin: (asset as any).assetOrigin || 'NEW_PURCHASE',
+    accumulatedDepreciation: Number(asset.purchaseValue) - Number(asset.currentValue),
+    openingDate: String((asset as any).openingDate || asset.purchaseDate).slice(0, 10),
+    migrationSource: (asset as any).migrationSource || 'Tally Migration',
+    migrationStatus: (asset as any).migrationStatus || 'UNVERIFIED',
   });
   formDialog.value = true;
 }
@@ -221,9 +307,14 @@ async function onSubmit() {
         purchaseDate: form.purchaseDate,
         // Omitted when locked so the request never trips the server-side guard.
         purchaseValue: purchaseValueLocked.value ? undefined : form.purchaseValue,
-        currentValue: form.currentValue,
+        // For an opening asset the book value follows from the depreciation
+        // the user typed, so the two can never disagree.
+        currentValue: isOpeningForm.value ? openingBookValue.value : form.currentValue,
         status: form.status,
         locationText: form.locationText || null,
+        openingDate: isOpeningForm.value ? form.openingDate : undefined,
+        migrationSource: isOpeningForm.value ? form.migrationSource || null : undefined,
+        migrationStatus: isOpeningForm.value ? form.migrationStatus : undefined,
       });
       success('Fixed asset updated');
     } else {
@@ -235,8 +326,13 @@ async function onSubmit() {
         purchaseDate: form.purchaseDate,
         purchaseValue: form.purchaseValue,
         locationText: form.locationText || undefined,
+        assetOrigin: form.assetOrigin,
+        accumulatedDepreciation: isOpeningForm.value ? form.accumulatedDepreciation || 0 : undefined,
+        openingDate: isOpeningForm.value ? form.openingDate : undefined,
+        migrationSource: isOpeningForm.value ? form.migrationSource || undefined : undefined,
+        migrationStatus: isOpeningForm.value ? form.migrationStatus : undefined,
       });
-      success('Fixed asset registered');
+      success(isOpeningForm.value ? 'Opening asset registered — no payment was recorded' : 'Fixed asset registered');
     }
     formDialog.value = false;
     fetchData();

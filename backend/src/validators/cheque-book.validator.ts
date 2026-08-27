@@ -29,4 +29,16 @@ export const createChequeBookSchema = z.object({
   }),
 });
 
+export const updateChequeBookSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    bookNumber: z.string().min(1).optional(),
+    startNumber: z.string().min(1).optional(),
+    endNumber: z.string().min(1).optional(),
+    totalLeaves: z.number().int().positive().optional(),
+  }).strict(),
+});
+
 export type CreateChequeBookInput = z.infer<typeof createChequeBookSchema>['body'];
+export type UpdateChequeBookInput = z.infer<typeof updateChequeBookSchema>['body'];

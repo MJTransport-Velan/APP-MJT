@@ -3,6 +3,7 @@
  * (Phase 10 design doc §12). Buckets: CURRENT, 1-30, 31-60, 61-90, 91-180, 180+.
  */
 import { prisma } from '../config/db';
+import { openingBalanceService } from './opening-balance.service';
 
 type Bucket = 'CURRENT' | '1-30' | '31-60' | '61-90' | '91-180' | '180+';
 
@@ -46,9 +47,16 @@ export const arApOutstandingService = {
     }));
   },
 
-  /** Customer-wise + Route-wise grouping. */
+  /**
+   * Customer-wise + Route-wise grouping.
+   *
+   * An opening outstanding brought over from the old system ages from the
+   * date it was carried over (its reference date), so a migrated balance
+   * does not quietly sit in CURRENT forever.
+   */
   async customerAging() {
     const today = new Date();
+    const opening = await openingBalanceService.openingReceivables();
     const invoices = await prisma.invoice.findMany({
       where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
       select: { companyId: true, dueDate: true, outstandingAmount: true, company: { select: { name: true } } },
@@ -64,14 +72,25 @@ export const arApOutstandingService = {
       grouped.set(inv.companyId, existing);
     }
 
+    for (const row of opening.rows) {
+      if (!row.companyId) continue;
+      const bucket = bucketFor(row.referenceDate, today);
+      const amount = Number(row.amount);
+      const existing = grouped.get(row.companyId) || { companyName: row.company?.name ?? 'Unknown', buckets: emptyBuckets(), total: 0 };
+      existing.buckets[bucket] += amount;
+      existing.total += amount;
+      grouped.set(row.companyId, existing);
+    }
+
     return Array.from(grouped.entries())
       .map(([companyId, v]) => ({ companyId, ...v }))
       .sort((a, b) => b.total - a.total);
   },
 
-  /** Supplier-wise + Vehicle-wise grouping. */
+  /** Supplier-wise + Vehicle-wise grouping, including opening payables. */
   async supplierAging() {
     const today = new Date();
+    const opening = await openingBalanceService.openingPayables();
     const bills = await prisma.supplierBill.findMany({
       where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
       select: { supplierId: true, dueDate: true, outstandingAmount: true, supplier: { select: { name: true } } },
@@ -85,6 +104,16 @@ export const arApOutstandingService = {
       existing.buckets[bucket] += amount;
       existing.total += amount;
       grouped.set(bill.supplierId, existing);
+    }
+
+    for (const row of opening.rows) {
+      if (!row.supplierId) continue;
+      const bucket = bucketFor(row.referenceDate, today);
+      const amount = Number(row.amount);
+      const existing = grouped.get(row.supplierId) || { supplierName: row.supplier?.name ?? 'Unknown', buckets: emptyBuckets(), total: 0 };
+      existing.buckets[bucket] += amount;
+      existing.total += amount;
+      grouped.set(row.supplierId, existing);
     }
 
     return Array.from(grouped.entries())

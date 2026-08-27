@@ -128,10 +128,26 @@
             />
             <AppBtn
               v-if="!['PAID', 'CANCELLED'].includes((item as any).status)"
+              icon="mdi-pencil-outline"
+              variant="text"
+              size="small"
+              title="Edit due date / notes"
+              @click="openInvoiceEdit(item as any)"
+            />
+            <AppBtn
+              v-if="!['PAID', 'CANCELLED'].includes((item as any).status)"
               icon="mdi-close-circle-outline"
               variant="text"
               size="small"
               @click="onCancel(item as any)"
+            />
+            <AppBtn
+              icon="mdi-delete-outline"
+              variant="text"
+              size="small"
+              color="error"
+              title="Delete"
+              @click="openInvoiceDeleteConfirm(item as any)"
             />
           </template>
         </MasterDataTable>
@@ -434,6 +450,32 @@
       :invoice-options="invoiceOptionsForAllocation"
       :loading="allocating"
       @submit="onAllocateSubmit"
+    />
+
+    <!-- Only the due date and notes are editable on a posted invoice; the
+         amounts come from the trip it was generated from. -->
+    <AppDialog v-model="invoiceEditDialog" max-width="420" persistent>
+      <AppCard>
+        <AppCardTitle class="text-h6">Edit Invoice</AppCardTitle>
+        <AppCardText>
+          <AppTextField v-model="invoiceEditForm.dueDate" type="date" label="Due Date" class="mb-3" />
+          <AppTextarea v-model="invoiceEditForm.notes" label="Notes" rows="3" />
+        </AppCardText>
+        <AppCardActions>
+          <div class="spacer"></div>
+          <AppBtn variant="text" @click="invoiceEditDialog = false">Cancel</AppBtn>
+          <AppBtn color="primary" variant="flat" :loading="savingInvoice" @click="submitInvoiceEdit">Save Changes</AppBtn>
+        </AppCardActions>
+      </AppCard>
+    </AppDialog>
+
+    <ConfirmDialog
+      v-model="invoiceDeleteDialog"
+      title="Delete Invoice"
+      :message="`Delete invoice ${invoiceDeleteTarget?.invoiceNumber}? An invoice with receipts against it cannot be deleted.`"
+      confirm-text="Delete"
+      :loading="deletingInvoice"
+      @confirm="submitInvoiceDelete"
     />
 
     <ConfirmDialog
@@ -999,6 +1041,62 @@ onMounted(async () => {
   fetchInvoices();
   fetchReceipts();
 });
+// --- Invoice edit (due date / notes) and delete ---
+const invoiceEditDialog = ref(false);
+const invoiceEditingId = ref<string | null>(null);
+const invoiceEditForm = reactive({ dueDate: '', notes: '' });
+const savingInvoice = ref(false);
+
+function openInvoiceEdit(invoice: Invoice) {
+  invoiceEditForm.dueDate = invoice.dueDate ? String(invoice.dueDate).slice(0, 10) : '';
+  invoiceEditForm.notes = invoice.notes || '';
+  invoiceEditingId.value = invoice.id;
+  invoiceEditDialog.value = true;
+}
+
+async function submitInvoiceEdit() {
+  if (!invoiceEditingId.value) return;
+  savingInvoice.value = true;
+  try {
+    await invoiceStore.update(invoiceEditingId.value, {
+      dueDate: invoiceEditForm.dueDate || undefined,
+      notes: invoiceEditForm.notes || undefined,
+    });
+    success('Invoice updated');
+    invoiceEditDialog.value = false;
+    fetchInvoices();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to update invoice'));
+  } finally {
+    savingInvoice.value = false;
+  }
+}
+
+const invoiceDeleteDialog = ref(false);
+const invoiceDeleteTarget = ref<Invoice | null>(null);
+const deletingInvoice = ref(false);
+
+function openInvoiceDeleteConfirm(invoice: Invoice) {
+  invoiceDeleteTarget.value = invoice;
+  invoiceDeleteDialog.value = true;
+}
+
+async function submitInvoiceDelete() {
+  if (!invoiceDeleteTarget.value) return;
+  deletingInvoice.value = true;
+  try {
+    await invoiceStore.remove(invoiceDeleteTarget.value.id);
+    success('Invoice deleted');
+    invoiceDeleteDialog.value = false;
+    fetchInvoices();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete invoice'));
+    invoiceDeleteDialog.value = false;
+  } finally {
+    deletingInvoice.value = false;
+  }
+}
+
 </script>
 
 <style scoped>

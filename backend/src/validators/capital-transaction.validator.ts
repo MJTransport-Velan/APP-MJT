@@ -43,4 +43,18 @@ export const createCapitalTransactionSchema = z.object({
   }).strict(),
 });
 
+export const updateCapitalTransactionSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    type: capitalTransactionTypeEnum.optional(),
+    amount: z.number().positive('Amount must be greater than 0').optional(),
+    transactionDate: z.string().optional(),
+    fundAccountType: fundAccountTypeEnum.optional(),
+    fundAccountId: z.string().uuid().optional(),
+    remarks: z.string().optional(),
+  }).strict(),
+});
+
 export type CreateCapitalTransactionInput = z.infer<typeof createCapitalTransactionSchema>['body'];
+export type UpdateCapitalTransactionInput = z.infer<typeof updateCapitalTransactionSchema>['body'];

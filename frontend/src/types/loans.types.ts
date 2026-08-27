@@ -3,6 +3,8 @@ import type { PaginationMeta } from './accounting.types';
 export type LoanType = 'VEHICLE_LOAN' | 'BANK_LOAN' | 'BUSINESS_LOAN' | 'OWNER_LOAN' | 'OTHER_LOAN';
 export type LoanStatus = 'ACTIVE' | 'CLOSED' | 'FORECLOSED';
 export type LoanInstallmentStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'WAIVED';
+/** OPENING = already running when the business moved off its old system. */
+export type LoanOrigin = 'OPENING' | 'NEW';
 
 export const LOAN_TYPE_LABELS: Record<LoanType, string> = {
   VEHICLE_LOAN: 'Vehicle Loan',
@@ -50,7 +52,14 @@ export interface Loan {
   fixedAsset: { id: string; assetCode: string; assetName: string } | null;
   capitalPartner: { id: string; name: string } | null;
   loanStartDate: string;
+  /** For an OPENING loan this is what was still owed at migration. */
   principalAmount: number;
+  origin: LoanOrigin;
+  /** What the lender originally sanctioned — only set for opening loans. */
+  originalPrincipal: number | null;
+  openingAsOfDate: string | null;
+  migrationSource: string | null;
+  migrationStatus: 'CONFIRMED' | 'NEEDS_REVIEW' | 'UNVERIFIED' | 'RECLASSIFIED' | null;
   interestRatePercent: number;
   tenureMonths: number;
   emiAmount: number;
@@ -86,6 +95,11 @@ export interface LoanDashboard {
   stats: {
     totalActiveLoans: number;
     totalLoanOutstanding: number;
+    totalOriginalLoanAmount: number;
+    totalOpeningOutstanding: number;
+    totalPrincipalPaid: number;
+    totalInterestPaid: number;
+    monthlyEmiCommitment: number;
     thisMonthEmi: number;
     thisMonthPrincipal: number;
     thisMonthInterest: number;

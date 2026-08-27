@@ -54,6 +54,10 @@ export const chequeRepository = {
     return prisma.cheque.create({ data, include: detailInclude });
   },
 
+  hardDelete(id: string) {
+    return prisma.cheque.delete({ where: { id } });
+  },
+
   update(id: string, data: Prisma.ChequeUncheckedUpdateInput) {
     return prisma.cheque.update({ where: { id }, data, include: detailInclude });
   },

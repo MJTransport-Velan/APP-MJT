@@ -111,6 +111,7 @@ const ACCOUNTS_PERMISSIONS = [
   { name: 'supplierBill.view', description: 'View Supplier Bills' },
   { name: 'supplierBill.create', description: 'Generate Supplier Bills' },
   { name: 'supplierBill.edit', description: 'Edit / Cancel Supplier Bills' },
+  { name: 'supplierBill.delete', description: 'Delete a Supplier Bill with no payments or notes against it' },
   { name: 'supplierCreditNote.create', description: 'Create Supplier Credit Notes' },
   { name: 'supplierDebitNote.create', description: 'Create Supplier Debit Notes' },
   { name: 'supplierPayment.view', description: 'View Supplier Payments' },
@@ -126,6 +127,7 @@ const ACCOUNTS_PERMISSIONS = [
   // Foundation simple-master permission (capital_partner.*), see below.
   { name: 'capital_transaction.view', description: 'View Capital Account transactions (partner contributions/withdrawals)' },
   { name: 'capital_transaction.create', description: 'Record a Capital Contribution or Withdrawal' },
+  { name: 'capital_transaction.edit', description: 'Correct a Capital Transaction (re-posts its fund movement)' },
   { name: 'capital_transaction.delete', description: 'Delete a Capital Transaction' },
   // Loans & EMI — one module covering Vehicle/Bank/Business/Owner/Other
   // loans. Paying an EMI is its own permission because it moves real money
@@ -136,6 +138,14 @@ const ACCOUNTS_PERMISSIONS = [
   { name: 'loan.delete', description: 'Delete a Loan that has no paid EMI' },
   { name: 'loan_emi.pay', description: 'Pay a Loan EMI installment' },
   { name: 'loan_emi.reverse', description: 'Reverse a paid Loan EMI installment' },
+  // Opening Balance & Migration - bringing the closing position of the old
+  // Tally books in as this system's opening position. Finalizing is its own
+  // permission because it locks the opening figures against further edits.
+  { name: 'opening_balance.view', description: 'View Opening Balance & Migration' },
+  { name: 'opening_balance.create', description: 'Record an opening balance brought over from the old system' },
+  { name: 'opening_balance.edit', description: 'Edit / reclassify an opening balance' },
+  { name: 'opening_balance.delete', description: 'Delete an opening balance' },
+  { name: 'opening_balance.finalize', description: 'Finalize or reopen the migration' },
 ];
 
 // Phase 7 — Accounting Foundation. Reduced to just Organization (the legal
@@ -168,17 +178,23 @@ const BANKING_PERMISSIONS = [
   { name: 'bankAccount.view', description: 'View Bank Accounts' },
   { name: 'bankAccount.create', description: 'Create Bank Accounts' },
   { name: 'bankAccount.edit', description: 'Edit / Activate / Deactivate Bank Accounts' },
+  { name: 'bankAccount.delete', description: 'Delete a Bank Account (only one never used by a transaction)' },
   { name: 'cashAccount.view', description: 'View Cash Accounts' },
   { name: 'cashAccount.create', description: 'Create Cash Accounts' },
   { name: 'cashAccount.edit', description: 'Edit / Activate / Deactivate Cash Accounts' },
+  { name: 'cashAccount.delete', description: 'Delete a Cash Account (only one never used by a transaction)' },
   { name: 'bankTransfer.view', description: 'View Bank Transfers' },
   { name: 'bankTransfer.create', description: 'Create Bank Transfers (Bank/Cash Deposit, Withdrawal, Transfer)' },
+  { name: 'bankTransfer.edit', description: 'Edit a Bank Transfer (re-posts the money it moved)' },
+  { name: 'bankTransfer.delete', description: 'Delete a Bank Transfer (puts the money back)' },
   { name: 'chequeBook.view', description: 'View Cheque Books' },
   { name: 'chequeBook.create', description: 'Create Cheque Books' },
-  { name: 'chequeBook.edit', description: 'Activate / Deactivate Cheque Books' },
+  { name: 'chequeBook.edit', description: 'Edit / Activate / Deactivate Cheque Books' },
+  { name: 'chequeBook.delete', description: 'Delete an unused Cheque Book' },
   { name: 'cheque.view', description: 'View Cheques / Cheque Register' },
   { name: 'cheque.create', description: 'Issue or Record a Received Cheque' },
-  { name: 'cheque.edit', description: 'Deposit or mark a Cheque as Presented' },
+  { name: 'cheque.edit', description: 'Edit, Deposit or mark a Cheque as Presented' },
+  { name: 'cheque.delete', description: 'Delete a Cheque that never cleared or bounced' },
   { name: 'cheque.clear', description: 'Clear a Cheque' },
   { name: 'cheque.bounce', description: 'Record a Cheque Bounce' },
   { name: 'cheque.cancel', description: 'Cancel a Cheque or record Stop Payment' },
@@ -186,6 +202,8 @@ const BANKING_PERMISSIONS = [
   { name: 'interest.create', description: 'Record Interest Received/Paid' },
   { name: 'pettyCashRequest.view', description: 'View Petty Cash Requests' },
   { name: 'pettyCashRequest.create', description: 'Create Petty Cash Requests' },
+  { name: 'pettyCashRequest.edit', description: 'Edit a pending Petty Cash Request' },
+  { name: 'pettyCashRequest.delete', description: 'Delete a Petty Cash Request that never disbursed' },
   { name: 'pettyCashRequest.approve', description: 'Approve/Reject a Petty Cash Request' },
   { name: 'pettyCashRequest.disburse', description: 'Disburse or Close a Petty Cash Request' },
   { name: 'bankDashboard.view', description: 'View the Bank Dashboard' },
@@ -239,12 +257,15 @@ const DRIVER_PAYROLL_PERMISSIONS = [
   { name: 'driverSettlement.create', description: 'Create/Calculate a Driver Settlement' },
   { name: 'driverSettlement.approve', description: 'Approve a Driver Settlement' },
   { name: 'driverSettlement.pay', description: 'Pay a Driver Settlement' },
+  { name: 'driverSettlement.delete', description: 'Delete an unpaid Driver Settlement' },
   { name: 'driverStatement.view', description: 'View a Driver Ledger Statement' },
   { name: 'driverSalaryStructure.view', description: 'View Driver Salary Structures' },
   { name: 'driverSalaryStructure.create', description: 'Create a Driver Salary Structure' },
+  { name: 'driverSalaryStructure.edit', description: 'Edit a Driver Salary Structure' },
   { name: 'driverSalaryStructure.delete', description: 'Delete a Driver Salary Structure' },
   { name: 'salaryStructure.view', description: 'View Salary Structures' },
   { name: 'salaryStructure.create', description: 'Create a Salary Structure' },
+  { name: 'salaryStructure.edit', description: 'Edit a Salary Structure' },
   { name: 'salaryStructure.delete', description: 'Delete a Salary Structure' },
   { name: 'employeeAdvance.view', description: 'View Employee (Salary) Advances' },
   { name: 'employeeAdvance.create', description: 'Request an Employee Advance' },
@@ -788,8 +809,9 @@ async function main() {
       'supplierPayment.view', 'supplierPayment.create', 'supplierPayment.edit', 'supplierPayment.allocate',
       'collectionActivity.view', 'collectionActivity.create',
       'tripFinancial.view', 'accounts.dashboard',
-      'capital_transaction.view', 'capital_transaction.create',
+      'capital_transaction.view', 'capital_transaction.create', 'capital_transaction.edit',
       'loan.view', 'loan_emi.pay',
+      'opening_balance.view',
     ];
     const executivePermissions = await prisma.permission.findMany({
       where: { name: { in: executivePermissionNames } },
@@ -882,11 +904,11 @@ async function main() {
     const executiveBankingPermissionNames = [
       'bankAccount.view', 'bankAccount.create', 'bankAccount.edit',
       'cashAccount.view', 'cashAccount.create', 'cashAccount.edit',
-      'bankTransfer.view', 'bankTransfer.create',
-      'chequeBook.view', 'chequeBook.create',
+      'bankTransfer.view', 'bankTransfer.create', 'bankTransfer.edit',
+      'chequeBook.view', 'chequeBook.create', 'chequeBook.edit',
       'cheque.view', 'cheque.create', 'cheque.edit', 'cheque.clear', 'cheque.bounce', 'cheque.cancel',
       'bankCharge.create', 'interest.create',
-      'pettyCashRequest.view', 'pettyCashRequest.create', 'pettyCashRequest.disburse',
+      'pettyCashRequest.view', 'pettyCashRequest.create', 'pettyCashRequest.edit', 'pettyCashRequest.disburse',
       'bankDashboard.view',
     ];
     const executiveBankingPermissions = await prisma.permission.findMany({ where: { name: { in: executiveBankingPermissionNames } } });
@@ -925,7 +947,7 @@ async function main() {
         'driverPenalty.view', 'driverPenalty.approve',
         'driverSettlement.view', 'driverSettlement.approve',
         'driverStatement.view',
-        'driverSalaryStructure.view', 'driverSalaryStructure.create', 'driverSalaryStructure.delete',
+        'driverSalaryStructure.view', 'driverSalaryStructure.create', 'driverSalaryStructure.edit', 'driverSalaryStructure.delete',
         'salaryStructure.view',
         'employeeAdvance.view', 'employeeAdvance.approve',
         'payrollDashboard.view',
@@ -936,7 +958,7 @@ async function main() {
       role: hrManagerRole,
       permissionNames: [
         'employee.view', 'employee.create', 'employee.edit', 'employee.delete',
-        'salaryStructure.view', 'salaryStructure.create', 'salaryStructure.delete',
+        'salaryStructure.view', 'salaryStructure.create', 'salaryStructure.edit', 'salaryStructure.delete',
         'employeeAdvance.view', 'employeeAdvance.create',
         'payrollDashboard.view',
       ],

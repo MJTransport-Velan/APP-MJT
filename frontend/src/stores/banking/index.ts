@@ -46,6 +46,9 @@ export const useBankAccountStore = defineStore('bankAccounts', {
       const response = await bankAccountApi.toggleStatus(id);
       return response.data.data;
     },
+    async remove(id: string) {
+      await bankAccountApi.remove(id);
+    },
   },
 });
 
@@ -74,6 +77,9 @@ export const useCashAccountStore = defineStore('cashAccounts', {
       const response = await cashAccountApi.toggleStatus(id);
       return response.data.data;
     },
+    async remove(id: string) {
+      await cashAccountApi.remove(id);
+    },
   },
 });
 
@@ -97,9 +103,16 @@ export const useChequeBookStore = defineStore('chequeBooks', {
       const response = await chequeBookApi.nextAvailable(id);
       return response.data.data.nextNumber;
     },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await chequeBookApi.update(id, payload);
+      return response.data.data;
+    },
     async toggleStatus(id: string) {
       const response = await chequeBookApi.toggleStatus(id);
       return response.data.data;
+    },
+    async remove(id: string) {
+      await chequeBookApi.remove(id);
     },
   },
 });
@@ -121,6 +134,13 @@ export const useBankTransferStore = defineStore('bankTransfers', {
       const response = await bankTransferApi.create(payload);
       return response.data.data;
     },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await bankTransferApi.update(id, payload);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await bankTransferApi.remove(id);
+    },
   },
 });
 
@@ -141,6 +161,13 @@ export const useChequeStore = defineStore('cheques', {
       const response = await chequeApi.getById(id);
       this.current = response.data.data;
       return this.current;
+    },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await chequeApi.update(id, payload);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await chequeApi.remove(id);
     },
     async issue(payload: Record<string, unknown>) {
       const response = await chequeApi.issue(payload);
@@ -212,6 +239,13 @@ export const usePettyCashRequestStore = defineStore('pettyCashRequests', {
     async create(payload: Record<string, unknown>) {
       const response = await pettyCashRequestApi.create(payload);
       return response.data.data;
+    },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await pettyCashRequestApi.update(id, payload);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await pettyCashRequestApi.remove(id);
     },
     async decide(id: string, decision: 'APPROVED' | 'REJECTED', remarks?: string) {
       const response = await pettyCashRequestApi.decide(id, decision, remarks);

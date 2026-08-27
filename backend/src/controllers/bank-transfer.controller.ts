@@ -17,4 +17,12 @@ export const bankTransferController = {
     const transfer = await bankTransferService.create(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Bank Transfer created', data: transfer });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const transfer = await bankTransferService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Bank Transfer updated', data: transfer });
+  }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await bankTransferService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Bank Transfer deleted', data: null });
+  }),
 };

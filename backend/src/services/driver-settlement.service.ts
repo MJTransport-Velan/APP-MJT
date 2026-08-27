@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { driverSettlementRepository, DriverSettlementWithRelations } from '../repositories/driver-settlement.repository';
 import { AppError } from '../middlewares/error.middleware';
+import { hardDelete } from '../utils/hardDelete.util';
 import { auditService } from './audit.service';
 import { organizationService } from './organization.service';
 import { resolveOrDefaultFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
@@ -196,5 +197,31 @@ export const driverSettlementService = {
     await driverSettlementRepository.update(id, { status: 'DRAFT', updatedById: actorId });
     await auditService.record({ userId: actorId, action: 'UPDATE', entityType: 'DriverSettlement', entityId: id, description: `Reverted driver settlement ${existing.settlementNumber} to draft` });
     return driverSettlementService.getById(id);
+  },
+
+  /**
+   * Deletes a settlement that has not paid out. Its lines go with it, and the
+   * advances, earnings and penalties it had claimed are released back to
+   * unsettled so a corrected settlement can pick them up again. A PAID
+   * settlement has already moved money and is reverted, not deleted.
+   */
+  async remove(id: string, actorId: string) {
+    const existing = await driverSettlementRepository.findByIdBasic(id);
+    if (!existing) throw new AppError('Driver Settlement not found', 404);
+    if (existing.status === 'PAID') {
+      throw new AppError('This settlement has already been paid, so it cannot be deleted. Revert it to draft first.', 409);
+    }
+
+    await driverSettlementRepository.deleteLines(id);
+    await driverSettlementRepository.releaseClaimedItems(id);
+    await hardDelete('Driver Settlement', () => driverSettlementRepository.hardDelete(id));
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'DriverSettlement',
+      entityId: id,
+      description: `Deleted driver settlement ${existing.settlementNumber}`,
+    });
   },
 };

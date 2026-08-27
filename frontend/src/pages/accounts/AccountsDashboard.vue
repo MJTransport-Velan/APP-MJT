@@ -37,6 +37,16 @@
           </AppCard>
         </div>
         <div class="col-12 col-sm-6 col-md-3">
+          <ProfitCard label="EMI Due This Month" :value="summary.thisMonthEmi || 0" icon="mdi-calendar-clock" color="warning" />
+        </div>
+        <div class="col-12 col-sm-6 col-md-3">
+          <AppCard class="pa-4">
+            <div class="text-caption text-medium-emphasis">Next EMI Due</div>
+            <div class="text-h6 font-weight-bold">{{ summary.nextEmiDate ? formatDate(summary.nextEmiDate) : '—' }}</div>
+            <div v-if="summary.nextEmiAmount" class="text-caption">{{ formatCurrency(summary.nextEmiAmount) }}</div>
+          </AppCard>
+        </div>
+        <div class="col-12 col-sm-6 col-md-3">
           <ProfitCard label="Owner Capital" :value="summary.ownerCapital || 0" icon="mdi-wallet-outline" color="primary" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
@@ -67,6 +77,14 @@
         <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Customer Advances" :value="summary.advanceBalance?.customer || 0" icon="mdi-piggy-bank-outline" color="info" /></div>
         <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Supplier Advances" :value="summary.advanceBalance?.supplier || 0" icon="mdi-piggy-bank-outline" color="info" /></div>
       </div>
+
+      <!-- Balances brought over from the previous system are inside the
+           Receivables and Payables figures above; this says how much. -->
+      <p v-if="summary.openingReceivables || summary.openingPayables" class="text-caption text-medium-emphasis mt-2 mb-0">
+        Includes opening balances from the previous system —
+        receivables {{ formatCurrency(summary.openingReceivables || 0) }},
+        payables {{ formatCurrency(summary.openingPayables || 0) }}.
+      </p>
 
       <!-- Upcoming EMI: the one thing on this page with a deadline. -->
       <div v-if="(summary.upcomingEmis || []).length" class="row mt-1">

@@ -12,7 +12,16 @@ const assetWithRelations = Prisma.validator<Prisma.FixedAssetInclude>()({
 export type FixedAssetWithRelations = Prisma.FixedAssetGetPayload<{ include: typeof assetWithRelations }>;
 
 export const fixedAssetRepository = {
-  async findManyPaginated(params: { skip: number; take: number; search?: string; categoryId?: string; status?: FixedAssetStatus; approvalStatus?: string }) {
+  async findManyPaginated(params: {
+    skip: number;
+    take: number;
+    search?: string;
+    categoryId?: string;
+    status?: FixedAssetStatus;
+    approvalStatus?: string;
+    assetOrigin?: string;
+    assetType?: string;
+  }) {
     const where: Prisma.FixedAssetWhereInput = {
       deletedAt: null,
       AND: [
@@ -20,6 +29,9 @@ export const fixedAssetRepository = {
         params.categoryId ? { categoryId: params.categoryId } : {},
         params.status ? { status: params.status } : {},
         params.approvalStatus ? { approvalStatus: params.approvalStatus as never } : {},
+        params.assetOrigin ? { assetOrigin: params.assetOrigin as never } : {},
+        // "Vehicles" vs "Other Assets" is the split users actually filter by.
+        params.assetType === 'VEHICLE' ? { vehicleId: { not: null } } : params.assetType === 'OTHER' ? { vehicleId: null } : {},
       ],
     };
 

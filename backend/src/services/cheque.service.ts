@@ -7,6 +7,7 @@ import { auditService } from './audit.service';
 import { AppError } from '../middlewares/error.middleware';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { adjustFundAccountBalance } from '../utils/fundAccount.util';
+import { hardDelete } from '../utils/hardDelete.util';
 import { validateLedgerParty } from '../utils/polymorphicRef.util';
 import {
   IssueChequeInput,
@@ -15,6 +16,7 @@ import {
   ClearChequeInput,
   BounceChequeInput,
   CancelChequeInput,
+  UpdateChequeInput,
 } from '../validators/cheque.validator';
 
 function toDate(isoDate: string): Date {
@@ -53,6 +55,72 @@ export const chequeService = {
   },
 
   /** Cheque Issue — just records the cheque as outstanding. The bank account's balance is untouched until it actually clears. */
+  /**
+   * A cheque is editable only while it is still in hand — once it has been
+   * deposited it is out with the bank, and once cleared or bounced it has
+   * already moved money that an edit here would not reverse.
+   */
+  async update(id: string, input: UpdateChequeInput, actorId: string) {
+    const cheque = await chequeRepository.findByIdBasic(id);
+    if (!cheque) throw new AppError('Cheque not found', 404);
+    if (cheque.status !== 'ISSUED' && cheque.status !== 'RECEIVED') {
+      throw new AppError(`This cheque is ${cheque.status} and can no longer be edited`, 409);
+    }
+
+    if (input.chequeNumber && input.chequeNumber !== cheque.chequeNumber) {
+      const dup = await chequeRepository.findByNumber(cheque.bankAccountId, input.chequeNumber, cheque.direction);
+      if (dup) throw new AppError('This cheque number has already been used for this bank account', 409);
+    }
+
+    if (input.partyType) {
+      await validateLedgerParty(input.partyType, input.partyId);
+    }
+
+    const updated = await chequeRepository.update(id, {
+      chequeNumber: input.chequeNumber,
+      chequeDate: input.chequeDate ? toDate(input.chequeDate) : undefined,
+      isPostDated: input.isPostDated,
+      partyType: input.partyType,
+      partyId: input.partyId,
+      payeeOrPayerName: input.payeeOrPayerName,
+      amount: input.amount,
+      updatedById: actorId,
+    });
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'Cheque',
+      entityId: id,
+      description: `Updated cheque ${cheque.chequeNumber}`,
+    });
+
+    return updated;
+  },
+
+  /**
+   * Deletes a cheque that never moved money. A cleared or bounced cheque has
+   * already changed a bank balance, so it is cancelled or stop-paid instead —
+   * deleting it would leave that balance unexplained.
+   */
+  async remove(id: string, actorId: string) {
+    const cheque = await chequeRepository.findByIdBasic(id);
+    if (!cheque) throw new AppError('Cheque not found', 404);
+    if (cheque.status === 'CLEARED' || cheque.status === 'BOUNCED') {
+      throw new AppError(`This cheque is ${cheque.status} and has already affected a bank balance, so it cannot be deleted`, 409);
+    }
+
+    await hardDelete('Cheque', () => chequeRepository.hardDelete(id));
+
+    await auditService.record({
+      userId: actorId,
+      action: 'DELETE',
+      entityType: 'Cheque',
+      entityId: id,
+      description: `Deleted cheque ${cheque.chequeNumber}`,
+    });
+  },
+
   async issue(input: IssueChequeInput, actorId: string) {
     const organizationId = await organizationService.resolveOrganizationId(input.organizationId);
     const bankAccount = await assertBankAccount(organizationId, input.bankAccountId);

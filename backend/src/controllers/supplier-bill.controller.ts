@@ -33,4 +33,8 @@ export const supplierBillController = {
     const bill = await supplierBillService.addDebitNote(req.params.id, req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Supplier debit note issued', data: bill });
   }),
+  remove: asyncHandler(async (req: AuthRequest, res: Response) => {
+    await supplierBillService.remove(req.params.id, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Supplier Bill deleted', data: null });
+  }),
 };

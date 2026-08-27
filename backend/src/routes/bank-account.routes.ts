@@ -18,5 +18,6 @@ router.get('/:id', authorize('bankAccount.view'), validate(bankAccountIdParamSch
 router.post('/', authorize('bankAccount.create'), validate(createBankAccountSchema), bankAccountController.create);
 router.put('/:id', authorize('bankAccount.edit'), validate(updateBankAccountSchema), bankAccountController.update);
 router.patch('/:id/status', authorize('bankAccount.edit'), validate(bankAccountIdParamSchema), bankAccountController.toggleStatus);
+router.delete('/:id', authorize('bankAccount.delete'), validate(bankAccountIdParamSchema), bankAccountController.remove);
 
 export default router;

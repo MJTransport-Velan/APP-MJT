@@ -109,6 +109,9 @@ export const driverSettlementApi = {
   revert(id: string) {
     return api.patch<ApiResponse<DriverSettlement>>(`/accounts/driver/settlements/${id}/revert`);
   },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/accounts/driver/settlements/${id}`);
+  },
 };
 
 export const driverStatementApi = {
@@ -127,6 +130,9 @@ export const salaryStructureApi = {
   create(payload: Record<string, unknown>) {
     return api.post<ApiResponse<SalaryStructure>>('/accounts/payroll/salary-structures', payload);
   },
+  update(id: string, payload: Record<string, unknown>) {
+    return api.put<ApiResponse<SalaryStructure>>(`/accounts/payroll/salary-structures/${id}`, payload);
+  },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/payroll/salary-structures/${id}`);
   },
@@ -141,6 +147,9 @@ export const driverSalaryStructureApi = {
   },
   create(payload: Record<string, unknown>) {
     return api.post<ApiResponse<DriverSalaryStructure>>('/accounts/driver/salary-structures', payload);
+  },
+  update(id: string, payload: Record<string, unknown>) {
+    return api.put<ApiResponse<DriverSalaryStructure>>(`/accounts/driver/salary-structures/${id}`, payload);
   },
   remove(id: string) {
     return api.delete<ApiResponse<null>>(`/accounts/driver/salary-structures/${id}`);

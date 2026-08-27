@@ -25,7 +25,7 @@ import { auditService } from './audit.service';
 import { organizationService } from './organization.service';
 import { resolveFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
-import { CreateCapitalTransactionInput } from '../validators/capital-transaction.validator';
+import { CreateCapitalTransactionInput, UpdateCapitalTransactionInput } from '../validators/capital-transaction.validator';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -138,6 +138,53 @@ export const capitalTransactionService = {
     });
 
     return capitalTransactionService.getById(transaction.id);
+  },
+
+  /**
+   * Corrects a recorded transaction: the fund account movement the original
+   * made is backed out and the corrected one applied, so an amount or account
+   * fix never leaves a bank balance carrying the old figure.
+   */
+  async update(id: string, input: UpdateCapitalTransactionInput, actorId: string) {
+    const existing = await capitalTransactionRepository.findById(id);
+    if (!existing) throw new AppError('Capital Transaction not found', 404);
+
+    const type = input.type ?? existing.type;
+    const amount = input.amount ?? Number(existing.amount);
+    const fundAccountType = input.fundAccountType ?? (existing.fundAccountType as 'BANK' | 'CASH');
+    const fundAccountId = input.fundAccountId ?? existing.fundAccountId;
+
+    const organizationId = await organizationService.resolveOrganizationId(existing.organizationId ?? undefined);
+    const fundAccount = await resolveFundAccount(organizationId, fundAccountType, fundAccountId);
+    if (!fundAccount.isActive) throw new AppError('The selected Bank/Cash account is inactive', 409);
+
+    const updated = await capitalTransactionRepository.update(id, {
+      type,
+      amount,
+      transactionDate: input.transactionDate ? new Date(input.transactionDate) : undefined,
+      fundAccountType,
+      fundAccountId,
+      remarks: input.remarks,
+      updatedById: actorId,
+    });
+
+    await adjustFundAccountBalance(
+      existing.fundAccountType as 'BANK' | 'CASH',
+      existing.fundAccountId,
+      -fundDelta(existing.type, Number(existing.amount)),
+      { allowNegative: true }
+    );
+    await adjustFundAccountBalance(fundAccountType, fundAccountId, fundDelta(type, amount), { allowNegative: true });
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'CapitalTransaction',
+      entityId: id,
+      description: `Updated capital transaction ${existing.transactionNumber}`,
+    });
+
+    return capitalTransactionService.getById(updated.id);
   },
 
   async remove(id: string, actorId: string) {

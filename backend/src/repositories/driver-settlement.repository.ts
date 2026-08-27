@@ -58,6 +58,19 @@ export const driverSettlementRepository = {
     return prisma.driverSettlement.update({ where: { id }, data, include: settlementWithRelations });
   },
 
+  /** Puts the advances/earnings/penalties this settlement claimed back in the unsettled pool. */
+  releaseClaimedItems(settlementId: string) {
+    return prisma.$transaction([
+      prisma.driverAdvance.updateMany({ where: { settlementId }, data: { settlementId: null } }),
+      prisma.driverEarning.updateMany({ where: { settlementId }, data: { settlementId: null } }),
+      prisma.driverPenalty.updateMany({ where: { settlementId }, data: { settlementId: null } }),
+    ]);
+  },
+
+  hardDelete(id: string) {
+    return prisma.driverSettlement.delete({ where: { id } });
+  },
+
   deleteLines(settlementId: string) {
     return prisma.driverSettlementLine.deleteMany({ where: { settlementId } });
   },

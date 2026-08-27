@@ -38,4 +38,22 @@ export const createBankTransferSchema = z.object({
   }).strict(),
 });
 
+export const updateBankTransferSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    transferDate: isoDate.optional(),
+    fromAccountType: fundAccountTypeEnum.optional(),
+    fromAccountId: z.string().uuid().optional(),
+    toAccountType: fundAccountTypeEnum.optional(),
+    toAccountId: z.string().uuid().optional(),
+    amount: z.number().positive('Amount must be greater than 0').optional(),
+    transferCharges: z.number().min(0).optional(),
+    paymentModeId: z.string().uuid().optional(),
+    referenceNumber: z.string().optional(),
+    narration: z.string().optional(),
+  }).strict(),
+});
+
 export type CreateBankTransferInput = z.infer<typeof createBankTransferSchema>['body'];
+export type UpdateBankTransferInput = z.infer<typeof updateBankTransferSchema>['body'];

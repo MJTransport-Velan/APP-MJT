@@ -10,6 +10,7 @@
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
 import { organizationService } from './organization.service';
+import { openingBalanceService } from './opening-balance.service';
 
 const round2 = (n: number) => Number(n.toFixed(2));
 
@@ -35,13 +36,19 @@ export const financialStateService = {
       }),
     ]);
 
+    // What this customer already owed when the business moved off the old
+    // system is still owed today — reported on its own line as well, so it
+    // is obvious which part of the outstanding predates this system.
+    const openingOutstanding = (await openingBalanceService.openingReceivables()).byCompany.get(companyId)?.amount ?? 0;
+
     return {
       customer: { id: company.id, name: company.name },
-      totalBilled: round2(Number(billed._sum.totalAmount ?? 0)),
+      totalBilled: round2(Number(billed._sum.totalAmount ?? 0) + openingOutstanding),
       totalReceived: round2(Number(received._sum.amount ?? 0)),
       advance: round2(Number(advance._sum.amount ?? 0)),
       adjusted: round2(Number(adjusted._sum.amount ?? 0)),
-      outstanding: round2(Number(outstanding._sum.outstandingAmount ?? 0)),
+      openingOutstanding: round2(openingOutstanding),
+      outstanding: round2(Number(outstanding._sum.outstandingAmount ?? 0) + openingOutstanding),
       overdue: round2(Number(overdue._sum.outstandingAmount ?? 0)),
       refund: round2(Number(refund._sum.amount ?? 0)),
     };
@@ -68,13 +75,16 @@ export const financialStateService = {
       }),
     ]);
 
+    const openingOutstanding = (await openingBalanceService.openingPayables()).bySupplier.get(supplierId)?.amount ?? 0;
+
     return {
       supplier: { id: supplier.id, name: supplier.name },
-      totalPayable: round2(Number(payable._sum.totalAmount ?? 0)),
+      totalPayable: round2(Number(payable._sum.totalAmount ?? 0) + openingOutstanding),
       totalPaid: round2(Number(paid._sum.amount ?? 0)),
       advance: round2(Number(advance._sum.amount ?? 0)),
       adjusted: round2(Number(adjusted._sum.amount ?? 0)),
-      outstanding: round2(Number(outstanding._sum.outstandingAmount ?? 0)),
+      openingOutstanding: round2(openingOutstanding),
+      outstanding: round2(Number(outstanding._sum.outstandingAmount ?? 0) + openingOutstanding),
       overdue: round2(Number(overdue._sum.outstandingAmount ?? 0)),
       refund: round2(Number(refund._sum.amount ?? 0)),
     };

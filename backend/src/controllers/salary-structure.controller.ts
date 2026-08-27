@@ -21,6 +21,10 @@ export const salaryStructureController = {
     const structure = await salaryStructureService.create(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Salary Structure created', data: structure });
   }),
+  update: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const structure = await salaryStructureService.update(req.params.id, req.body, req.user!.userId);
+    return sendSuccess(res, 200, { message: 'Salary Structure updated', data: structure });
+  }),
   remove: asyncHandler(async (req: AuthRequest, res: Response) => {
     await salaryStructureService.remove(req.params.id, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Salary Structure deleted' });

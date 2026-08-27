@@ -57,6 +57,17 @@ export const closePettyCashRequestSchema = z.object({
   }),
 });
 
+export const updatePettyCashRequestSchema = z.object({
+  query: z.object({}).optional(),
+  params: z.object({ id: z.string().uuid('Invalid id') }),
+  body: z.object({
+    cashAccountId: z.string().uuid().optional(),
+    amount: z.number().positive('Amount must be greater than 0').optional(),
+    purpose: z.string().min(1).optional(),
+  }).strict(),
+});
+
 export type CreatePettyCashRequestInput = z.infer<typeof createPettyCashRequestSchema>['body'];
+export type UpdatePettyCashRequestInput = z.infer<typeof updatePettyCashRequestSchema>['body'];
 export type DisbursePettyCashRequestInput = z.infer<typeof disbursePettyCashRequestSchema>['body'];
 export type ClosePettyCashRequestInput = z.infer<typeof closePettyCashRequestSchema>['body'];

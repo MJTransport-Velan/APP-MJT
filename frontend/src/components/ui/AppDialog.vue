@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="app-dialog-fade">
-      <div v-if="modelValue" class="app-dialog-overlay" @click="onOverlayClick">
+      <div v-if="modelValue" ref="overlayRef" class="app-dialog-overlay" @click="onOverlayClick">
         <div
           class="app-dialog"
           :style="{ maxWidth: typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth }"
@@ -15,7 +15,8 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { isPopupOpen } from '@/composables/useEscapeBack';
 
 const props = withDefaults(
   defineProps<{
@@ -28,10 +29,29 @@ const props = withDefaults(
 
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
+const overlayRef = ref<HTMLElement | null>(null);
+
 function onOverlayClick() {
   if (props.persistent) return;
   emit('update:modelValue', false);
 }
+
+/**
+ * Escape closes the dialog, same as clicking the backdrop. Marked handled so
+ * the app-wide Escape-goes-back handler leaves the page underneath alone, and
+ * only the topmost dialog reacts when they are stacked.
+ */
+function onKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !props.modelValue || props.persistent) return;
+  if (event.defaultPrevented || isPopupOpen()) return;
+  const overlays = document.querySelectorAll('.app-dialog-overlay');
+  if (overlays.length && overlays[overlays.length - 1] !== overlayRef.value) return;
+  event.preventDefault();
+  emit('update:modelValue', false);
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 
 watch(
   () => props.modelValue,
