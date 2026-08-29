@@ -18,8 +18,9 @@
  *
  * Where an opening amount belongs to a register that already exists it is
  * stored THERE and only reported here:
- *   • opening assets → FixedAsset.assetOrigin = OPENING
- *   • opening loans  → Loan.origin = OPENING
+ *   • opening assets       → FixedAsset.assetOrigin = OPENING
+ *   • opening loans        → Loan.origin = OPENING
+ *   • opening loans given  → LoanGiven.origin = OPENING
  *
  * Bank and Cash are the one category that writes through to another table:
  * BankAccount/CashAccount.currentBalance is a directly-maintained running
@@ -612,6 +613,7 @@ export const openingBalanceService = {
         receivables: { total: 0, count: 0 },
         payables: { total: 0, count: 0 },
         loans: { openingOutstanding: 0, currentOutstanding: 0, originalPrincipal: 0, count: 0 },
+        loansGiven: { given: 0, recoverable: 0, count: 0 },
         ownerFunds: { capital: 0, ownerLoan: 0, otherLiability: 0, unclassified: 0, total: 0 },
         other: { otherAssets: 0, otherLiabilities: 0, otherEquity: 0 },
         statusCounts: { CONFIRMED: 0, NEEDS_REVIEW: 0, UNVERIFIED: 0, RECLASSIFIED: 0 },
@@ -619,10 +621,11 @@ export const openingBalanceService = {
       };
     }
 
-    const [rows, openingAssets, openingLoans] = await Promise.all([
+    const [rows, openingAssets, openingLoans, openingLoansGiven] = await Promise.all([
       openingBalanceRepository.findEntries({ migrationId: migration.id }),
       openingBalanceRepository.findOpeningAssets(),
       openingBalanceRepository.findOpeningLoans(),
+      openingBalanceRepository.findOpeningLoansGiven(),
     ]);
 
     const inCategory = (category: string) => rows.filter((r) => r.category === category);
@@ -650,6 +653,18 @@ export const openingBalanceService = {
       }, 0)
     );
 
+    // Money already lent out at migration — an asset. `given` is what was
+    // carried over; `recoverable` is what is still expected back today, which
+    // is what the Balance Sheet actually reports, so both are shown.
+    const loansGivenTotal = round2(openingLoansGiven.reduce((s, l) => s + Number(l.amount), 0));
+    const loansGivenRecoverable = round2(
+      openingLoansGiven.reduce((s, l) => {
+        if (l.status === 'WRITTEN_OFF') return s;
+        const repaid = l.repayments.reduce((t, r) => t + Number(r.amount), 0);
+        return s + Math.max(Number(l.amount) - repaid, 0);
+      }, 0)
+    );
+
     const ownerBuckets = { CAPITAL: 0, OWNER_LOAN: 0, OTHER_LIABILITY: 0, UNCLASSIFIED: 0 } as Record<string, number>;
     for (const r of inCategory('OWNER_FUNDS')) {
       const key = (r.classification ?? 'UNCLASSIFIED') as string;
@@ -665,7 +680,10 @@ export const openingBalanceService = {
     for (const a of openingAssets) if (a.migrationStatus) statusCounts[a.migrationStatus] = (statusCounts[a.migrationStatus] ?? 0) + 1;
     for (const l of openingLoans) if (l.migrationStatus) statusCounts[l.migrationStatus] = (statusCounts[l.migrationStatus] ?? 0) + 1;
 
-    const totalAssets = round2(bankTotal + cashTotal + bookValue + receivableTotal + otherAssets);
+    // Loans given are counted at what was carried over, not at what is still
+    // recoverable: the opening position describes the migration date, and a
+    // repayment received since then has already increased Bank/Cash instead.
+    const totalAssets = round2(bankTotal + cashTotal + bookValue + receivableTotal + otherAssets + loansGivenTotal);
     // Unclassified owner money is counted on the funding side — it IS in the
     // business — but never as capital, and it is reported separately so the
     // user can see exactly how much is still undecided.
@@ -690,6 +708,11 @@ export const openingBalanceService = {
         currentOutstanding: loanCurrent,
         originalPrincipal: loanOriginal,
         count: openingLoans.length,
+      },
+      loansGiven: {
+        given: loansGivenTotal,
+        recoverable: loansGivenRecoverable,
+        count: openingLoansGiven.length,
       },
       ownerFunds: {
         capital: ownerBuckets.CAPITAL,

@@ -88,9 +88,11 @@
           </div>
         </div>
       </template>
+      <!-- Every booking detail is optional, so each cell falls back to a dash
+           rather than rendering an empty row. -->
       <template #item.customer="{ item }">
-        <div class="font-weight-medium">{{ (item as any).customerName }}</div>
-        <div class="text-caption text-medium-emphasis">{{ (item as any).mobile }}</div>
+        <div class="font-weight-medium">{{ (item as any).customerName || '—' }}</div>
+        <div class="text-caption text-medium-emphasis">{{ (item as any).mobile || '—' }}</div>
       </template>
       <template #item.source="{ value }">
         <AppChip size="x-small" :color="value === 'COUNTER' ? 'secondary' : 'info'" variant="flat">
@@ -98,8 +100,8 @@
         </AppChip>
       </template>
       <template #item.route="{ item }">
-        <div class="text-body-2">{{ (item as any).fromPlace }}</div>
-        <div class="text-caption text-medium-emphasis">to {{ (item as any).toPlace }}</div>
+        <div class="text-body-2">{{ (item as any).fromPlace || '—' }}</div>
+        <div class="text-caption text-medium-emphasis">to {{ (item as any).toPlace || '—' }}</div>
       </template>
       <template #item.pickupDate="{ value }">{{ formatDate(value as string) }}</template>
       <template #item.status="{ item }">
@@ -279,10 +281,10 @@ function exportRowMapper(item: Record<string, unknown>) {
     source: booking.source === 'COUNTER' ? 'Counter' : 'Website',
     lrNumber: booking.lrNumber || '-',
     trackingNumber: booking.trackingNumber || '-',
-    customerName: booking.customerName,
-    mobile: booking.mobile,
-    fromPlace: booking.fromPlace,
-    toPlace: booking.toPlace,
+    customerName: booking.customerName || '-',
+    mobile: booking.mobile || '-',
+    fromPlace: booking.fromPlace || '-',
+    toPlace: booking.toPlace || '-',
     pickupDate: formatDate(booking.pickupDate),
     vehicleNumber: booking.vehicleNumber || '-',
     driverName: booking.driverName || '-',

@@ -142,6 +142,7 @@ const vehicleCostRows = computed(() => {
   const c = result.value.expenses.vehicleOperatingCost;
   return [
     { label: 'Diesel / Fuel', value: c.diesel },
+    { label: 'AdBlue', value: c.adBlue },
     { label: 'FASTag', value: c.fastTag },
     { label: 'Repairs & Maintenance', value: c.repairs },
     { label: 'Insurance', value: c.insurance },

@@ -6,6 +6,7 @@ import type {
   AssignVehiclePayload,
   CounterBookingPayload,
   DeliveryStatus,
+  LrDetailsPayload,
   PaginationMeta,
 } from '@/types/bookings.types';
 
@@ -53,6 +54,10 @@ export const useBookingStore = defineStore('bookings', {
     },
     async generateLr(id: string) {
       const response = await bookingApi.generateLr(id);
+      return response.data.data;
+    },
+    async updateLrDetails(id: string, payload: LrDetailsPayload) {
+      const response = await bookingApi.updateLrDetails(id, payload);
       return response.data.data;
     },
     async updateStatus(id: string, status: DeliveryStatus, note?: string) {

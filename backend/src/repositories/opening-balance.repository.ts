@@ -105,4 +105,18 @@ export const openingBalanceRepository = {
       orderBy: { createdAt: 'desc' },
     });
   },
+
+  /**
+   * Money that was already lent out on the migration date. An asset, the
+   * mirror of findOpeningLoans above. Written-off loans are still returned —
+   * the summary needs the full carried-over figure, and reports the
+   * recoverable part separately.
+   */
+  findOpeningLoansGiven() {
+    return prisma.loanGiven.findMany({
+      where: { deletedAt: null, origin: 'OPENING' },
+      include: { repayments: { select: { amount: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  },
 };

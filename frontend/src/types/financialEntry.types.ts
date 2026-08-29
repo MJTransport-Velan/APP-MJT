@@ -31,6 +31,7 @@ export type FinancialEntryPurpose =
   | 'SUPPLIER_REFUND'
   | 'OFFICE_EXPENSE'
   | 'TOLL'
+  | 'ADBLUE'
   | 'OTHER';
 
 export interface FinancialParty {
@@ -106,7 +107,8 @@ export interface CreateFinancialEntryInput {
   // "Salary Entry" toggle (Record Office Expense dialog).
   salaryPeriod?: string;
   // Optional Fleet-module linkage — only used when purpose is FUEL (all
-  // three fuel fields) or TOLL (vehicleId only). Safe to omit.
+  // three fuel fields), ADBLUE (vehicleId, quantity optional) or TOLL
+  // (vehicleId only). Safe to omit.
   vehicleId?: string;
   tripId?: string;
   quantityLiters?: number;

@@ -145,38 +145,15 @@ watch(
   }
 );
 
+/**
+ * Nothing is required: a vehicle is often half-arranged — a registration
+ * number agreed but no driver named yet — and staff need to record what they
+ * have. Only the format of what was actually typed is enforced.
+ */
 function validate(): boolean {
   clearErrors();
   let valid = true;
-  if (fleetType.value === 'OWN') {
-    if (!form.vehicleId) {
-      errors.vehicleId = 'Select a vehicle from the fleet';
-      valid = false;
-    }
-    if (!form.driverId) {
-      errors.driverId = 'Select a driver from the fleet';
-      valid = false;
-    }
-    // Optional here — only the format is enforced when something is typed.
-    if (form.driverMobile.trim() && !/^[0-9+\s-]{7,15}$/.test(form.driverMobile.trim())) {
-      errors.driverMobile = 'Enter a valid driver mobile number';
-      valid = false;
-    }
-    return valid;
-  }
-  if (!form.vehicleType) {
-    errors.vehicleType = 'Vehicle type is required';
-    valid = false;
-  }
-  if (!form.vehicleNumber.trim()) {
-    errors.vehicleNumber = 'Vehicle number is required';
-    valid = false;
-  }
-  if (!form.driverName.trim()) {
-    errors.driverName = 'Driver name is required';
-    valid = false;
-  }
-  if (!/^[0-9+\s-]{7,15}$/.test(form.driverMobile.trim())) {
+  if (form.driverMobile.trim() && !/^[0-9+\s-]{7,15}$/.test(form.driverMobile.trim())) {
     errors.driverMobile = 'Enter a valid driver mobile number';
     valid = false;
   }
@@ -190,16 +167,16 @@ function onSubmit() {
     fleetType.value === 'OWN'
       ? {
           fleetType: 'OWN',
-          vehicleId: form.vehicleId,
-          driverId: form.driverId,
+          vehicleId: form.vehicleId || undefined,
+          driverId: form.driverId || undefined,
           driverMobile: form.driverMobile.trim() || undefined,
         }
       : {
           fleetType: 'MARKET',
-          vehicleType: form.vehicleType,
-          vehicleNumber: form.vehicleNumber.trim(),
-          driverName: form.driverName.trim(),
-          driverMobile: form.driverMobile.trim(),
+          vehicleType: form.vehicleType || undefined,
+          vehicleNumber: form.vehicleNumber.trim() || undefined,
+          driverName: form.driverName.trim() || undefined,
+          driverMobile: form.driverMobile.trim() || undefined,
         }
   );
 }

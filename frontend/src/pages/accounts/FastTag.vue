@@ -396,10 +396,12 @@ async function downloadFastTagSample() {
 // --- Recharge ---
 const rechargeDialog = ref(false);
 const recharging = ref(false);
-const rechargeForm = reactive({ amount: undefined as number | undefined, fundAccountType: undefined as string | undefined, referenceNumber: '', remarks: '' });
+// A FASTag recharge is funded from the bank by default — that is how these are
+// actually paid, and defaulting to cash would draw down a balance that never moved.
+const rechargeForm = reactive({ amount: undefined as number | undefined, fundAccountType: 'BANK' as string | undefined, referenceNumber: '', remarks: '' });
 const rechargeErrors = reactive({ amount: '' });
 function openRechargeDialog() {
-  Object.assign(rechargeForm, { amount: undefined, fundAccountType: undefined, referenceNumber: '', remarks: '' });
+  Object.assign(rechargeForm, { amount: undefined, fundAccountType: 'BANK', referenceNumber: '', remarks: '' });
   rechargeErrors.amount = '';
   rechargeDialog.value = true;
 }

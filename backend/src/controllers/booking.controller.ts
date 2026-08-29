@@ -6,6 +6,18 @@ import { sendSuccess } from '../utils/response';
 import { AppError } from '../middlewares/error.middleware';
 import { AuthRequest } from '../middlewares/auth.middleware';
 
+/**
+ * Turns an LR number into a safe download filename. The MJT/26-27/0158 series
+ * carries slashes, which are path separators on every platform and illegal in
+ * a Windows filename — left in the Content-Disposition header they produce a
+ * mangled or rejected download. Falls back to the booking number for a
+ * booking whose LR was never numbered.
+ */
+function lrFileName(lrNumber: string | null, bookingNo: string): string {
+  const base = (lrNumber || bookingNo).replace(/[\\/:*?"<>|]+/g, '-');
+  return `${base}.pdf`;
+}
+
 export const bookingController = {
   // ----- Public (no authentication) -------------------------------------
 
@@ -71,6 +83,11 @@ export const bookingController = {
     return sendSuccess(res, 200, { message: 'LR generated', data: booking });
   }),
 
+  updateLrDetails: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const booking = await bookingService.updateLrDetails(req.params.id, req.body, req);
+    return sendSuccess(res, 200, { message: 'LR details saved', data: booking });
+  }),
+
   updateStatus: asyncHandler(async (req: AuthRequest, res: Response) => {
     const booking = await bookingService.updateStatus(req.params.id, req.body, req);
     return sendSuccess(res, 200, { message: 'Booking status updated', data: booking });
@@ -94,7 +111,7 @@ export const bookingController = {
     }
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${booking.lrNumber}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${lrFileName(booking.lrNumber, booking.bookingNo)}"`);
     res.setHeader('Content-Length', pdf.length);
     return res.end(pdf);
   }),

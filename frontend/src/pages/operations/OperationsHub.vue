@@ -55,6 +55,7 @@ const cards = [
   { icon: 'mdi-truck-outline', title: 'Vehicles', description: 'Manage company vehicles, documents and status', to: '/operations/vehicles' },
   { icon: 'mdi-account-switch-outline', title: 'Vehicle Assignments', description: 'Assign vehicles to drivers and manage allocations', to: '/operations/assignments' },
   { icon: 'mdi-gas-station-outline', title: 'Diesel / Fuel', description: 'Fuel purchases, mileage and cost per km, plus the shared prepaid card account every fuel card spends from', to: '/operations/fuel' },
+  { icon: 'mdi-water-outline', title: 'AdBlue', description: 'AdBlue top-ups per truck — drawn from the yard stock or bought on the road — and the shared store they draw from', to: '/operations/adblue' },
   { icon: 'mdi-credit-card-wireless-outline', title: 'FASTag', description: 'Toll transactions, wallet recharge and reconciliation', to: '/operations/fasttag' },
   { icon: 'mdi-wrench-outline', title: 'Maintenance', description: 'Schedule and track vehicle maintenance and services', to: '/operations/maintenance' },
   { icon: 'mdi-cog-outline', title: 'Spare Parts Usage', description: 'Track spare parts inventory and consumption', to: '/operations/spare-parts-usage' },

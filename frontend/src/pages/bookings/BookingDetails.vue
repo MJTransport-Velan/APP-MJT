@@ -32,15 +32,31 @@
     <!-- LR / tracking numbers, issued at confirmation -->
     <AppCard v-if="booking.lrNumber || booking.trackingNumber" variant="outlined" class="mb-4">
       <AppCardText>
-        <div class="number-grid">
-          <div>
-            <div class="text-caption text-medium-emphasis">LR Number</div>
-            <div class="text-body-1 font-weight-medium">{{ booking.lrNumber || '-' }}</div>
+        <div class="number-row">
+          <div class="number-grid">
+            <div>
+              <div class="text-caption text-medium-emphasis">LR Number</div>
+              <div class="text-body-1 font-weight-medium">{{ booking.lrNumber || '-' }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Tracking Number</div>
+              <div class="text-body-1 font-weight-medium">{{ booking.trackingNumber || '-' }}</div>
+            </div>
           </div>
-          <div>
-            <div class="text-caption text-medium-emphasis">Tracking Number</div>
-            <div class="text-body-1 font-weight-medium">{{ booking.trackingNumber || '-' }}</div>
-          </div>
+          <!-- The LR's own detail — consignee, goods, charges, and the number
+               itself — stays editable until the booking is dispatched. -->
+          <AppBtn
+            v-if="booking.lrEditable"
+            variant="outlined"
+            size="small"
+            prepend-icon="mdi-file-edit-outline"
+            @click="lrDetailsDialog = true"
+          >
+            Edit LR Details
+          </AppBtn>
+        </div>
+        <div v-if="!booking.lrEditable && booking.lrNumber" class="text-caption text-medium-emphasis mt-2">
+          This booking has been dispatched — the LR is now fixed.
         </div>
       </AppCardText>
     </AppCard>
@@ -64,7 +80,7 @@
         <div class="route-grid">
           <div>
             <div class="text-caption text-medium-emphasis">Customer entered (From)</div>
-            <div class="text-body-2 font-weight-medium mb-2">{{ booking.fromPlace }}</div>
+            <div class="text-body-2 font-weight-medium mb-2">{{ booking.fromPlace || '—' }}</div>
             <AppSelect
               v-model="routeForm.fromLocationId"
               :items="locationOptions"
@@ -77,7 +93,7 @@
           </div>
           <div>
             <div class="text-caption text-medium-emphasis">Customer entered (To)</div>
-            <div class="text-body-2 font-weight-medium mb-2">{{ booking.toPlace }}</div>
+            <div class="text-body-2 font-weight-medium mb-2">{{ booking.toPlace || '—' }}</div>
             <AppSelect
               v-model="routeForm.toLocationId"
               :items="locationOptions"
@@ -123,8 +139,10 @@
         <AppCardTitle class="text-subtitle-1">Shipment Details</AppCardTitle>
         <AppCardText>
           <FieldRow label="Parcel Type" :value="booking.parcelType" />
-          <FieldRow label="Number of Packages" :value="String(booking.packages)" />
-          <FieldRow label="Approximate Weight" :value="`${booking.weight} kg`" />
+          <!-- Both are optional now; FieldRow renders a dash for a null value,
+               so pass null through rather than stringifying it into "null". -->
+          <FieldRow label="Number of Packages" :value="booking.packages === null ? null : String(booking.packages)" />
+          <FieldRow label="Approximate Weight" :value="booking.weight === null ? null : `${booking.weight} kg`" />
           <FieldRow label="Vehicle Type Requested" :value="booking.vehicleTypeRequested" />
         </AppCardText>
       </AppCard>
@@ -275,6 +293,26 @@
       </AppCardText>
     </AppCard>
 
+    <!-- LR details -->
+    <AppDialog v-model="lrDetailsDialog" max-width="1000" persistent>
+      <AppCard>
+        <AppCardTitle class="text-h6">LR Details</AppCardTitle>
+        <AppCardText>
+          <!-- Keyed on the dialog so reopening it re-reads the saved booking
+               rather than showing the previous session's edits. -->
+          <LrDetailsForm
+            v-if="lrDetailsDialog"
+            :key="booking.updatedAt"
+            ref="lrDetailsForm"
+            :booking="booking"
+            :loading="savingLrDetails"
+            @submit="onSaveLrDetails"
+            @cancel="lrDetailsDialog = false"
+          />
+        </AppCardText>
+      </AppCard>
+    </AppDialog>
+
     <!-- Add a location the master doesn't have yet -->
     <AppDialog v-model="locationDialog" max-width="420" persistent>
       <AppCard>
@@ -329,6 +367,7 @@ import { formatCurrency } from '@/utils/format';
 import BookingStatusChip from '@/components/bookings/BookingStatusChip.vue';
 import VehicleAssignForm from '@/components/bookings/VehicleAssignForm.vue';
 import LrDocument from '@/components/bookings/LrDocument.vue';
+import LrDetailsForm from '@/components/bookings/LrDetailsForm.vue';
 import { LR_STYLES } from '@/components/bookings/lrStyles';
 import {
   AppBtn,
@@ -346,7 +385,7 @@ import {
   AppTimelineItem,
   AppSkeletonLoader,
 } from '@/components/ui';
-import type { Booking, AssignVehiclePayload, DeliveryStatus } from '@/types/bookings.types';
+import type { Booking, AssignVehiclePayload, DeliveryStatus, LrDetailsPayload } from '@/types/bookings.types';
 
 const route = useRoute();
 const router = useRouter();
@@ -373,7 +412,10 @@ const locationForm = reactive({ name: '', code: '' });
 /** Which dropdown to drop a newly created location into. */
 const locationTarget = ref<'from' | 'to' | null>(null);
 const showPreview = ref(false);
+const lrDetailsDialog = ref(false);
+const savingLrDetails = ref(false);
 const vehicleForm = ref<InstanceType<typeof VehicleAssignForm> | null>(null);
+const lrDetailsForm = ref<InstanceType<typeof LrDetailsForm> | null>(null);
 const lrDoc = ref<InstanceType<typeof LrDocument> | null>(null);
 
 /**
@@ -587,6 +629,29 @@ async function onAssignVehicle(payload: AssignVehiclePayload) {
   }
 }
 
+async function onSaveLrDetails(payload: LrDetailsPayload) {
+  if (!booking.value) return;
+  savingLrDetails.value = true;
+  const previousLrNumber = booking.value.lrNumber;
+  try {
+    booking.value = await store.updateLrDetails(booking.value.id, payload);
+    lrDetailsDialog.value = false;
+    success(
+      booking.value.lrNumber !== previousLrNumber
+        ? `LR details saved — number is now ${booking.value.lrNumber}`
+        : 'LR details saved'
+    );
+  } catch (err) {
+    const fieldErrors = (err as any)?.response?.data?.errors;
+    if (fieldErrors && typeof fieldErrors === 'object') {
+      lrDetailsForm.value?.setErrors(fieldErrors);
+    }
+    error(extractErrorMessage(err, 'Failed to save LR details'));
+  } finally {
+    savingLrDetails.value = false;
+  }
+}
+
 async function onGenerateLr() {
   if (!booking.value) return;
   generatingLr.value = true;
@@ -618,7 +683,10 @@ async function onDownloadPdf() {
   if (!booking.value) return;
   downloading.value = true;
   try {
-    await bookingApi.downloadLrPdf(booking.value.id, `${booking.value.lrNumber}.pdf`);
+    // The MJT/26-27/0158 series carries slashes, which a browser would read as
+    // a path in the download attribute — same sanitisation as the server's.
+    const base = (booking.value.lrNumber || booking.value.bookingNo).replace(/[\\/:*?"<>|]+/g, '-');
+    await bookingApi.downloadLrPdf(booking.value.id, `${base}.pdf`);
   } catch (err) {
     error(extractErrorMessage(err, 'Failed to download the LR PDF'));
   } finally {
@@ -670,6 +738,16 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+.number-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.number-row .number-grid {
+  flex: 1 1 auto;
 }
 .route-grid {
   display: grid;

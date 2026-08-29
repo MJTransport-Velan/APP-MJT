@@ -3,6 +3,7 @@ import { z } from 'zod';
 const categoryEnum = z.enum([
   'FUEL', 'MAINTENANCE', 'INSURANCE', 'PERMIT', 'MISCELLANEOUS',
   'REPAIR', 'SERVICE', 'TYRE', 'BATTERY', 'FITNESS', 'ROAD_TAX', 'FASTTAG', 'ACCESSORIES', 'GREASE_LUBRICANTS', 'BREAKDOWN',
+  'ADBLUE',
 ]);
 
 export const listExpensesSchema = z.object({

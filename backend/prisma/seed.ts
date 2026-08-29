@@ -39,6 +39,7 @@ const MASTER_MODULE_PREFIXES = Object.keys(MASTER_MODULE_LABELS);
 const FLEET_MODULE_LABELS: Record<string, string> = {
   fuel_card: 'Fuel Cards',
   fuel_entry: 'Fuel Entries',
+  adblue_entry: 'AdBlue Entries',
   maintenance: 'Maintenance Records',
   spare_part: 'Spare Parts',
   spare_part_usage: 'Spare Part Usage',
@@ -138,6 +139,13 @@ const ACCOUNTS_PERMISSIONS = [
   { name: 'loan.delete', description: 'Delete a Loan that has no paid EMI' },
   { name: 'loan_emi.pay', description: 'Pay a Loan EMI installment' },
   { name: 'loan_emi.reverse', description: 'Reverse a paid Loan EMI installment' },
+  // Loans & Advances Given — the mirror of the above: money the business
+  // lent OUT, to a friend, a relative or anyone with no master record of
+  // their own. An asset, so it never reaches Profit & Loss.
+  { name: 'loan_given.view', description: 'View Loans & Advances Given' },
+  { name: 'loan_given.create', description: 'Record money lent out' },
+  { name: 'loan_given.edit', description: 'Edit a loan given / record a repayment / write one off' },
+  { name: 'loan_given.delete', description: 'Delete a loan given' },
   // Opening Balance & Migration - bringing the closing position of the old
   // Tally books in as this system's opening position. Finalizing is its own
   // permission because it locks the opening figures against further edits.
@@ -300,6 +308,13 @@ const VEHICLE_ASSET_PERMISSIONS = [
   { name: 'fuel_card_account.view', description: 'View the Diesel Card account & its transactions' },
   { name: 'fuel_card_account.edit', description: 'Recharge the Diesel Card account / Refund / Adjust / Edit a transaction' },
   { name: 'fuel_card_account.delete', description: 'Delete a Diesel Card transaction' },
+  // The AdBlue yard store. adblue_entry.* is an ordinary fleet CRUD module
+  // and lives in FLEET_MODULE_LABELS with the rest; the store gets its own
+  // prefix because buying stock moves money, and recording a top-up does
+  // not — the same split the diesel card account has.
+  { name: 'adblue_stock.view', description: 'View the AdBlue store & its movements' },
+  { name: 'adblue_stock.edit', description: 'Purchase AdBlue stock / Return to supplier / Adjust / Edit a movement' },
+  { name: 'adblue_stock.delete', description: 'Delete an AdBlue stock movement' },
 ];
 
 // Phase 13 — Financial Reporting. GST/TDS compliance, financial-statement
@@ -636,6 +651,7 @@ async function main() {
     'vehicle.view',
     'vehicle.assign',
     'fuel_entry.view', 'fuel_entry.create',
+    'adblue_entry.view', 'adblue_entry.create',
     'maintenance.view', 'maintenance.create',
     'vehicle_expense.view', 'vehicle_expense.create',
     // Needed to populate the driver picker on the Trips page (assignment
@@ -816,6 +832,7 @@ async function main() {
       'tripFinancial.view', 'accounts.dashboard',
       'capital_transaction.view', 'capital_transaction.create', 'capital_transaction.edit',
       'loan.view', 'loan_emi.pay',
+      'loan_given.view',
       'opening_balance.view',
     ];
     const executivePermissions = await prisma.permission.findMany({
@@ -1081,6 +1098,7 @@ async function main() {
         'vehicle_expense.view', 'vehicle_expense.approve',
         'fasttag.view',
         'fuel_card_account.view',
+        'adblue_stock.view',
       ],
     },
     // Fleet Manager (existing role): operational upkeep, no financial approval (design doc §18).
@@ -1089,6 +1107,7 @@ async function main() {
       permissionNames: [
         'fasttag.view', 'fasttag.create', 'fasttag.edit', 'fasttag.delete',
         'fuel_card_account.view', 'fuel_card_account.edit', 'fuel_card_account.delete',
+        'adblue_stock.view', 'adblue_stock.edit', 'adblue_stock.delete',
         'vehicle_expense.view', 'vehicle_expense.create',
         'asset.view',
         'data_import.view', 'data_import.run',
@@ -1110,6 +1129,7 @@ async function main() {
       permissionNames: [
         'asset_category.view', 'asset.view', 'vehicle_expense.view', 'fasttag.view',
         'fuel_card_account.view',
+        'adblue_stock.view',
       ],
     },
   ];

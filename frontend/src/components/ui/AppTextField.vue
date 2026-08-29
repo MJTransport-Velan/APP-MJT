@@ -3,10 +3,15 @@
     <label v-if="label" class="app-field__label">{{ label }}<span v-if="required" class="app-field__required">*</span></label>
     <div class="app-field__control">
       <AppIcon v-if="prependInnerIcon" :icon="prependInnerIcon" size="small" class="app-field__icon" />
+      <!--
+        The value is written through syncInput() rather than bound with
+        :value — see the number modifier below, which needs to leave the box
+        alone while a decimal is still being typed.
+      -->
       <input
+        ref="inputEl"
         class="app-field__input"
         :type="type"
-        :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
@@ -29,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useAttrs } from 'vue';
+import { computed, onMounted, ref, useAttrs, watch } from 'vue';
 import AppIcon from './AppIcon.vue';
 
 const props = withDefaults(
@@ -48,8 +53,25 @@ const props = withDefaults(
     required?: boolean;
     /** Escape hatch for a field the label/placeholder heuristic below doesn't catch. */
     preserveCase?: boolean;
+    /**
+     * Vue applies `.number` / `.trim` itself only on a native <input>. On a
+     * component it just hands the modifiers over as this prop and expects the
+     * component to act on them — so `v-model.number` here was inert, and every
+     * numeric field in the app was posting the raw string the box contained
+     * ("Expected number, received string" from the server's Zod schemas).
+     * Honouring them here fixes all of those call sites at once.
+     */
+    modelModifiers?: { number?: boolean; trim?: boolean };
   }>(),
-  { type: 'text', disabled: false, readonly: false, clearable: false, required: false, preserveCase: false }
+  {
+    type: 'text',
+    disabled: false,
+    readonly: false,
+    clearable: false,
+    required: false,
+    preserveCase: false,
+    modelModifiers: () => ({}),
+  }
 );
 
 defineOptions({ inheritAttrs: false });
@@ -64,7 +86,7 @@ const inputAttrs = computed(() => {
 });
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string];
+  'update:modelValue': [value: string | number | undefined];
   'click:appendInner': [];
 }>();
 
@@ -83,7 +105,7 @@ const NON_TEXT_TYPES = new Set(['number', 'date', 'time', 'datetime-local', 'mon
 // per-field opt-out. Keep in sync with the backend's equivalent list in
 // backend/src/middlewares/uppercaseBody.middleware.ts.
 const CASE_SENSITIVE_HINT =
-  /password|user\s*name|e-?mail|remarks?|\bnotes?\b|description|reason|purpose|comment|url|link|webhook|token|secret|api\s*key|json|\bid\b|otp|signature|hash/i;
+  /password|user\s*name|e-?mail|remarks?|\bnotes?\b|description|reason|purpose|comment|url|link|webhook|token|secret|api\s*key|json|\bid\b|otp|signature|hash|payment\s*term/i;
 
 const preservesCase = computed(() => {
   if (props.preserveCase) return true;
@@ -91,12 +113,68 @@ const preservesCase = computed(() => {
   return CASE_SENSITIVE_HINT.test(`${props.label ?? ''} ${props.placeholder ?? ''}`);
 });
 
+/**
+ * Vue's own rule for `.number`: text that doesn't parse is kept as text, so a
+ * half-typed "-" or "1e" isn't replaced by NaN while the user is still typing.
+ */
+function looseToNumber(raw: string): string | number {
+  const parsed = parseFloat(raw);
+  return Number.isNaN(parsed) ? raw : parsed;
+}
+
+function transformInput(raw: string): string | number | undefined {
+  if (props.modelModifiers.number) {
+    // An emptied numeric box means "no value", not the empty string — these
+    // forms type their numbers as `number | undefined`, and emitting '' would
+    // fail the very server-side check this modifier exists to satisfy.
+    if (raw.trim() === '') return undefined;
+    return looseToNumber(raw);
+  }
+  const value = props.modelModifiers.trim ? raw.trim() : raw;
+  return preservesCase.value ? value : value.toUpperCase();
+}
+
+const inputEl = ref<HTMLInputElement | null>(null);
+
+/**
+ * Pushes the model back into the box, except while a number is mid-flight.
+ *
+ * Writing String(modelValue) back mid-typing would delete the character just
+ * entered and make decimals impossible. Two cases have to be let through:
+ *
+ *  - "12.50" parses to the 12.5 the model already holds.
+ *  - A half-typed "12." or "-" in an <input type="number"> is reported by the
+ *    DOM as value "" (HTML value sanitization, browsers and jsdom alike) even
+ *    though the user can see their text — and "" transforms to undefined, so
+ *    an empty box and an empty model are the same state, not a difference to
+ *    correct.
+ *
+ * Vue's native v-model carries the equivalent guard; this component needs its
+ * own because the value is not bound with :value.
+ */
+function syncInput() {
+  const el = inputEl.value;
+  if (!el) return;
+  if (props.modelModifiers.number && el === document.activeElement) {
+    const shown = looseToNumber(el.value);
+    const modelIsEmpty = props.modelValue == null || props.modelValue === '';
+    if (shown === props.modelValue || (shown === '' && modelIsEmpty)) return;
+  }
+  const next = props.modelValue == null ? '' : String(props.modelValue);
+  if (el.value !== next) el.value = next;
+}
+
+watch(() => props.modelValue, syncInput, { flush: 'post' });
+onMounted(syncInput);
+
 function onInput(event: Event) {
-  const raw = (event.target as HTMLInputElement).value;
-  emit('update:modelValue', preservesCase.value ? raw : raw.toUpperCase());
+  emit('update:modelValue', transformInput((event.target as HTMLInputElement).value));
 }
 function onClear() {
-  emit('update:modelValue', '');
+  emit('update:modelValue', props.modelModifiers.number ? undefined : '');
+  // Clearing an already-empty numeric field leaves modelValue at undefined, so
+  // the watcher above has nothing to react to — blank the box directly.
+  if (inputEl.value) inputEl.value.value = '';
 }
 </script>
 

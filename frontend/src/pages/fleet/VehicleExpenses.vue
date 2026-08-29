@@ -143,7 +143,7 @@ const paymentModeOptions = ref<{ id: string; name: string }[]>([]);
 // extends the original five categories additively.
 const categoryOptions = [
   'FUEL', 'MAINTENANCE', 'REPAIR', 'SERVICE', 'TYRE', 'BATTERY', 'INSURANCE', 'PERMIT', 'FITNESS',
-  'ROAD_TAX', 'FASTTAG', 'ACCESSORIES', 'GREASE_LUBRICANTS', 'BREAKDOWN', 'MISCELLANEOUS',
+  'ROAD_TAX', 'FASTTAG', 'ADBLUE', 'ACCESSORIES', 'GREASE_LUBRICANTS', 'BREAKDOWN', 'MISCELLANEOUS',
 ];
 
 const headers = [
@@ -302,11 +302,13 @@ async function submitBill() {
 const approveDialog = ref(false);
 const approving = ref(false);
 const approveTarget = ref<any>(null);
-const approveForm = reactive({ settleVia: 'FUND_ACCOUNT', fundAccountType: '' as string | undefined });
+// Settles through the bank by default — that is where these payments actually
+// go, and defaulting to cash would draw down a balance that never moved.
+const approveForm = reactive({ settleVia: 'FUND_ACCOUNT', fundAccountType: 'BANK' as string | undefined });
 
 function openApproveDialog(expense: any) {
   approveTarget.value = expense;
-  Object.assign(approveForm, { settleVia: 'FUND_ACCOUNT', fundAccountType: undefined });
+  Object.assign(approveForm, { settleVia: 'FUND_ACCOUNT', fundAccountType: 'BANK' });
   approveDialog.value = true;
 }
 

@@ -12,11 +12,14 @@ import { employeeAdvanceService } from './employee-advance.service';
 import { bankTransferService } from './bank-transfer.service';
 import { fuelEntryService } from './fuel-entry.service';
 import { fastTagService } from './fasttag.service';
+import { adBlueEntryService } from './adblue-entry.service';
 import { planCustomerSettlement, planSupplierSettlement, SettlementPlanItem } from '../utils/fifoSettlement.util';
 import { resolveEntityLabel, FinancialPartyType } from '../utils/financialLedger.util';
 import { resolveFundAccount, adjustFundAccountBalance } from '../utils/fundAccount.util';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
 import { CreateFinancialEntryInput } from '../validators/financial-entry.validator';
+import { DelegateKey, PostingPlan } from './financial-entry-kinds/types';
+import { findEntryKind, entryKindCatalogue } from './financial-entry-kinds';
 
 // Which existing specialized flow (if any) already maintains the
 // receivable/payable/advance bookkeeping for this exact source/destination
@@ -460,6 +463,40 @@ function resolveDelegate(input: CreateFinancialEntryInput): Delegate | null {
   return null;
 }
 
+/** The delegate each PostingPlan names. Stated by the kind, never guessed. */
+const DELEGATES: Record<DelegateKey, Delegate> = {
+  BANK_TRANSFER: delegateToBankTransfer,
+  DRIVER_ADVANCE: delegateToDriverAdvance,
+  EMPLOYEE_ADVANCE: delegateToEmployeeAdvance,
+  EMPLOYEE_SALARY_PAYMENT: delegateToEmployeeSalaryPayment,
+  DRIVER_SALARY_PAYMENT: delegateToDriverSalaryPayment,
+};
+
+/**
+ * Works out what an entry should do purely from its source/destination tuple.
+ *
+ * This is the LEGACY path, kept for the generic create endpoint, which accepts
+ * any of ~2,300 combinations and so has nothing else to go on. Anything posted
+ * through a transaction kind (see financial-entry-kinds/) states its plan
+ * outright and never reaches this function — which is the point of the
+ * registry: the meaning of a transaction lives in one named place instead of
+ * being reconstructed from a guard chain whose ordering is load-bearing.
+ */
+function inferPostingPlan(input: CreateFinancialEntryInput): PostingPlan {
+  if (input.entryType === 'MONEY_RECEIVED' && input.sourceType === 'CUSTOMER' && isFundType(input.destinationType)) {
+    return { post: 'SETTLE_CUSTOMER_FIFO' };
+  }
+  if (input.entryType === 'MONEY_PAID' && input.destinationType === 'SUPPLIER' && isFundType(input.sourceType)) {
+    return { post: 'SETTLE_SUPPLIER_FIFO' };
+  }
+  const delegate = resolveDelegate(input);
+  if (delegate) {
+    const key = (Object.keys(DELEGATES) as DelegateKey[]).find((k) => DELEGATES[k] === delegate)!;
+    return { post: 'DELEGATE', delegate: key };
+  }
+  return { post: 'FUND_MOVEMENT' };
+}
+
 /** The fallback for every entry type/party pair with no specialized flow — directly moves money on whichever side (if either) is a real Bank/Cash account. Non-fund parties (Vehicle/Trip/Expense/Other/Loan Provider) carry no stored balance, so they contribute nothing but their label on the entry itself. */
 async function postGenericFundMovement(organizationId: string, input: CreateFinancialEntryInput, actorId: string): Promise<void> {
   void actorId;
@@ -486,7 +523,10 @@ async function postGenericFundMovement(organizationId: string, input: CreateFina
  * showing the same fill-up/toll-swipe. Silently skipped (not an error)
  * when the optional Fleet fields weren't filled in.
  */
-async function maybeLinkFleetRecords(input: CreateFinancialEntryInput, actorId: string): Promise<{ fuelEntryId?: string; fastTagTransactionId?: string }> {
+async function maybeLinkFleetRecords(
+  input: CreateFinancialEntryInput,
+  actorId: string
+): Promise<{ fuelEntryId?: string; fastTagTransactionId?: string; adBlueEntryId?: string }> {
   if (input.purpose === 'FUEL' && input.vehicleId && input.quantityLiters && input.ratePerLiter && input.odometerReading) {
     const fuelEntry = await fuelEntryService.create(
       {
@@ -506,6 +546,27 @@ async function maybeLinkFleetRecords(input: CreateFinancialEntryInput, actorId: 
     await fastTagService.logUsage({ vehicleId: input.vehicleId, amount: input.amount, tripId: input.tripId, transactionDate: input.entryDate }, actorId);
     const txn = await prisma.fastTagTransaction.findFirst({ where: { vehicleId: input.vehicleId }, orderBy: { createdAt: 'desc' } });
     if (txn) return { fastTagTransactionId: txn.id };
+  }
+
+  // Always DIRECT_PURCHASE: money left a Bank/Cash account to buy this
+  // AdBlue, which is exactly what a roadside top-up is. A FROM_STOCK issue
+  // moves no money at all — it draws litres the fleet already paid for —
+  // so it has no business being raised from this screen.
+  if (input.purpose === 'ADBLUE' && input.vehicleId) {
+    const adBlueEntry = await adBlueEntryService.create(
+      {
+        vehicleId: input.vehicleId,
+        source: 'DIRECT_PURCHASE',
+        tripId: input.tripId,
+        quantityLiters: input.quantityLiters,
+        ratePerLiter: input.ratePerLiter,
+        totalAmount: input.amount,
+        odometerReading: input.odometerReading,
+        entryDate: input.entryDate,
+      },
+      actorId
+    );
+    return { adBlueEntryId: adBlueEntry.id };
   }
 
   return {};
@@ -540,6 +601,7 @@ function serialize(entry: FinancialEntryWithRelations) {
       odometerReading: entry.odometerReading,
       fuelEntryId: entry.fuelEntryId,
       fastTagTransactionId: entry.fastTagTransactionId,
+      adBlueEntryId: entry.adBlueEntryId,
     },
     correctionOf: entry.correctionOf ? { id: entry.correctionOf.id, entryNumber: entry.correctionOf.entryNumber } : null,
     correctedBy: entry.correctedBy ? { id: entry.correctedBy.id, entryNumber: entry.correctedBy.entryNumber } : null,
@@ -589,8 +651,12 @@ export const financialEntryService = {
    * (DRAFT) so a mid-flight failure leaves a traceable, retryable/
    * cancellable record instead of nothing at all.
    */
-  async create(input: CreateFinancialEntryInput, actorId: string) {
+  async create(input: CreateFinancialEntryInput, actorId: string, explicitPlan?: PostingPlan) {
     const organizationId = await organizationService.resolveOrganizationId(input.organizationId);
+
+    // A transaction kind states what posting should do; the generic endpoint
+    // has only the tuple to go on, so it falls back to inference.
+    const plan = explicitPlan ?? inferPostingPlan(input);
 
     if (input.sourceType === input.destinationType && input.sourceId && input.sourceId === input.destinationId) {
       throw new AppError('Source and destination cannot be the same', 422);
@@ -635,6 +701,7 @@ export const financialEntryService = {
     let settlementPlan: ExecutedSettlementItem[] | undefined;
     let fuelEntryId: string | undefined;
     let fastTagTransactionId: string | undefined;
+    let adBlueEntryId: string | undefined;
     let recoveredNote = '';
 
     // The entry row above is written before any money moves, so that the
@@ -644,14 +711,19 @@ export const financialEntryService = {
     // row would otherwise survive as a phantom entry that never posted.
     // Retire it on the way out so a rejected call leaves nothing behind.
     try {
-    if (input.entryType === 'MONEY_RECEIVED' && input.sourceType === 'CUSTOMER' && isFundType(input.destinationType)) {
-      settlementPlan = await settleCustomerFIFO(input, actorId);
-    } else if (input.entryType === 'MONEY_PAID' && input.destinationType === 'SUPPLIER' && isFundType(input.sourceType)) {
-      settlementPlan = await settleSupplierFIFO(input, actorId);
-    } else {
-      const delegate = resolveDelegate(input);
-      if (delegate) {
-        const result = await delegate(input, organizationId, actorId);
+    // One switch over an explicit plan, rather than a guard chain that
+    // reconstructs the plan from the tuple at the moment of posting.
+    switch (plan.post) {
+      case 'SETTLE_CUSTOMER_FIFO':
+        settlementPlan = await settleCustomerFIFO(input, actorId);
+        break;
+
+      case 'SETTLE_SUPPLIER_FIFO':
+        settlementPlan = await settleSupplierFIFO(input, actorId);
+        break;
+
+      case 'DELEGATE': {
+        const result = await DELEGATES[plan.delegate](input, organizationId, actorId);
         sourceDocumentType = result.sourceDocumentType;
         sourceDocumentId = result.sourceDocumentId;
 
@@ -659,7 +731,7 @@ export const financialEntryService = {
         // advances themselves (delegateToEmployee/DriverSalaryPayment) —
         // running the generic oldest-first sweep on top of that would
         // over-recover into other months using the same entry amount.
-        const isSalaryPayment = sourceDocumentType === 'EmployeeSalaryPayment' || sourceDocumentType === 'DriverSalaryPayment';
+        const isSalaryPayment = plan.delegate === 'EMPLOYEE_SALARY_PAYMENT' || plan.delegate === 'DRIVER_SALARY_PAYMENT';
         if (!isSalaryPayment && input.destinationType === 'DRIVER') {
           const recovered = await recoverOldDriverAdvances(input.destinationId!, input.amount, actorId);
           if (recovered.length > 0) recoveredNote = ` — recovered ${recovered.length} prior advance(s) totaling ₹${recovered.reduce((s, r) => s + r.amount, 0).toFixed(2)}`;
@@ -667,12 +739,17 @@ export const financialEntryService = {
           const recovered = await recoverOldEmployeeAdvances(input.destinationId!, input.amount, actorId);
           if (recovered.length > 0) recoveredNote = ` — recovered ${recovered.length} prior advance(s) totaling ₹${recovered.reduce((s, r) => s + r.amount, 0).toFixed(2)}`;
         }
-      } else {
+        break;
+      }
+
+      case 'FUND_MOVEMENT': {
         await postGenericFundMovement(organizationId, input, actorId);
 
         const fleetLinks = await maybeLinkFleetRecords(input, actorId);
         fuelEntryId = fleetLinks.fuelEntryId;
         fastTagTransactionId = fleetLinks.fastTagTransactionId;
+        adBlueEntryId = fleetLinks.adBlueEntryId;
+        break;
       }
     }
 
@@ -683,6 +760,7 @@ export const financialEntryService = {
       settlementPlan: settlementPlan as unknown as Prisma.InputJsonValue | undefined,
       fuelEntryId,
       fastTagTransactionId,
+      adBlueEntryId,
       updatedById: actorId,
     });
     } catch (err) {
@@ -702,6 +780,39 @@ export const financialEntryService = {
     });
 
     return financialEntryService.getById(entry.id);
+  },
+
+  /** The catalogue the Record Money picker and its per-kind forms render from. */
+  kinds() {
+    return entryKindCatalogue();
+  },
+
+  /**
+   * Records a named transaction — the path the UI uses.
+   *
+   * The kind validates its own handful of fields, derives the generic entry
+   * from them, and states what posting must do. Nothing here can produce one
+   * of the nonsensical source/destination combinations the raw endpoint
+   * structurally allows, and nothing has to be re-derived at post time.
+   */
+  async createFromKind(kindKey: string, fields: unknown, actorId: string) {
+    const kind = findEntryKind(kindKey);
+    if (!kind) throw new AppError(`Unknown transaction type "${kindKey}"`, 422);
+
+    const parsed = kind.schema.safeParse(fields);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new AppError(issue?.message ?? `Check the ${kind.label} details`, 422);
+    }
+
+    const values = parsed.data as Record<string, unknown>;
+
+    // A kind owned by another module posts there instead — that module writes
+    // its own Financial Entry as part of doing the job, so running the generic
+    // pipeline as well would record the movement twice.
+    if (kind.handler) return kind.handler(values, actorId);
+
+    return financialEntryService.create(kind.toEntry(values), actorId, kind.plan(values));
   },
 
   /** Cancels the entry — undoes its real fund-account effect (directly, or via the FIFO splits' own Receipt/SupplierPayment removal). */

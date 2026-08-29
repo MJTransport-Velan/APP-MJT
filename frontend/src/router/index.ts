@@ -174,6 +174,12 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Diesel / Fuel', permission: 'fleet.view' },
           },
           {
+            path: 'adblue',
+            name: 'operations-adblue',
+            component: () => import('@/pages/fleet/AdBlueManagement.vue'),
+            meta: { breadcrumb: 'AdBlue', permission: 'adblue_entry.view' },
+          },
+          {
             path: 'fasttag',
             name: 'operations-fasttag',
             component: () => import('@/pages/accounts/FastTag.vue'),
@@ -268,6 +274,12 @@ const routes: RouteRecordRaw[] = [
           // Opening Balance & Migration — the previous system's closing
           // position brought in as this system's opening position. Nothing
           // recorded there is a transaction.
+          {
+            path: 'loans-given',
+            name: 'accounts-loans-given',
+            component: () => import('@/pages/accounts/LoansGiven.vue'),
+            meta: { breadcrumb: 'Loans & Advances Given', permission: 'loan_given.view' },
+          },
           {
             path: 'opening-balance',
             name: 'accounts-opening-balance',

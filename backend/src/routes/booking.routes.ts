@@ -12,6 +12,7 @@ import {
   rejectBookingSchema,
   assignVehicleSchema,
   updateBookingStatusSchema,
+  updateLrDetailsSchema,
 } from '../validators/booking.validator';
 
 /**
@@ -33,6 +34,10 @@ router.patch('/:id/route', authorize('booking.confirm'), validate(updateBookingR
 router.patch('/:id/reject', authorize('booking.reject'), validate(rejectBookingSchema), bookingController.reject);
 router.patch('/:id/vehicle', authorize('booking.assign_vehicle'), validate(assignVehicleSchema), bookingController.assignVehicle);
 router.patch('/:id/generate-lr', authorize('booking.generate_lr'), validate(bookingIdParamSchema), bookingController.generateLr);
+// Shares booking.generate_lr rather than taking a permission of its own:
+// filling in the LR's details and issuing it are the same job, held by the
+// same person.
+router.patch('/:id/lr-details', authorize('booking.generate_lr'), validate(updateLrDetailsSchema), bookingController.updateLrDetails);
 router.patch('/:id/status', authorize('booking.track'), validate(updateBookingStatusSchema), bookingController.updateStatus);
 
 router.get('/:id/lr', authorize('booking.view'), validate(bookingIdParamSchema), bookingController.getLr);

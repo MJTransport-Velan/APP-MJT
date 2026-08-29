@@ -17,6 +17,14 @@ export const financialEntryController = {
     const entry = await financialEntryService.create(req.body, req.user!.userId);
     return sendSuccess(res, 201, { message: 'Financial Entry recorded', data: entry });
   }),
+  /** The transaction catalogue the Record Money picker renders from. */
+  kinds: asyncHandler(async (_req, res: Response) => {
+    return sendSuccess(res, 200, { message: 'Transaction types fetched', data: financialEntryService.kinds() });
+  }),
+  createFromKind: asyncHandler(async (req: AuthRequest, res: Response) => {
+    const entry = await financialEntryService.createFromKind(req.params.kind, req.body, req.user!.userId);
+    return sendSuccess(res, 201, { message: 'Financial Entry recorded', data: entry });
+  }),
   cancel: asyncHandler(async (req: AuthRequest, res: Response) => {
     const entry = await financialEntryService.cancel(req.params.id, req.body.reason, req.user!.userId);
     return sendSuccess(res, 200, { message: 'Financial Entry cancelled', data: entry });

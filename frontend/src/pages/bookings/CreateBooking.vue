@@ -8,6 +8,10 @@
           <p class="text-caption text-medium-emphasis mb-0">
             Enter a walk-in or phone booking. It joins the same queue as website bookings, ready to confirm.
           </p>
+          <p class="text-caption text-medium-emphasis mb-0">
+            Every field is optional — save what you have now and fill in the rest later. The pickup and delivery
+            locations are needed only when you come to confirm the booking.
+          </p>
         </div>
       </div>
     </div>
@@ -157,24 +161,27 @@ const errors = reactive<Record<string, string>>({});
 const MOBILE_RE = /^[0-9+\s-]{7,15}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Mirrors the server-side rules so mistakes surface before the round trip. */
+/**
+ * Nothing here is required — a booking can be saved with as little as a name,
+ * and completed once the rest is known. What validation remains checks only
+ * the *shape* of what was actually typed, so a half-entered mobile number is
+ * still caught while an empty one is allowed through.
+ *
+ * The route is the one thing that becomes mandatory later: confirming the
+ * booking needs both locations, since that is what turns it into an Intent.
+ */
 function validate(): boolean {
   for (const key of Object.keys(errors)) delete errors[key];
 
-  if (form.customerName.trim().length < 2) errors.customerName = 'Customer name is required';
-  if (!MOBILE_RE.test(form.mobile.trim())) errors.mobile = 'Enter a valid mobile number';
+  if (form.mobile.trim() && !MOBILE_RE.test(form.mobile.trim())) errors.mobile = 'Enter a valid mobile number';
   if (form.email.trim() && !EMAIL_RE.test(form.email.trim())) errors.email = 'Enter a valid email address';
-  if (form.pickupAddress.trim().length < 5) errors.pickupAddress = 'Pickup address is required';
-  if (form.deliveryAddress.trim().length < 5) errors.deliveryAddress = 'Delivery address is required';
-  if (!form.fromLocationId) errors.fromLocationId = 'Select the pickup location';
-  if (!form.toLocationId) errors.toLocationId = 'Select the delivery location';
-  if (!form.parcelType.trim()) errors.parcelType = 'Parcel type is required';
-  if (!form.packages || form.packages < 1 || !Number.isInteger(form.packages)) {
+  if (form.packages !== undefined && (form.packages < 0 || !Number.isInteger(form.packages))) {
     errors.packages = 'Enter a whole number of packages';
   }
-  if (!form.weight || form.weight <= 0) errors.weight = 'Enter the approximate weight';
-  if (!form.vehicleType) errors.vehicleType = 'Vehicle type is required';
-  if (!form.pickupDate) errors.pickupDate = 'Pickup date is required';
+  if (form.weight !== undefined && form.weight < 0) errors.weight = 'Weight cannot be negative';
+  if (form.fromLocationId && form.toLocationId && form.fromLocationId === form.toLocationId) {
+    errors.toLocationId = 'Pickup and delivery locations must be different';
+  }
   if (form.expectedDeliveryDate && form.pickupDate && form.expectedDeliveryDate < form.pickupDate) {
     errors.expectedDeliveryDate = 'Cannot be before the pickup date';
   }
@@ -191,19 +198,21 @@ async function onSubmit() {
     return;
   }
 
+  // Blanks are sent as undefined rather than '' so the record stores "not
+  // known yet" instead of an empty string that reads like an answer.
   const payload: CounterBookingPayload = {
-    customerName: form.customerName.trim(),
-    mobile: form.mobile.trim(),
+    customerName: form.customerName.trim() || undefined,
+    mobile: form.mobile.trim() || undefined,
     email: form.email.trim() || undefined,
-    pickupAddress: form.pickupAddress.trim(),
-    deliveryAddress: form.deliveryAddress.trim(),
-    fromLocationId: form.fromLocationId,
-    toLocationId: form.toLocationId,
-    parcelType: form.parcelType.trim(),
-    packages: form.packages!,
-    weight: form.weight!,
-    vehicleType: form.vehicleType,
-    pickupDate: form.pickupDate,
+    pickupAddress: form.pickupAddress.trim() || undefined,
+    deliveryAddress: form.deliveryAddress.trim() || undefined,
+    fromLocationId: form.fromLocationId || undefined,
+    toLocationId: form.toLocationId || undefined,
+    parcelType: form.parcelType.trim() || undefined,
+    packages: form.packages,
+    weight: form.weight,
+    vehicleType: form.vehicleType || undefined,
+    pickupDate: form.pickupDate || undefined,
     expectedDeliveryDate: form.expectedDeliveryDate || undefined,
     freightAmount: form.freightAmount,
     instructions: form.instructions.trim() || undefined,

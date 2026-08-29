@@ -33,7 +33,7 @@ export const createReceiptSchema = z.object({
     remarks: z.string().optional(),
     // Optional at the API boundary so pre-existing internal callers (e.g.
     // Trip allocation's client-advance shortcut, Phase 5) keep working —
-    // receiptService falls back to the organization's default Cash Account
+    // receiptService falls back to the organization's default Bank Account
     // when omitted, rather than making every caller pass one (§ receipt.service.ts).
     fundAccountType: fundAccountTypeEnum.optional(),
     fundAccountId: z.string().uuid().optional(),

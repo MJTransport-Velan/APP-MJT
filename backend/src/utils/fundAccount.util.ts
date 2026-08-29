@@ -38,11 +38,20 @@ export async function resolveFundAccount(
 }
 
 /**
- * Falls back to the organization's default Cash Account when a caller
- * doesn't specify a fund account — used by Receipt/SupplierPayment so
- * pre-existing internal callers (Trip-allocation's advance shortcut) still
- * produce a valid money movement rather than being forced to plumb a
- * fund-account picker through Operations.
+ * Falls back to the organization's default fund account when a caller doesn't
+ * specify one — used by Receipt/SupplierPayment so pre-existing internal
+ * callers (Trip-allocation's advance shortcut) still produce a valid money
+ * movement rather than being forced to plumb a fund-account picker through
+ * Operations.
+ *
+ * The default is the Bank Account, not the cash box: the overwhelming
+ * majority of payments and receipts move through the bank, and silently
+ * defaulting to cash both misstates where the money went and drains a cash
+ * balance that physically never changed.
+ *
+ * Cash is kept only as a last resort, for an organization that has no bank
+ * account on file at all — such a setup would otherwise be unable to post
+ * anything through these internal callers.
  */
 export async function resolveOrDefaultFundAccount(
   organizationId: string,
@@ -51,12 +60,26 @@ export async function resolveOrDefaultFundAccount(
 ): Promise<ResolvedFundAccount> {
   if (type && id) return resolveFundAccount(organizationId, type, id);
 
-  const defaultCash = await prisma.cashAccount.findFirst({
-    where: { organizationId, isActive: true, deletedAt: null },
-    orderBy: { createdAt: 'asc' },
-  });
+  const where = { organizationId, isActive: true, deletedAt: null };
+  const orderBy = { createdAt: 'asc' } as const;
+
+  const defaultBank = await prisma.bankAccount.findFirst({ where, orderBy });
+  if (defaultBank) {
+    return {
+      type: 'BANK',
+      id: defaultBank.id,
+      label: defaultBank.accountHolderName,
+      currentBalance: Number(defaultBank.currentBalance),
+      isActive: defaultBank.isActive,
+    };
+  }
+
+  const defaultCash = await prisma.cashAccount.findFirst({ where, orderBy });
   if (!defaultCash) {
-    throw new AppError('No fund account was specified and no default Cash Account exists for this organization — configure one under Banking first', 409);
+    throw new AppError(
+      'No fund account was specified and this organization has no active Bank or Cash Account — configure one under Banking first',
+      409
+    );
   }
   return { type: 'CASH', id: defaultCash.id, label: defaultCash.cashAccountType, currentBalance: Number(defaultCash.currentBalance), isActive: defaultCash.isActive };
 }
@@ -143,6 +166,7 @@ export async function assertFundAccountUnreferenced(type: 'BANK' | 'CASH', id: s
     { label: 'loan installments', count: prisma.loanInstallment.count({ where: polymorphic }) },
     { label: 'fastag transactions', count: prisma.fastTagTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
     { label: 'diesel card recharges', count: prisma.fuelCardTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
+    { label: 'AdBlue stock purchases', count: prisma.adBlueStockTransaction.count({ where: { fundAccountType: type, fundAccountId: id } }) },
     { label: 'opening balances', count: type === 'BANK' ? prisma.openingBalance.count({ where: { bankAccountId: id } }) : prisma.openingBalance.count({ where: { cashAccountId: id } }) },
   ];
 

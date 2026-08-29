@@ -59,6 +59,7 @@ const cards = [
   { icon: 'mdi-view-dashboard-variant-outline', title: 'Finance Dashboard', description: 'Cash, bank, receivables, payables, loans and profit at a glance', to: '/accounts/dashboard' },
   { icon: 'mdi-cash-fast', title: 'Financial Entries', description: 'Record money received, paid, transferred or spent — pick source, destination and purpose, done', to: '/accounts/financial-entry' },
   { icon: 'mdi-bank-outline', title: 'Loans & EMI', description: 'Vehicle, bank, business and owner loans — EMI schedules, payments and outstanding', to: '/accounts/loans' },
+  { icon: 'mdi-hand-coin-outline', title: 'Loans & Advances Given', description: 'Money you lent to friends, relatives or anyone else — what is still owed back to you', to: '/accounts/loans-given' },
   { icon: 'mdi-wallet-outline', title: 'Capital & Owner Funds', description: 'Owner capital (equity) and owner loans (liability), kept separate — plus withdrawals', to: '/accounts/capital-account' },
   { icon: 'mdi-database-import-outline', title: 'Opening Balance & Migration', description: 'Bring bank, cash, assets, loans, receivables, payables and owner funds across from your previous books', to: '/accounts/opening-balance' },
   { icon: 'mdi-cash-plus', title: 'Receivables', description: 'Customer invoices, receipts, aging, credit control and collections', to: '/accounts/receivables' },

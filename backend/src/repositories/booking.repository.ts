@@ -1,4 +1,12 @@
-import { Prisma, BookingStatus, BookingSource, VehicleOwnership } from '@prisma/client';
+import {
+  Prisma,
+  BookingStatus,
+  BookingSource,
+  VehicleOwnership,
+  LrTransportMode,
+  LrFreightPayment,
+  LrParty,
+} from '@prisma/client';
 import { prisma } from '../config/db';
 
 const bookingWithRelations = Prisma.validator<Prisma.BookingInclude>()({
@@ -7,6 +15,7 @@ const bookingWithRelations = Prisma.validator<Prisma.BookingInclude>()({
   fromLocation: true,
   toLocation: true,
   statusHistory: { orderBy: { createdAt: 'asc' } },
+  goodsItems: { orderBy: { sortOrder: 'asc' } },
 });
 
 export type BookingWithRelations = Prisma.BookingGetPayload<{ include: typeof bookingWithRelations }>;
@@ -40,6 +49,47 @@ async function nextNumber(prefix: string): Promise<string> {
   });
   return `${prefix}${stamp}${String(counter.seq).padStart(4, '0')}`;
 }
+
+/**
+ * Indian financial year label for a date — "26-27" for anything from 1 April
+ * 2026 to 31 March 2027. Local months, not UTC, for the same reason
+ * todayStamp() is local: an LR raised at 04:00 IST on 1 April belongs to the
+ * new year, and `getUTCMonth()` would still call it March.
+ */
+export function financialYearLabel(date: Date = new Date()): string {
+  const startYear = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  return `${String(startYear % 100).padStart(2, '0')}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+}
+
+/**
+ * LR numbers run on their own series: MJT/26-27/0158, restarting at 1 each
+ * financial year. Unlike the booking and tracking numbers this one is printed
+ * on a document a customer files against a GST return, so it follows the
+ * transporter's book convention rather than the internal per-day stamp.
+ *
+ * The FY is derived at issue time rather than passed in — an LR is always
+ * numbered in the year it is raised.
+ */
+async function nextLrNumber(): Promise<string> {
+  const fy = financialYearLabel();
+  const counter = await prisma.documentCounter.upsert({
+    where: { key: `LR-${fy}` },
+    update: { seq: { increment: 1 } },
+    create: { key: `LR-${fy}`, seq: 1 },
+  });
+  return `MJT/${fy}/${String(counter.seq).padStart(4, '0')}`;
+}
+
+/** One row of the LR's goods table, as supplied by the client. */
+export type GoodsItemInput = {
+  invoiceNo?: string | null;
+  invoiceDate?: Date | null;
+  description: string;
+  units: number;
+  goodsValue: number;
+  ewayBillNo?: string | null;
+  ewayBillDate?: Date | null;
+};
 
 export const bookingRepository = {
   async findManyPaginated(params: {
@@ -118,30 +168,45 @@ export const bookingRepository = {
     return nextNumber('BK');
   },
 
-  nextLrNumber() {
-    return nextNumber('LR');
+  nextLrNumber,
+
+  /**
+   * Uniqueness pre-check for an operator-supplied LR number. The column is
+   * `@unique` so the database is the real guard; this exists only to turn a
+   * clash into a field-level message instead of a raw P2002.
+   *
+   * Deliberately not filtered by `deletedAt` — the unique index spans
+   * soft-deleted rows, so a check that skipped them would pass here and then
+   * fail in the write.
+   */
+  findByLrNumber(lrNumber: string) {
+    return prisma.booking.findFirst({ where: { lrNumber }, select: { id: true, bookingNo: true } });
   },
 
   nextTrackingNumber() {
     return nextNumber('MJX');
   },
 
+  // Booking detail is all optional — a counter booking can be saved with
+  // nothing but a name, and filled in as the information arrives. The public
+  // intake still supplies every field; it is its validator, not this
+  // signature, that holds it to that.
   create(data: {
     bookingNo: string;
-    customerName: string;
-    mobile: string;
-    email?: string;
-    pickupAddress: string;
-    deliveryAddress: string;
-    fromPlace: string;
-    toPlace: string;
-    parcelType: string;
-    packages: number;
-    weight: number;
-    vehicleTypeRequested: string;
-    pickupDate: Date;
-    expectedDeliveryDate?: Date;
-    instructions?: string;
+    customerName?: string | null;
+    mobile?: string | null;
+    email?: string | null;
+    pickupAddress?: string | null;
+    deliveryAddress?: string | null;
+    fromPlace?: string | null;
+    toPlace?: string | null;
+    parcelType?: string | null;
+    packages?: number | null;
+    weight?: number | null;
+    vehicleTypeRequested?: string | null;
+    pickupDate?: Date | null;
+    expectedDeliveryDate?: Date | null;
+    instructions?: string | null;
     // Counter entry only — the public site supplies none of these.
     source?: BookingSource;
     fromLocationId?: string;
@@ -173,9 +238,53 @@ export const bookingRepository = {
       deliveredAt: Date;
       isActive: boolean;
       updatedById: string;
+
+      // ----- Printed LR detail ------------------------------------------
+      consignorGstin: string | null;
+      consigneeName: string | null;
+      consigneeAddress: string | null;
+      consigneePhone: string | null;
+      consigneeGstin: string | null;
+      transportMode: LrTransportMode | null;
+      paymentTerm: string | null;
+      dispatchAt: Date | null;
+      freightCharges: number | null;
+      loadingCharges: number | null;
+      unloadingCharges: number | null;
+      otherCharges: number | null;
+      freightPayment: LrFreightPayment | null;
+      billingParty: LrParty | null;
+      freightPayer: LrParty | null;
+      advanceReceived: number | null;
+      remarks: string | null;
     }>
   ) {
     return prisma.booking.update({ where: { id }, data });
+  },
+
+  /**
+   * Swaps the whole goods table for a booking in one transaction. Wholesale
+   * replacement rather than a per-row diff: these rows exist only to be
+   * printed, so nothing outside the document holds a reference to an
+   * individual id worth preserving.
+   */
+  replaceGoodsItems(bookingId: string, items: GoodsItemInput[]) {
+    return prisma.$transaction([
+      prisma.bookingGoodsItem.deleteMany({ where: { bookingId } }),
+      prisma.bookingGoodsItem.createMany({
+        data: items.map((item, index) => ({
+          bookingId,
+          invoiceNo: item.invoiceNo || null,
+          invoiceDate: item.invoiceDate ?? null,
+          description: item.description,
+          units: item.units,
+          goodsValue: item.goodsValue,
+          ewayBillNo: item.ewayBillNo || null,
+          ewayBillDate: item.ewayBillDate ?? null,
+          sortOrder: index,
+        })),
+      }),
+    ]);
   },
 
   findLocationById(id: string) {

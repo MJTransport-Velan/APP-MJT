@@ -34,6 +34,14 @@ const EXCLUDED_KEYS = new Set([
   // same class as remarks/notes above, and it is reproduced verbatim on the LR.
   'instructions',
   'specialinstructions',
+  // Commercial wording printed verbatim on the LR ("To Be Billed",
+  // "Credit 30 Days"). Shouting it would misrepresent the agreed term.
+  'paymentterm',
+  // "BANK:<uuid>" / "CASH:<uuid>" — an identifier pair, same class as the
+  // Id-suffixed keys below. Case-mangling the uuid half is asking for a
+  // lookup miss.
+  'fundaccountkey',
+  'tofundaccountkey',
   'purpose',
   'purposenotes',
   'resolution',

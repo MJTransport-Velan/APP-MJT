@@ -48,6 +48,12 @@ export interface BalanceSheetCurrentAssets {
   bank: number;
   receivables: number;
   advances: number;
+  /**
+   * Money lent out that is still owed back. Its own line rather than part
+   * of `advances`: an advance is paid against work still to come, this is
+   * lending. Written-off loans are excluded.
+   */
+  loansGiven: number;
   total: number;
 }
 
@@ -89,6 +95,7 @@ export interface BalanceSheetBreakdown {
   supplierAdvances: NamedAmountRow[];
   driverAdvances: NamedAmountRow[];
   employeeAdvances: NamedAmountRow[];
+  loansGiven: NamedAmountRow[];
   driverPayables: NamedAmountRow[];
   employeePayables: NamedAmountRow[];
   fixedAssets: FixedAssetRow[];

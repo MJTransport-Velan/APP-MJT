@@ -89,6 +89,20 @@ export async function resolveEntityLabel(
       if (!row) throw new AppError('Trip not found', 404);
       return row.tripNumber;
     }
+    // A lender used to be free text with no identity behind it. Where an id
+    // IS given it now points at the Loan register, so the entry names the
+    // actual loan rather than a typed-in string that matches nothing — this
+    // is what lets a Loan EMI or a disbursement be traced back to its loan.
+    // Entries that still carry only a label keep working via the !id branch
+    // above, so nothing recorded before this is disturbed.
+    case 'LOAN_PROVIDER': {
+      const row = await prisma.loan.findFirst({
+        where: { id, deletedAt: null },
+        select: { lenderName: true, loanName: true },
+      });
+      if (!row) throw new AppError('Loan not found', 404);
+      return `${row.lenderName} — ${row.loanName}`;
+    }
     default:
       return fallbackLabel?.trim() || 'Other';
   }

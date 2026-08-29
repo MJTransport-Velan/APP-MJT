@@ -2,6 +2,15 @@ import api from '../api';
 import { createMasterApi } from '../masterApiFactory';
 import type { ApiResponse } from '@/types/api.types';
 import type {
+  AdBlueEntry,
+  AdBlueStock,
+  AdBlueStockSummary,
+  AdBlueStockTransaction,
+  AdBlueSummary,
+  AdBlueVehicleConsumptionRow,
+  VehicleAdBlueSummary,
+} from '@/types/adBlue.types';
+import type {
   FleetVehicle,
   VehicleAvailability,
   VehicleTracking,
@@ -124,6 +133,73 @@ export const fuelEntryApi = {
   },
   advanceBalance(advanceId: string) {
     return api.get<ApiResponse<FuelAdvanceBalance>>(`/fleet/fuel-entries/advance-balance/${advanceId}`);
+  },
+};
+
+export const adBlueEntryApi = {
+  list(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<AdBlueEntry[]> & { meta: PaginationMeta }>('/fleet/adblue-entries', { params });
+  },
+  getById(id: string) {
+    return api.get<ApiResponse<AdBlueEntry>>(`/fleet/adblue-entries/${id}`);
+  },
+  create(payload: Record<string, unknown>) {
+    return api.post<ApiResponse<AdBlueEntry>>('/fleet/adblue-entries', payload);
+  },
+  update(id: string, payload: Record<string, unknown>) {
+    return api.put<ApiResponse<AdBlueEntry>>(`/fleet/adblue-entries/${id}`, payload);
+  },
+  remove(id: string) {
+    return api.delete<ApiResponse<null>>(`/fleet/adblue-entries/${id}`);
+  },
+  uploadBill(id: string, file: File) {
+    const formData = new FormData();
+    formData.append('billDocument', file);
+    return api.post<ApiResponse<AdBlueEntry>>(`/fleet/adblue-entries/${id}/bill`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  summary(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<AdBlueSummary>>('/fleet/adblue-entries/summary', { params });
+  },
+  vehicleSummary(vehicleId: string, params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<VehicleAdBlueSummary>>(`/fleet/adblue-entries/vehicle-summary/${vehicleId}`, { params });
+  },
+  vehicleConsumption(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<AdBlueVehicleConsumptionRow[]>>('/fleet/adblue-entries/vehicle-consumption', { params });
+  },
+};
+
+// The AdBlue store is a fleet-wide singleton — no stock id in any of these
+// paths, and no vehicle id either: every truck draws from the one store.
+// There is deliberately no `logIssue` here; a withdrawal is created by
+// recording the AdBlue entry that was filled from stock.
+export const adBlueStockApi = {
+  getStock() {
+    return api.get<ApiResponse<AdBlueStock>>('/fleet/adblue-stock/stock');
+  },
+  summary() {
+    return api.get<ApiResponse<AdBlueStockSummary>>('/fleet/adblue-stock/stock/summary');
+  },
+  listTransactions(params: Record<string, unknown> = {}) {
+    return api.get<ApiResponse<AdBlueStockTransaction[]> & { meta: PaginationMeta }>('/fleet/adblue-stock/transactions', {
+      params,
+    });
+  },
+  purchase(payload: Record<string, unknown>) {
+    return api.post<ApiResponse<AdBlueStock>>('/fleet/adblue-stock/purchase', payload);
+  },
+  returnToSupplier(payload: Record<string, unknown>) {
+    return api.post<ApiResponse<AdBlueStock>>('/fleet/adblue-stock/return', payload);
+  },
+  adjust(payload: Record<string, unknown>) {
+    return api.post<ApiResponse<AdBlueStock>>('/fleet/adblue-stock/adjust', payload);
+  },
+  updateTransaction(transactionId: string, payload: Record<string, unknown>) {
+    return api.patch<ApiResponse<AdBlueStockTransaction>>(`/fleet/adblue-stock/transactions/${transactionId}`, payload);
+  },
+  removeTransaction(transactionId: string) {
+    return api.delete<ApiResponse<null>>(`/fleet/adblue-stock/transactions/${transactionId}`);
   },
 };
 

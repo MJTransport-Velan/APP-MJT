@@ -1,6 +1,6 @@
 import { Request } from 'express';
 import { BookingStatus } from '@prisma/client';
-import { bookingRepository, BookingWithRelations } from '../repositories/booking.repository';
+import { bookingRepository, BookingWithRelations, GoodsItemInput } from '../repositories/booking.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { auditService } from './audit.service';
 import { parsePagination, buildPaginationMeta } from '../utils/pagination';
@@ -11,6 +11,7 @@ import {
   UpdateBookingStatusInput,
   ConfirmBookingInput,
   UpdateBookingRouteInput,
+  UpdateLrDetailsInput,
 } from '../validators/booking.validator';
 import { AuthRequest } from '../middlewares/auth.middleware';
 
@@ -38,6 +39,14 @@ const STAGE_BY_STATUS: Partial<Record<BookingStatus, number>> = {
   OUT_FOR_DELIVERY: 4,
   DELIVERED: 5,
 };
+
+/**
+ * Where LR details — the number included — may still be edited. The line is
+ * drawn at dispatch: once the vehicle has been marked PICKED_UP the driver is
+ * carrying a printed copy, and the paper and the record must agree. Before
+ * that the document is still a draft in the office, whatever its status.
+ */
+const LR_EDITABLE_STATUSES: BookingStatus[] = ['CONFIRMED', 'VEHICLE_ASSIGNED', 'LR_GENERATED'];
 
 /** Forward-only ordering for the post-LR delivery stages. */
 const DELIVERY_ORDER: BookingStatus[] = [
@@ -90,6 +99,37 @@ function serialize(booking: BookingWithRelations) {
     lrGeneratedAt: booking.lrGeneratedAt,
     deliveredAt: booking.deliveredAt,
     rejectionReason: booking.rejectionReason,
+
+    // ----- Printed LR detail ---------------------------------------------
+    consignorGstin: booking.consignorGstin,
+    consigneeName: booking.consigneeName,
+    consigneeAddress: booking.consigneeAddress,
+    consigneePhone: booking.consigneePhone,
+    consigneeGstin: booking.consigneeGstin,
+    transportMode: booking.transportMode,
+    paymentTerm: booking.paymentTerm,
+    dispatchAt: booking.dispatchAt,
+    freightCharges: booking.freightCharges,
+    loadingCharges: booking.loadingCharges,
+    unloadingCharges: booking.unloadingCharges,
+    otherCharges: booking.otherCharges,
+    freightPayment: booking.freightPayment,
+    billingParty: booking.billingParty,
+    freightPayer: booking.freightPayer,
+    advanceReceived: booking.advanceReceived,
+    remarks: booking.remarks,
+    goodsItems: booking.goodsItems.map((item) => ({
+      id: item.id,
+      invoiceNo: item.invoiceNo,
+      invoiceDate: item.invoiceDate,
+      description: item.description,
+      units: item.units,
+      goodsValue: item.goodsValue,
+      ewayBillNo: item.ewayBillNo,
+      ewayBillDate: item.ewayBillDate,
+    })),
+    /** Whether the LR is still open to edits. See `LR_EDITABLE_STATUSES`. */
+    lrEditable: LR_EDITABLE_STATUSES.includes(booking.status),
 
     fleetType: booking.fleetType,
     vehicleNumber: booking.vehicleNumber,
@@ -161,6 +201,34 @@ function parseDateStrict(value: string, label: string): Date {
   return parsed;
 }
 
+/**
+ * The `YYYY-MM-DDTHH:mm` a datetime-local input emits, read as *local* time —
+ * an operator typing "08:29 PM" means 20:29 where the vehicle actually left,
+ * not 20:29 UTC. `new Date()` already does this for a string with no zone
+ * suffix; the shape check exists for the same reason as parseDateStrict's.
+ */
+function parseDateTimeStrict(value: string, label: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) {
+    throw new AppError(`Enter a valid ${label}`, 400);
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime()) || parsed.getFullYear() < 1900 || parsed.getFullYear() > 2200) {
+    throw new AppError(`Enter a valid ${label}`, 400);
+  }
+  return parsed;
+}
+
+/**
+ * Empty string means "clear this field", not "leave it alone" — the LR form
+ * posts every field it owns on every save, so a blank box is an instruction.
+ * `undefined` (the field was not sent at all) is what leaves a value be, and
+ * the callers below only reach this for fields the form actually submits.
+ */
+function textOrNull(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export const bookingService = {
   // ----- Public (no authentication) -------------------------------------
 
@@ -229,48 +297,53 @@ export const bookingService = {
   async createCounter(input: CreateCounterBookingInput, req: AuthRequest) {
     const actorId = req.user!.userId;
 
-    const pickupDate = parseDateStrict(input.pickupDate, 'pickup date');
+    const pickupDate = input.pickupDate ? parseDateStrict(input.pickupDate, 'pickup date') : null;
 
-    let expectedDeliveryDate: Date | undefined;
+    let expectedDeliveryDate: Date | null = null;
     if (input.expectedDeliveryDate) {
       const parsed = parseDateStrict(input.expectedDeliveryDate, 'expected delivery date');
-      if (parsed < pickupDate) {
+      // Only comparable when both dates are known; an expected date with no
+      // pickup date yet is simply an expected date.
+      if (pickupDate && parsed < pickupDate) {
         throw new AppError('Expected delivery date cannot be before the pickup date', 400);
       }
       expectedDeliveryDate = parsed;
     }
 
+    // The route is optional here and required at confirmation. Each side is
+    // resolved independently so a booking can carry a known origin while the
+    // destination is still being decided.
     const [fromLocation, toLocation] = await Promise.all([
-      bookingRepository.findLocationById(input.fromLocationId),
-      bookingRepository.findLocationById(input.toLocationId),
+      input.fromLocationId ? bookingRepository.findLocationById(input.fromLocationId) : null,
+      input.toLocationId ? bookingRepository.findLocationById(input.toLocationId) : null,
     ]);
-    if (!fromLocation) throw new AppError('Pickup location not found', 404);
-    if (!toLocation) throw new AppError('Delivery location not found', 404);
+    if (input.fromLocationId && !fromLocation) throw new AppError('Pickup location not found', 404);
+    if (input.toLocationId && !toLocation) throw new AppError('Delivery location not found', 404);
 
     const bookingNo = await bookingRepository.nextBookingNo();
 
     const booking = await bookingRepository.create({
       bookingNo,
-      customerName: input.customerName,
-      mobile: input.mobile,
-      email: input.email || undefined,
-      pickupAddress: input.pickupAddress,
-      deliveryAddress: input.deliveryAddress,
+      customerName: textOrNull(input.customerName),
+      mobile: textOrNull(input.mobile),
+      email: textOrNull(input.email),
+      pickupAddress: textOrNull(input.pickupAddress),
+      deliveryAddress: textOrNull(input.deliveryAddress),
       // Place text mirrors the chosen locations, so the LR and tracking read
       // the same whichever channel the booking came through.
-      fromPlace: fromLocation.name,
-      toPlace: toLocation.name,
-      parcelType: input.parcelType,
-      packages: input.packages,
-      weight: input.weight,
-      vehicleTypeRequested: input.vehicleType,
+      fromPlace: fromLocation?.name ?? null,
+      toPlace: toLocation?.name ?? null,
+      parcelType: textOrNull(input.parcelType),
+      packages: input.packages ?? null,
+      weight: input.weight ?? null,
+      vehicleTypeRequested: textOrNull(input.vehicleType),
       pickupDate,
       expectedDeliveryDate,
-      instructions: input.instructions || undefined,
+      instructions: textOrNull(input.instructions),
       source: 'COUNTER',
-      fromLocationId: fromLocation.id,
-      toLocationId: toLocation.id,
-      freightAmount: input.freightAmount,
+      fromLocationId: fromLocation?.id,
+      toLocationId: toLocation?.id,
+      freightAmount: input.freightAmount ?? undefined,
       createdById: actorId,
       updatedById: actorId,
     });
@@ -287,7 +360,9 @@ export const bookingService = {
       action: 'CREATE',
       entityType: 'Booking',
       entityId: booking.id,
-      description: `Counter booking ${booking.bookingNo} created for ${booking.customerName}`,
+      description: `Counter booking ${booking.bookingNo} created${
+        booking.customerName ? ` for ${booking.customerName}` : ''
+      }`,
     });
 
     return bookingService.getById(booking.id);
@@ -379,9 +454,11 @@ export const bookingService = {
     // booking, not just pending ones, since bookings confirmed before route
     // mapping existed still need it.
     if (!booking.fromLocationId && booking.status !== 'REJECTED') {
+      // A booking may have no typed place at all now, in which case there is
+      // simply nothing to match against and the dropdowns open empty.
       const [from, to] = await Promise.all([
-        bookingRepository.findLocationByName(booking.fromPlace),
-        bookingRepository.findLocationByName(booking.toPlace),
+        booking.fromPlace ? bookingRepository.findLocationByName(booking.fromPlace) : null,
+        booking.toPlace ? bookingRepository.findLocationByName(booking.toPlace) : null,
       ]);
       return {
         ...payload,
@@ -558,27 +635,34 @@ export const bookingService = {
       );
     }
 
-    if (input.fleetType === 'OWN') {
+    // The branch is optional too; fall back to whatever the booking already
+    // carries so a partial correction cannot silently flip a booking from own
+    // fleet to market.
+    const fleetType = input.fleetType ?? existing.fleetType ?? 'MARKET';
+
+    if (fleetType === 'OWN') {
+      // Either side of the allocation may still be undecided. Look up only
+      // what was supplied, and keep what the booking already had for the rest.
       const [vehicle, driver] = await Promise.all([
-        bookingRepository.findVehicleById(input.vehicleId!),
-        bookingRepository.findDriverById(input.driverId!),
+        input.vehicleId ? bookingRepository.findVehicleById(input.vehicleId) : null,
+        input.driverId ? bookingRepository.findDriverById(input.driverId) : null,
       ]);
-      if (!vehicle) throw new AppError('Vehicle not found', 404);
-      if (!driver) throw new AppError('Driver not found', 404);
-      if (!vehicle.isActive) throw new AppError('That vehicle is inactive', 400);
-      if (!driver.isActive) throw new AppError('That driver is inactive', 400);
+      if (input.vehicleId && !vehicle) throw new AppError('Vehicle not found', 404);
+      if (input.driverId && !driver) throw new AppError('Driver not found', 404);
+      if (vehicle && !vehicle.isActive) throw new AppError('That vehicle is inactive', 400);
+      if (driver && !driver.isActive) throw new AppError('That driver is inactive', 400);
 
       await bookingRepository.update(id, {
         status: 'VEHICLE_ASSIGNED',
         fleetType: 'OWN',
-        vehicleId: vehicle.id,
-        driverId: driver.id,
-        vehicleNumber: vehicle.registrationNumber,
-        vehicleTypeName: vehicle.vehicleType?.name ?? existing.vehicleTypeRequested,
-        driverName: driver.name,
+        vehicleId: vehicle?.id ?? null,
+        driverId: driver?.id ?? null,
+        vehicleNumber: vehicle?.registrationNumber ?? null,
+        vehicleTypeName: vehicle?.vehicleType?.name ?? existing.vehicleTypeRequested ?? null,
+        driverName: driver?.name ?? null,
         // Prefer an explicit override: Driver.phone is optional on the master
         // and an LR without a contact number is of little use in transit.
-        driverMobile: input.driverMobile || driver.phone || null,
+        driverMobile: textOrNull(input.driverMobile) ?? driver?.phone ?? null,
         updatedById: actorId,
       });
     } else {
@@ -587,10 +671,10 @@ export const bookingService = {
         fleetType: 'MARKET',
         vehicleId: null,
         driverId: null,
-        vehicleNumber: input.vehicleNumber!,
-        vehicleTypeName: input.vehicleType!,
-        driverName: input.driverName!,
-        driverMobile: input.driverMobile!,
+        vehicleNumber: textOrNull(input.vehicleNumber),
+        vehicleTypeName: textOrNull(input.vehicleType),
+        driverName: textOrNull(input.driverName),
+        driverMobile: textOrNull(input.driverMobile),
         updatedById: actorId,
       });
     }
@@ -601,7 +685,7 @@ export const bookingService = {
       await bookingRepository.addStatusHistory({
         bookingId: id,
         status: 'VEHICLE_ASSIGNED',
-        note: input.fleetType === 'OWN' ? 'Own fleet vehicle allocated' : 'Market vehicle allocated',
+        note: fleetType === 'OWN' ? 'Own fleet vehicle allocated' : 'Market vehicle allocated',
         createdById: actorId,
       });
     }
@@ -611,7 +695,7 @@ export const bookingService = {
       action: 'UPDATE',
       entityType: 'Booking',
       entityId: id,
-      description: `Assigned ${input.fleetType === 'OWN' ? 'own' : 'market'} vehicle to booking ${existing.bookingNo}`,
+      description: `Assigned ${fleetType === 'OWN' ? 'own' : 'market'} vehicle to booking ${existing.bookingNo}`,
     });
 
     return bookingService.getById(id);
@@ -631,28 +715,31 @@ export const bookingService = {
         409
       );
     }
-    if (existing.status !== 'VEHICLE_ASSIGNED') {
+    // No field requirements: an LR is routinely raised before the driver is
+    // named or the vehicle number is known, and the document prints "-" for
+    // whatever is still open. Only the workflow position is checked — the
+    // booking must have been confirmed, which is what mints its numbers.
+    if (!LR_EDITABLE_STATUSES.includes(existing.status)) {
       throw new AppError(
-        `Vehicle details must be saved before the LR can be generated (this booking is ${existing.status})`,
+        `Confirm the booking before generating its LR (this one is ${STATUS_LABELS[existing.status]})`,
         409
       );
     }
-    if (!existing.vehicleNumber || !existing.driverName) {
-      throw new AppError('Vehicle and driver details are incomplete', 400);
-    }
-    if (!existing.lrNumber) {
-      throw new AppError('This booking has no LR number', 409);
-    }
+
+    // Normally minted at confirmation. A booking confirmed before the LR
+    // series existed has none, so issue one here rather than refuse.
+    const lrNumber = existing.lrNumber ?? (await bookingRepository.nextLrNumber());
 
     await bookingRepository.update(id, {
       status: 'LR_GENERATED',
+      ...(existing.lrNumber ? {} : { lrNumber }),
       lrGeneratedAt: new Date(),
       updatedById: actorId,
     });
     await bookingRepository.addStatusHistory({
       bookingId: id,
       status: 'LR_GENERATED',
-      note: `LR ${existing.lrNumber} generated`,
+      note: `LR ${lrNumber} generated`,
       createdById: actorId,
     });
 
@@ -661,7 +748,111 @@ export const bookingService = {
       action: 'UPDATE',
       entityType: 'Booking',
       entityId: id,
-      description: `Generated LR ${existing.lrNumber} for booking ${existing.bookingNo}`,
+      description: `Generated LR ${lrNumber} for booking ${existing.bookingNo}`,
+    });
+
+    return bookingService.getById(id);
+  },
+
+  /**
+   * Saves everything the printed LR carries beyond the booking itself, in one
+   * write: consignee identity, GSTINs, transport and payment terms, the charge
+   * breakdown, the goods/e-way-bill rows, and — when the operator overrides it
+   * — the LR number.
+   *
+   * Callable from CONFIRMED onwards so the paperwork can be prepared while the
+   * vehicle is still being arranged, and closed off at PICKED_UP, by which
+   * point the driver holds a printed copy.
+   */
+  async updateLrDetails(id: string, input: UpdateLrDetailsInput, req: AuthRequest) {
+    const actorId = req.user!.userId;
+    const existing = await loadOrFail(id);
+
+    if (existing.status === 'PENDING') {
+      throw new AppError('Confirm the booking before entering LR details', 409);
+    }
+    if (existing.status === 'REJECTED') {
+      throw new AppError('This booking was rejected', 409);
+    }
+    if (!LR_EDITABLE_STATUSES.includes(existing.status)) {
+      throw new AppError(
+        `The LR can no longer be edited — this booking has already been dispatched (${STATUS_LABELS[existing.status]})`,
+        409
+      );
+    }
+
+    // The LR number is only rewritten when it actually differs, so that a
+    // straight re-save of the form does not log a spurious renumbering.
+    const requestedLrNumber = input.lrNumber?.trim();
+    const renumbering = Boolean(requestedLrNumber && requestedLrNumber !== existing.lrNumber);
+    if (renumbering) {
+      const clash = await bookingRepository.findByLrNumber(requestedLrNumber!);
+      if (clash && clash.id !== id) {
+        throw new AppError(`LR number ${requestedLrNumber} is already used by booking ${clash.bookingNo}`, 409);
+      }
+    }
+
+    await bookingRepository.update(id, {
+      ...(renumbering ? { lrNumber: requestedLrNumber! } : {}),
+
+      consignorGstin: textOrNull(input.consignorGstin),
+      consigneeName: textOrNull(input.consigneeName),
+      consigneeAddress: textOrNull(input.consigneeAddress),
+      consigneePhone: textOrNull(input.consigneePhone),
+      consigneeGstin: textOrNull(input.consigneeGstin),
+
+      transportMode: input.transportMode ?? null,
+      paymentTerm: textOrNull(input.paymentTerm),
+      dispatchAt: input.dispatchAt ? parseDateTimeStrict(input.dispatchAt, 'dispatch date and time') : null,
+
+      freightCharges: input.freightCharges ?? null,
+      loadingCharges: input.loadingCharges ?? null,
+      unloadingCharges: input.unloadingCharges ?? null,
+      otherCharges: input.otherCharges ?? null,
+
+      freightPayment: input.freightPayment ?? null,
+      billingParty: input.billingParty ?? null,
+      freightPayer: input.freightPayer ?? null,
+      advanceReceived: input.advanceReceived ?? null,
+      remarks: textOrNull(input.remarks),
+
+      updatedById: actorId,
+    });
+
+    // Omitting goodsItems entirely leaves the existing rows alone; sending an
+    // empty array is how the form clears the table.
+    if (input.goodsItems) {
+      const items: GoodsItemInput[] = input.goodsItems.map((item) => ({
+        invoiceNo: textOrNull(item.invoiceNo),
+        invoiceDate: item.invoiceDate ? parseDateStrict(item.invoiceDate, 'invoice date') : null,
+        description: item.description.trim(),
+        units: item.units,
+        goodsValue: item.goodsValue,
+        ewayBillNo: textOrNull(item.ewayBillNo),
+        ewayBillDate: item.ewayBillDate ? parseDateStrict(item.ewayBillDate, 'e-way bill date') : null,
+      }));
+      await bookingRepository.replaceGoodsItems(id, items);
+    }
+
+    // A renumbering is worth a timeline entry of its own — it is the one edit
+    // here that changes an identifier already quoted elsewhere.
+    if (renumbering) {
+      await bookingRepository.addStatusHistory({
+        bookingId: id,
+        status: existing.status,
+        note: `LR number changed from ${existing.lrNumber ?? 'none'} to ${requestedLrNumber}`,
+        createdById: actorId,
+      });
+    }
+
+    await auditService.record({
+      userId: actorId,
+      action: 'UPDATE',
+      entityType: 'Booking',
+      entityId: id,
+      description: renumbering
+        ? `Updated LR details for booking ${existing.bookingNo}; LR number changed from ${existing.lrNumber ?? 'none'} to ${requestedLrNumber}`
+        : `Updated LR details for booking ${existing.bookingNo}`,
     });
 
     return bookingService.getById(id);

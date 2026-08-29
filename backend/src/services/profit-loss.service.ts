@@ -85,12 +85,16 @@ export const profitLossService = {
     const tripManualExpense = round2(Number(tripExpenseAgg._sum.amount ?? 0));
     const tripRelatedCost = round2(tripSupplierCost + tripManualExpense);
 
-    const buckets = { fastTag: 0, diesel: 0, repairs: 0, insurance: 0, tyres: 0, battery: 0, driverSalary: 0, other: 0 };
+    const buckets = { fastTag: 0, diesel: 0, adBlue: 0, repairs: 0, insurance: 0, tyres: 0, battery: 0, driverSalary: 0, other: 0 };
     const REPAIR_CATEGORIES = ['REPAIR', 'SERVICE', 'BREAKDOWN', 'MAINTENANCE'];
     for (const e of vehicleExpenses) {
       const amount = Number(e.amount);
       if (e.category === 'FASTTAG') buckets.fastTag += amount;
       else if (e.category === 'FUEL') buckets.diesel += amount;
+      // AdBlue is its own line, not part of diesel — the brief's "do NOT
+      // combine FASTag and Diesel into one number" applies just as much to
+      // a consumable bought and consumed on its own schedule.
+      else if (e.category === 'ADBLUE') buckets.adBlue += amount;
       else if (REPAIR_CATEGORIES.includes(e.category)) buckets.repairs += amount;
       else if (e.category === 'INSURANCE') buckets.insurance += amount;
       else if (e.category === 'TYRE') buckets.tyres += amount;

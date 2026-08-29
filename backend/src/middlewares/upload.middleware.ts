@@ -105,6 +105,9 @@ export const uploadFastTagAttachment = documentUpload.single('attachment');
 /** Diesel/Fuel entry bill document (single file) */
 export const uploadFuelBill = documentUpload.single('billDocument');
 
+/** AdBlue entry bill document (single file) */
+export const uploadAdBlueBill = documentUpload.single('billDocument');
+
 /** Trip documents: POD / LR Copy / Invoice Copy / Delivery Proof / Other (single file per upload) */
 export const uploadTripDocument = documentUpload.single('file');
 

@@ -11,6 +11,7 @@ import type {
   DriverFinancialState,
   EmployeeFinancialState,
 } from '@/types/financialEntry.types';
+import type { EntryKind } from '@/types/financialEntryKinds';
 
 export const financialEntryApi = {
   list(params: Record<string, unknown> = {}) {
@@ -21,6 +22,18 @@ export const financialEntryApi = {
   },
   create(payload: CreateFinancialEntryInput) {
     return api.post<ApiResponse<FinancialEntry>>('/accounts/financial-entries', payload);
+  },
+  /** The catalogue of named transactions the Record Money picker renders from. */
+  kinds() {
+    return api.get<ApiResponse<EntryKind[]>>('/accounts/financial-entries/kinds');
+  },
+  /**
+   * Records a named transaction. The kind validates its own fields server-side
+   * and states its own posting behaviour, so the generic source/destination
+   * tuple never has to be assembled here.
+   */
+  createFromKind(kind: string, fields: Record<string, unknown>) {
+    return api.post<ApiResponse<FinancialEntry>>(`/accounts/financial-entries/kinds/${kind}`, fields);
   },
   cancel(id: string, reason: string) {
     return api.post<ApiResponse<FinancialEntry>>(`/accounts/financial-entries/${id}/cancel`, { reason });

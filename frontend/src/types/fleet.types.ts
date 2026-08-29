@@ -9,7 +9,9 @@ export type SparePartUsageType = 'ISSUE' | 'RETURN';
 // extends the original five values additively.
 export type VehicleExpenseCategory =
   | 'FUEL' | 'MAINTENANCE' | 'INSURANCE' | 'PERMIT' | 'MISCELLANEOUS'
-  | 'REPAIR' | 'SERVICE' | 'TYRE' | 'BATTERY' | 'FITNESS' | 'ROAD_TAX' | 'FASTTAG' | 'ACCESSORIES' | 'GREASE_LUBRICANTS' | 'BREAKDOWN';
+  | 'REPAIR' | 'SERVICE' | 'TYRE' | 'BATTERY' | 'FITNESS' | 'ROAD_TAX' | 'FASTTAG' | 'ACCESSORIES' | 'GREASE_LUBRICANTS' | 'BREAKDOWN'
+  // AdBlue / DEF — its own consumable, never folded into FUEL.
+  | 'ADBLUE';
 export type VehicleExpenseApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type FuelType = 'DIESEL' | 'PETROL' | 'CNG' | 'OTHER';
 

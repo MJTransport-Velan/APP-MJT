@@ -8,40 +8,74 @@
             {{ formatCurrency(store.account?.currentBalance ?? 0) }}
           </div>
           <div class="text-caption text-medium-emphasis mt-1">
-            One prepaid account behind every fuel card — recharge it once and any card spends from this same balance.
+            One prepaid account behind every fuel card — recharge it once and any card
+            spends from this same balance.
           </div>
         </div>
         <div v-if="canEdit" class="d-flex flex-wrap ga-2">
-          <AppBtn color="success" variant="tonal" prepend-icon="mdi-cash-plus" @click="openRechargeDialog">Recharge</AppBtn>
-          <AppBtn variant="tonal" prepend-icon="mdi-cash-refund" @click="openRefundDialog">Refund</AppBtn>
-          <AppBtn variant="tonal" prepend-icon="mdi-tune" @click="openAdjustDialog">Adjust Balance</AppBtn>
+          <AppBtn
+            color="success"
+            variant="tonal"
+            prepend-icon="mdi-cash-plus"
+            @click="openRechargeDialog"
+            >Recharge</AppBtn
+          >
+          <AppBtn variant="tonal" prepend-icon="mdi-cash-refund" @click="openRefundDialog"
+            >Refund</AppBtn
+          >
+          <AppBtn variant="tonal" prepend-icon="mdi-tune" @click="openAdjustDialog"
+            >Adjust Balance</AppBtn
+          >
         </div>
       </div>
     </AppCard>
 
     <AppAlert type="info" variant="tonal" density="compact" class="mb-4">
-      A fill is charged to this account by recording it under <strong>Fuel Entries</strong> with the billing method set
-      to <strong>Fuel Card</strong> or <strong>OTP</strong> — the balance drops by that fill's amount automatically. A
-      fill the driver paid in cash or UPI (<strong>Direct Payment</strong>) never touches this balance.
+      A fill is charged to this account by recording it under
+      <strong>Fuel Entries</strong> with the billing method set to
+      <strong>Fuel Card</strong> or <strong>OTP</strong> — the balance drops by that
+      fill's amount automatically. A fill the driver paid in cash or UPI (<strong
+        >Direct Payment</strong
+      >) never touches this balance.
     </AppAlert>
 
     <div v-if="summary" class="row mb-2">
       <div class="col-12 col-sm-6 col-md-3">
-        <ProfitCard label="Total Recharged" :value="summary.totalRecharge" icon="mdi-cash-plus" color="success" />
+        <ProfitCard
+          label="Total Recharged"
+          :value="summary.totalRecharge"
+          icon="mdi-cash-plus"
+          color="success"
+        />
       </div>
       <div class="col-12 col-sm-6 col-md-3">
-        <ProfitCard label="Spent on Cards" :value="summary.totalUsage" icon="mdi-credit-card-outline" color="warning" />
+        <ProfitCard
+          label="Spent on Cards"
+          :value="summary.totalUsage"
+          icon="mdi-credit-card-outline"
+          color="warning"
+        />
       </div>
       <div class="col-12 col-sm-6 col-md-3">
-        <ProfitCard label="Refunded Back" :value="summary.totalRefund" icon="mdi-cash-refund" color="info" />
+        <ProfitCard
+          label="Refunded Back"
+          :value="summary.totalRefund"
+          icon="mdi-cash-refund"
+          color="info"
+        />
       </div>
       <div class="col-12 col-sm-6 col-md-3">
-        <ProfitCard label="Adjustments" :value="summary.totalAdjustment" icon="mdi-tune" color="primary" />
+        <ProfitCard
+          label="Adjustments"
+          :value="summary.totalAdjustment"
+          icon="mdi-tune"
+          color="primary"
+        />
       </div>
     </div>
 
     <!-- ------------------------------------------------------ transactions -->
-    <AppCard class="pa-4 mb-4">
+    <AppCard class="pa-4 mb-4" mt-4>
       <div class="text-subtitle-2 mb-3">Account Transactions</div>
       <div class="d-flex flex-wrap ga-2 mb-3">
         <div style="width: 200px">
@@ -67,13 +101,31 @@
           />
         </div>
         <div style="width: 170px">
-          <AppSelect v-model="txnTypeFilter" :items="typeOptions" item-title="label" item-value="value" label="Type" clearable @update:model-value="onTxnFilterChanged" />
+          <AppSelect
+            v-model="txnTypeFilter"
+            :items="typeOptions"
+            item-title="label"
+            item-value="value"
+            label="Type"
+            clearable
+            @update:model-value="onTxnFilterChanged"
+          />
         </div>
         <div style="width: 160px">
-          <AppTextField v-model="txnFromFilter" type="date" label="From" @update:model-value="onTxnFilterChanged" />
+          <AppTextField
+            v-model="txnFromFilter"
+            type="date"
+            label="From"
+            @update:model-value="onTxnFilterChanged"
+          />
         </div>
         <div style="width: 160px">
-          <AppTextField v-model="txnToFilter" type="date" label="To" @update:model-value="onTxnFilterChanged" />
+          <AppTextField
+            v-model="txnToFilter"
+            type="date"
+            label="To"
+            @update:model-value="onTxnFilterChanged"
+          />
         </div>
       </div>
 
@@ -93,25 +145,55 @@
         <template #item.amount="{ item }">
           <span :class="signedClass(item as any)">{{ signedAmount(item as any) }}</span>
         </template>
-        <template #item.fuelCard="{ item }">{{ (item as any).fuelCard?.cardNumber || '—' }}</template>
-        <template #item.vehicle="{ item }">{{ (item as any).vehicle?.registrationNumber || '—' }}</template>
+        <template
+          #item.fuelCard="{ item }"
+          >{{ (item as any).fuelCard?.cardNumber || '—' }}</template
+        >
+        <template
+          #item.vehicle="{ item }"
+          >{{ (item as any).vehicle?.registrationNumber || '—' }}</template
+        >
         <template #item.source="{ item }">
           <span v-if="(item as any).type === 'USAGE'" class="text-caption">
             Fuel entry{{ (item as any).fuelEntry?.location ? ` — ${(item as any).fuelEntry.location}` : '' }}
           </span>
-          <span v-else class="text-caption">{{ (item as any).referenceNumber || (item as any).remarks || '—' }}</span>
+          <span
+            v-else
+            class="text-caption"
+            >{{ (item as any).referenceNumber || (item as any).remarks || '—' }}</span
+          >
         </template>
-        <template #item.transactionDate="{ item }">{{ formatDate((item as any).transactionDate) }}</template>
+        <template
+          #item.transactionDate="{ item }"
+          >{{ formatDate((item as any).transactionDate) }}</template
+        >
         <template #item.actions="{ item }">
           <!--
             A USAGE row belongs to the fuel entry that was billed to a card,
             so it is corrected there, on the Fuel Entries tab — editing the
             drawdown on its own would desync it from the fill behind it.
           -->
-          <span v-if="(item as any).type === 'USAGE'" class="text-caption text-medium-emphasis">from a fuel entry</span>
+          <span
+            v-if="(item as any).type === 'USAGE'"
+            class="text-caption text-medium-emphasis"
+            >from a fuel entry</span
+          >
           <template v-else-if="canEdit">
-            <AppBtn icon="mdi-pencil-outline" variant="text" size="small" title="Edit" @click="openEditDialog(item as any)" />
-            <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete" @click="openDeleteDialog(item as any)" />
+            <AppBtn
+              icon="mdi-pencil-outline"
+              variant="text"
+              size="small"
+              title="Edit"
+              @click="openEditDialog(item as any)"
+            />
+            <AppBtn
+              icon="mdi-delete-outline"
+              variant="text"
+              size="small"
+              color="error"
+              title="Delete"
+              @click="openDeleteDialog(item as any)"
+            />
           </template>
         </template>
       </MasterDataTable>
@@ -130,7 +212,8 @@
         <AppTable density="compact">
           <thead>
             <tr>
-              <th>Card</th><th>Issued To</th>
+              <th>Card</th>
+              <th>Issued To</th>
               <th class="text-right">Fills</th>
               <th class="text-right">Total Spent</th>
             </tr>
@@ -138,7 +221,7 @@
           <tbody>
             <tr v-for="row in summary.cardUsage" :key="row.fuelCardId || 'unassigned'">
               <td>{{ row.cardNumber }}</td>
-              <td>{{ row.issuedTo || '—' }}</td>
+              <td>{{ row.issuedTo || "—" }}</td>
               <td class="text-right">{{ row.transactionCount }}</td>
               <td class="text-right">{{ formatCurrency(row.totalUsage) }}</td>
             </tr>
@@ -148,12 +231,23 @@
     </AppCard>
 
     <!-- ---------------------------------------------------------- recharge -->
-    <MasterFormDialog v-model="rechargeDialog" title="Recharge Diesel Card Account" :loading="submitting" @submit="onRecharge">
+    <MasterFormDialog
+      v-model="rechargeDialog"
+      title="Recharge Diesel Card Account"
+      :loading="submitting"
+      @submit="onRecharge"
+    >
       <AppAlert type="info" variant="tonal" density="compact" class="mb-3">
-        The money leaves the Bank/Cash account you choose and lands on the shared card balance, where any card can
-        spend it. No card is picked here on purpose.
+        The money leaves the Bank/Cash account you choose and lands on the shared card
+        balance, where any card can spend it. No card is picked here on purpose.
       </AppAlert>
-      <AppTextField v-model.number="rechargeForm.amount" type="number" label="Amount" :error-messages="formErrors.amount" class="mb-2" />
+      <AppTextField
+        v-model.number="rechargeForm.amount"
+        type="number"
+        label="Amount"
+        :error-messages="formErrors.amount"
+        class="mb-2"
+      />
       <AppSelect
         v-model="rechargeForm.fundAccountKey"
         :items="fundAccountOptions"
@@ -163,35 +257,108 @@
         :error-messages="formErrors.fundAccountKey"
         class="mb-2"
       />
-      <AppTextField v-model="rechargeForm.transactionDate" type="date" label="Date" class="mb-2" />
-      <AppTextField v-model="rechargeForm.referenceNumber" label="Reference No. (optional)" class="mb-2" />
+      <AppTextField
+        v-model="rechargeForm.transactionDate"
+        type="date"
+        label="Date"
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="rechargeForm.referenceNumber"
+        label="Reference No. (optional)"
+        class="mb-2"
+      />
       <AppTextField v-model="rechargeForm.remarks" label="Remarks (optional)" />
     </MasterFormDialog>
 
     <!-- ------------------------------------------------------------ refund -->
-    <MasterFormDialog v-model="refundDialog" title="Record Card Refund" :loading="submitting" @submit="onRefund">
+    <MasterFormDialog
+      v-model="refundDialog"
+      title="Record Card Refund"
+      :loading="submitting"
+      @submit="onRefund"
+    >
       <AppAlert type="info" variant="tonal" density="compact" class="mb-3">
-        Money the fuel company put back on the card account — a reversed swipe or a credit. It adds to the shared
-        balance and does not touch any Bank/Cash account.
+        Money the fuel company put back on the card account — a reversed swipe or a
+        credit. It adds to the shared balance and does not touch any Bank/Cash account.
       </AppAlert>
-      <AppTextField v-model.number="refundForm.amount" type="number" label="Refund Amount" :error-messages="formErrors.amount" class="mb-2" />
-      <AppSelect v-model="refundForm.fuelCardId" :items="cardOptions" item-title="cardNumber" item-value="id" label="Card (optional)" clearable class="mb-2" />
-      <AppSelect v-model="refundForm.vehicleId" :items="vehicleOptions" item-title="registrationNumber" item-value="id" label="Truck (optional)" clearable class="mb-2" />
-      <AppTextField v-model="refundForm.transactionDate" type="date" label="Date" class="mb-2" />
-      <AppTextField v-model="refundForm.referenceNumber" label="Reference No. (optional)" class="mb-2" />
+      <AppTextField
+        v-model.number="refundForm.amount"
+        type="number"
+        label="Refund Amount"
+        :error-messages="formErrors.amount"
+        class="mb-2"
+      />
+      <AppSelect
+        v-model="refundForm.fuelCardId"
+        :items="cardOptions"
+        item-title="cardNumber"
+        item-value="id"
+        label="Card (optional)"
+        clearable
+        class="mb-2"
+      />
+      <AppSelect
+        v-model="refundForm.vehicleId"
+        :items="vehicleOptions"
+        item-title="registrationNumber"
+        item-value="id"
+        label="Truck (optional)"
+        clearable
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="refundForm.transactionDate"
+        type="date"
+        label="Date"
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="refundForm.referenceNumber"
+        label="Reference No. (optional)"
+        class="mb-2"
+      />
       <AppTextField v-model="refundForm.remarks" label="Remarks (optional)" />
     </MasterFormDialog>
 
     <!-- ------------------------------------------------------------ adjust -->
-    <MasterFormDialog v-model="adjustDialog" title="Adjust Card Account Balance" :loading="submitting" @submit="onAdjust">
+    <MasterFormDialog
+      v-model="adjustDialog"
+      title="Adjust Card Account Balance"
+      :loading="submitting"
+      @submit="onAdjust"
+    >
       <AppAlert type="warning" variant="tonal" density="compact" class="mb-3">
-        Use this only to line the balance up with the fuel company's own statement. It moves the balance without any
-        fill or payment behind it, so say why in the remarks.
+        Use this only to line the balance up with the fuel company's own statement. It
+        moves the balance without any fill or payment behind it, so say why in the
+        remarks.
       </AppAlert>
-      <AppTextField v-model.number="adjustForm.amount" type="number" label="Amount" :error-messages="formErrors.amount" class="mb-2" />
-      <AppSelect v-model="adjustForm.direction" :items="directionOptions" item-title="label" item-value="value" label="Direction" class="mb-2" />
-      <AppTextField v-model="adjustForm.transactionDate" type="date" label="Date" class="mb-2" />
-      <AppTextField v-model="adjustForm.remarks" label="Remarks (required)" :error-messages="formErrors.remarks" />
+      <AppTextField
+        v-model.number="adjustForm.amount"
+        type="number"
+        label="Amount"
+        :error-messages="formErrors.amount"
+        class="mb-2"
+      />
+      <AppSelect
+        v-model="adjustForm.direction"
+        :items="directionOptions"
+        item-title="label"
+        item-value="value"
+        label="Direction"
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="adjustForm.transactionDate"
+        type="date"
+        label="Date"
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="adjustForm.remarks"
+        label="Remarks (required)"
+        :error-messages="formErrors.remarks"
+      />
     </MasterFormDialog>
 
     <!-- -------------------------------------------------------------- edit -->
@@ -201,8 +368,19 @@
       :loading="submitting"
       @submit="onEditSubmit"
     >
-      <AppTextField v-model.number="editForm.amount" type="number" label="Amount" :error-messages="formErrors.amount" class="mb-2" />
-      <AppTextField v-model="editForm.transactionDate" type="date" label="Date" class="mb-2" />
+      <AppTextField
+        v-model.number="editForm.amount"
+        type="number"
+        label="Amount"
+        :error-messages="formErrors.amount"
+        class="mb-2"
+      />
+      <AppTextField
+        v-model="editForm.transactionDate"
+        type="date"
+        label="Date"
+        class="mb-2"
+      />
       <AppSelect
         v-if="editTarget?.type === 'RECHARGE'"
         v-model="editForm.fundAccountKey"
@@ -214,13 +392,36 @@
         class="mb-2"
       />
       <template v-else-if="editTarget?.type === 'REFUND'">
-        <AppSelect v-model="editForm.fuelCardId" :items="cardOptions" item-title="cardNumber" item-value="id" label="Card (optional)" clearable class="mb-2" />
-        <AppSelect v-model="editForm.vehicleId" :items="vehicleOptions" item-title="registrationNumber" item-value="id" label="Truck (optional)" clearable class="mb-2" />
+        <AppSelect
+          v-model="editForm.fuelCardId"
+          :items="cardOptions"
+          item-title="cardNumber"
+          item-value="id"
+          label="Card (optional)"
+          clearable
+          class="mb-2"
+        />
+        <AppSelect
+          v-model="editForm.vehicleId"
+          :items="vehicleOptions"
+          item-title="registrationNumber"
+          item-value="id"
+          label="Truck (optional)"
+          clearable
+          class="mb-2"
+        />
       </template>
-      <AppTextField v-if="editTarget?.type !== 'ADJUSTMENT'" v-model="editForm.referenceNumber" label="Reference No. (optional)" class="mb-2" />
+      <AppTextField
+        v-if="editTarget?.type !== 'ADJUSTMENT'"
+        v-model="editForm.referenceNumber"
+        label="Reference No. (optional)"
+        class="mb-2"
+      />
       <AppTextField
         v-model="editForm.remarks"
-        :label="editTarget?.type === 'ADJUSTMENT' ? 'Remarks (required)' : 'Remarks (optional)'"
+        :label="
+          editTarget?.type === 'ADJUSTMENT' ? 'Remarks (required)' : 'Remarks (optional)'
+        "
         :error-messages="formErrors.remarks"
       />
     </MasterFormDialog>

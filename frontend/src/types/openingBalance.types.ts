@@ -106,6 +106,10 @@ export interface MigrationSummary {
   receivables: { total: number; count: number };
   payables: { total: number; count: number };
   loans: { openingOutstanding: number; currentOutstanding: number; originalPrincipal: number; count: number };
+  /** Money already lent out at migration — an asset. `given` is what was carried
+   *  over and counts towards totalAssets; `recoverable` is what is still expected
+   *  back today, after repayments received since and excluding write-offs. */
+  loansGiven: { given: number; recoverable: number; count: number };
   ownerFunds: { capital: number; ownerLoan: number; otherLiability: number; unclassified: number; total: number };
   other: { otherAssets: number; otherLiabilities: number; otherEquity: number };
   statusCounts: Record<string, number>;

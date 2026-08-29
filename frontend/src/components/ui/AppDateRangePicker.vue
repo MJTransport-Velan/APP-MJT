@@ -27,12 +27,14 @@ import AppTextField from './AppTextField.vue';
 defineProps<{ from: string | null; to: string | null }>();
 const emit = defineEmits<{ 'update:from': [string]; 'update:to': [string]; change: [] }>();
 
-function onFrom(value: string) {
-  emit('update:from', value);
+// AppTextField's emit is widened for `.number` call sites; a date field only
+// ever hands back a string, so narrow it here rather than leaking the union out.
+function onFrom(value: string | number | undefined) {
+  emit('update:from', String(value ?? ''));
   emit('change');
 }
-function onTo(value: string) {
-  emit('update:to', value);
+function onTo(value: string | number | undefined) {
+  emit('update:to', String(value ?? ''));
   emit('change');
 }
 </script>

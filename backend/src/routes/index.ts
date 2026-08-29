@@ -24,6 +24,8 @@ import fleetSimpleRoutes from './fleet-simple.routes';
 import vehicleFleetRoutes from './vehicle-fleet.routes';
 import vehicleAssignmentRoutes from './vehicle-assignment.routes';
 import fuelEntryRoutes from './fuel-entry.routes';
+import adBlueEntryRoutes from './adblue-entry.routes';
+import adBlueStockRoutes from './adblue-stock.routes';
 import maintenanceRoutes from './maintenance.routes';
 import sparePartUsageRoutes from './spare-part-usage.routes';
 import vehicleExpenseRoutes from './vehicle-expense.routes';
@@ -71,6 +73,7 @@ import assetCategoryRoutes from './asset-category.routes';
 import fixedAssetRoutes from './fixed-asset.routes';
 import loanRoutes from './loan.routes';
 import openingBalanceRoutes from './opening-balance.routes';
+import loanGivenRoutes from './loan-given.routes';
 import fastTagRoutes from './fasttag.routes';
 import fuelCardAccountRoutes from './fuel-card-account.routes';
 import profitabilityReportRoutes from './profitability-report.routes';
@@ -134,6 +137,10 @@ router.use('/fleet/dashboard', fleetDashboardRoutes);
 router.use('/fleet/vehicles', vehicleFleetRoutes); // status/compliance/documents/availability/timeline (extends Masters Vehicle)
 router.use('/fleet/assignments', vehicleAssignmentRoutes);
 router.use('/fleet/fuel-entries', fuelEntryRoutes);
+// AdBlue lives beside Diesel: the per-truck top-ups, and the shared yard
+// store the FROM_STOCK ones draw from.
+router.use('/fleet/adblue-entries', adBlueEntryRoutes);
+router.use('/fleet/adblue-stock', adBlueStockRoutes);
 router.use('/fleet/maintenance', maintenanceRoutes);
 router.use('/fleet/spare-part-usage', sparePartUsageRoutes);
 router.use('/fleet/expenses', vehicleExpenseRoutes);
@@ -221,6 +228,11 @@ router.use('/accounts/fuel-card-account', fuelCardAccountRoutes);
 // generated EMI schedules, and the payment flow that debits the fund
 // account and writes the matching Financial Entry automatically.
 router.use('/accounts/loans', loanRoutes);
+
+// Loans & Advances Given — the mirror of the above: money the business lent
+// OUT to a friend, a relative or anyone with no master record of their own.
+// An asset, so it never reaches Profit & Loss.
+router.use('/accounts/loans-given', loanGivenRoutes);
 
 // Opening Balance & Migration — the old system's closing position brought
 // in as this system's opening position. Nothing here is a transaction: no

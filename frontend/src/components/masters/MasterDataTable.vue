@@ -9,7 +9,7 @@
             prepend-inner-icon="mdi-magnify"
             clearable
             hide-details
-            @update:model-value="(v: string) => $emit('update:search', v)"
+            @update:model-value="(v: string | number | undefined) => $emit('update:search', String(v ?? ''))"
           />
         </div>
         <div v-if="$slots.filters" class="master-filter-row__filters">

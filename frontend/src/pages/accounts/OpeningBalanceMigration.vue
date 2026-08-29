@@ -57,6 +57,7 @@
         <AppTab value="bank-cash">Bank &amp; Cash</AppTab>
         <AppTab value="assets">Existing Assets</AppTab>
         <AppTab value="loans">Loans &amp; Liabilities</AppTab>
+        <AppTab value="loans-given">Loans Given</AppTab>
         <AppTab value="receivables">Receivables</AppTab>
         <AppTab value="payables">Payables</AppTab>
         <AppTab value="capital">Capital &amp; Owner Funds</AppTab>
@@ -232,6 +233,77 @@
           />
         </AppWindowItem>
 
+        <!-- ----------------------------------------------- Loans Given -->
+        <AppWindowItem value="loans-given">
+          <AppCard class="pa-4">
+            <div class="d-flex flex-wrap align-center justify-space-between mb-2 ga-2">
+              <div>
+                <div class="text-subtitle-2">Loans Given</div>
+                <p class="text-caption text-medium-emphasis mb-0">
+                  Money you had already lent out on the migration date — to a friend, a relative, or anyone with no
+                  master record. This is an asset, not an expense. Registering one here moves no money: your opening
+                  Bank/Cash balance already accounts for the cash having left.
+                </p>
+              </div>
+              <div class="d-flex ga-2">
+                <AppBtn size="small" variant="outlined" prepend-icon="mdi-open-in-new" @click="router.push('/accounts/loans-given')">
+                  Loans Given
+                </AppBtn>
+                <AppBtn size="small" color="primary" variant="tonal" prepend-icon="mdi-plus" @click="openLoanGivenDialog()">
+                  Register Opening Loan Given
+                </AppBtn>
+              </div>
+            </div>
+
+            <p v-if="openingLoansGiven.length === 0" class="text-caption text-medium-emphasis mb-0">
+              No opening loans given registered yet.
+            </p>
+            <div v-else class="tblwrap">
+              <AppTable density="compact">
+                <thead>
+                  <tr>
+                    <th>Reference</th><th>Given To</th><th>Contact</th><th>Given On</th><th>Expected Back</th>
+                    <th class="text-right">Amount at Migration</th>
+                    <th class="text-right">Repaid Since</th>
+                    <th class="text-right">Still Owed</th>
+                    <th>Status</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="loan in openingLoansGiven" :key="loan.id">
+                    <td>{{ loan.referenceNumber }}</td>
+                    <td>{{ loan.partyName }}</td>
+                    <td>{{ loan.partyContact || '—' }}</td>
+                    <td>{{ formatDate(loan.givenDate) }}</td>
+                    <td>{{ loan.expectedReturnDate ? formatDate(loan.expectedReturnDate) : '—' }}</td>
+                    <td class="text-right">{{ formatCurrency(loan.amount) }}</td>
+                    <td class="text-right">{{ formatCurrency(loan.totals.repaid) }}</td>
+                    <td class="text-right">{{ formatCurrency(loan.totals.outstanding) }}</td>
+                    <td>
+                      <AppChip
+                        size="x-small"
+                        :color="loan.status === 'WRITTEN_OFF' ? 'error' : loan.status === 'REPAID' ? 'success' : loan.totals.isOverdue ? 'warning' : 'info'"
+                        variant="tonal"
+                      >
+                        {{ LOAN_GIVEN_STATUS_LABELS[loan.status] }}
+                      </AppChip>
+                    </td>
+                    <td class="text-right text-no-wrap">
+                      <AppBtn icon="mdi-pencil-outline" variant="text" size="small" title="Edit opening loan given" @click="openLoanGivenDialog(loan)" />
+                      <AppBtn icon="mdi-delete-outline" variant="text" size="small" color="error" title="Delete opening loan given" @click="onRemoveLoanGiven(loan)" />
+                    </td>
+                  </tr>
+                </tbody>
+              </AppTable>
+              <p class="text-caption text-medium-emphasis mt-2 mb-0">
+                Record repayments on the Loans Given screen — money coming back after the migration date is real money
+                and credits the account it lands in.
+              </p>
+            </div>
+          </AppCard>
+        </AppWindowItem>
+
         <!-- ----------------------------------------------- Receivables -->
         <AppWindowItem value="receivables">
           <OpeningBalanceTable
@@ -388,6 +460,15 @@
                     <span>{{ formatCurrency(summary.assets.bookValue) }}</span>
                   </div>
                   <div class="bs-row"><span>Customer Outstanding ({{ summary.receivables.count }})</span><span>{{ formatCurrency(summary.receivables.total) }}</span></div>
+                  <div class="bs-row">
+                    <span>
+                      Loans Given ({{ summary.loansGiven.count }})
+                      <span v-if="summary.loansGiven.recoverable !== summary.loansGiven.given" class="text-caption text-medium-emphasis">
+                        — {{ formatCurrency(summary.loansGiven.recoverable) }} still recoverable today
+                      </span>
+                    </span>
+                    <span>{{ formatCurrency(summary.loansGiven.given) }}</span>
+                  </div>
                   <div class="bs-row"><span>Other Opening Assets</span><span>{{ formatCurrency(summary.other.otherAssets) }}</span></div>
                   <div class="bs-row font-weight-bold"><span>Total Opening Assets</span><span>{{ formatCurrency(summary.totals.totalAssets) }}</span></div>
                 </AppCard>
@@ -625,6 +706,40 @@
         <AppSelect v-model="loanForm.fundAccountKey" :items="fundAccountOptions" item-title="label" item-value="key" label="EMI Paid From" :error-messages="loanErrors.fundAccountKey" class="mb-2 flex-1-1" />
       </div>
     </MasterFormDialog>
+
+    <!-- --------------------------------------- opening loan given dialog -->
+    <MasterFormDialog
+      v-model="loanGivenDialog"
+      :title="loanGivenEditTarget ? 'Edit Opening Loan Given' : 'Register Opening Loan Given'"
+      :loading="submitting"
+      @submit="onSubmitLoanGiven"
+    >
+      <AppAlert type="info" variant="tonal" density="compact" class="mb-3">
+        No Bank or Cash balance is touched by this. The money left before the migration date, so your opening
+        balances already account for it — this only records that it is still owed back to you.
+      </AppAlert>
+      <AppTextField v-model="loanGivenForm.partyName" label="Given To" placeholder="Name of the person or firm" :error-messages="loanGivenErrors.partyName" class="mb-2" />
+      <AppTextField v-model="loanGivenForm.partyContact" label="Contact (optional)" class="mb-2" />
+      <div class="d-flex ga-2">
+        <AppTextField v-model.number="loanGivenForm.amount" type="number" label="Still Owed on Migration Date" :error-messages="loanGivenErrors.amount" class="mb-2 flex-1-1" />
+        <AppSelect
+          v-model="loanGivenForm.fundAccountKey"
+          :items="fundAccountOptions"
+          item-title="label"
+          item-value="key"
+          label="Originally Paid From"
+          hint="For reference only — no money moves"
+          persistent-hint
+          :error-messages="loanGivenErrors.fundAccountKey"
+          class="mb-2 flex-1-1"
+        />
+      </div>
+      <div class="d-flex ga-2">
+        <AppTextField v-model="loanGivenForm.givenDate" type="date" label="Date Given" :error-messages="loanGivenErrors.givenDate" class="mb-2 flex-1-1" />
+        <AppTextField v-model="loanGivenForm.expectedReturnDate" type="date" label="Expected Back (optional)" class="mb-2 flex-1-1" />
+      </div>
+      <AppTextarea v-model="loanGivenForm.remarks" label="Remarks (optional)" rows="2" />
+    </MasterFormDialog>
   </div>
 </template>
 
@@ -634,9 +749,10 @@
  *
  * Every figure on this screen is a POSITION on the migration date, never a
  * transaction: no receipt, payment, income or expense is created anywhere
- * here. Opening assets and opening loans are registered in the Asset
- * Register and the Loan Register respectively (flagged as "opening"), so
- * there is one place for each kind of record rather than two.
+ * here. Opening assets, opening loans and opening loans given are registered
+ * in the Asset Register, the Loan Register and the Loans Given register
+ * respectively (each flagged as "opening"), so there is one place for each
+ * kind of record rather than two.
  */
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -644,6 +760,7 @@ import { useOpeningBalanceStore } from '@/stores/accounts/openingBalance';
 import { useAssetCategoryStore } from '@/stores/accounts/vehicleAssets';
 import { fixedAssetApi } from '@/services/accounts/vehicleAssets';
 import { loanApi } from '@/services/accounts/loans';
+import { loanGivenApi } from '@/services/accounts/loansGiven';
 import { adminCompanyApi } from '@/services/admin-company.service';
 import { useSupplierStore, useVehicleStore } from '@/stores/masters';
 import { useBankAccountStore, useCashAccountStore } from '@/stores/banking';
@@ -674,6 +791,7 @@ import {
   type OpeningBalanceEntry,
 } from '@/types/openingBalance.types';
 import { LOAN_TYPE_LABELS, type Loan, type LoanType } from '@/types/loans.types';
+import { LOAN_GIVEN_STATUS_LABELS, type LoanGiven } from '@/types/loansGiven.types';
 import type { FixedAsset } from '@/types/phase6.types';
 
 const capitalPartnerApi = createMasterApi<{ id: string; name: string }>('/masters/capital-partners');
@@ -1212,14 +1330,126 @@ async function onRemoveLoan(loan: Loan) {
   }
 }
 
+// ---------------------------------------------------- opening loans given
+// Money already lent out at migration. Registered against the real Loans
+// Given register with origin=OPENING — not as an OTHER_ASSET row — so it
+// keeps repayment tracking and write-off, and appears on the Balance Sheet's
+// own "Loans Given" line rather than as a static opening figure.
+const openingLoansGiven = ref<LoanGiven[]>([]);
+const loanGivenDialog = ref(false);
+const loanGivenEditTarget = ref<LoanGiven | null>(null);
+const loanGivenForm = reactive({
+  partyName: '',
+  partyContact: '',
+  amount: undefined as number | undefined,
+  givenDate: '',
+  expectedReturnDate: '',
+  fundAccountKey: '',
+  remarks: '',
+});
+const loanGivenErrors = reactive({ partyName: '', amount: '', givenDate: '', fundAccountKey: '' });
+
+function openLoanGivenDialog(loan?: LoanGiven) {
+  loanGivenEditTarget.value = loan ?? null;
+  Object.assign(
+    loanGivenForm,
+    loan
+      ? {
+          partyName: loan.partyName,
+          partyContact: loan.partyContact || '',
+          amount: loan.amount,
+          givenDate: String(loan.givenDate).slice(0, 10),
+          expectedReturnDate: loan.expectedReturnDate ? String(loan.expectedReturnDate).slice(0, 10) : '',
+          fundAccountKey: `${loan.fundAccountType}:${loan.fundAccountId}`,
+          remarks: loan.remarks || '',
+        }
+      : {
+          partyName: '',
+          partyContact: '',
+          amount: undefined,
+          // The money went out on or before the migration date, so that is the
+          // sensible starting point rather than today.
+          givenDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : '',
+          expectedReturnDate: '',
+          fundAccountKey: '',
+          remarks: '',
+        }
+  );
+  Object.assign(loanGivenErrors, { partyName: '', amount: '', givenDate: '', fundAccountKey: '' });
+  loanGivenDialog.value = true;
+}
+
+async function onSubmitLoanGiven() {
+  loanGivenErrors.partyName = loanGivenForm.partyName.trim() ? '' : 'Who the money was given to is required';
+  loanGivenErrors.amount = loanGivenForm.amount && loanGivenForm.amount > 0 ? '' : 'Enter what is still owed';
+  loanGivenErrors.givenDate = loanGivenForm.givenDate ? '' : 'Enter the date the money was given';
+  loanGivenErrors.fundAccountKey = loanGivenForm.fundAccountKey ? '' : 'Choose the account it originally came from';
+  if (Object.values(loanGivenErrors).some(Boolean)) return;
+
+  const [fundAccountType, fundAccountId] = loanGivenForm.fundAccountKey.split(':');
+  submitting.value = true;
+  try {
+    if (loanGivenEditTarget.value) {
+      await loanGivenApi.update(loanGivenEditTarget.value.id, {
+        partyName: loanGivenForm.partyName.trim(),
+        partyContact: loanGivenForm.partyContact.trim() || null,
+        amount: loanGivenForm.amount,
+        givenDate: loanGivenForm.givenDate,
+        expectedReturnDate: loanGivenForm.expectedReturnDate || null,
+        fundAccountType,
+        fundAccountId,
+        remarks: loanGivenForm.remarks.trim() || null,
+      });
+      success('Opening loan given updated');
+    } else {
+      await loanGivenApi.create({
+        partyName: loanGivenForm.partyName.trim(),
+        partyContact: loanGivenForm.partyContact.trim() || undefined,
+        amount: loanGivenForm.amount,
+        givenDate: loanGivenForm.givenDate,
+        expectedReturnDate: loanGivenForm.expectedReturnDate || undefined,
+        fundAccountType,
+        fundAccountId,
+        origin: 'OPENING',
+        openingAsOfDate: migration.value ? String(migration.value.migrationDate).slice(0, 10) : undefined,
+        remarks: loanGivenForm.remarks.trim() || undefined,
+      });
+      success('Opening loan given registered — no account was debited');
+    }
+    loanGivenDialog.value = false;
+    await reload();
+  } catch (err) {
+    error(
+      extractErrorMessage(
+        err,
+        loanGivenEditTarget.value ? 'Failed to update the opening loan given' : 'Failed to register the opening loan given'
+      )
+    );
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function onRemoveLoanGiven(loan: LoanGiven) {
+  try {
+    await loanGivenApi.remove(loan.id);
+    success('Opening loan given deleted');
+    await reload();
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to delete the opening loan given'));
+  }
+}
+
 // -------------------------------------------------------------------- load
 async function loadRegisters() {
-  const [assets, loans] = await Promise.all([
+  const [assets, loans, loansGiven] = await Promise.all([
     fixedAssetApi.list({ assetOrigin: 'OPENING', pageSize: 200 }),
     loanApi.list({ origin: 'OPENING', pageSize: 200 }),
+    loanGivenApi.list({ origin: 'OPENING', pageSize: 200 }),
   ]);
   openingAssets.value = assets.data.data;
   openingLoans.value = loans.data.data;
+  openingLoansGiven.value = loansGiven.data.data;
 }
 
 async function reload() {

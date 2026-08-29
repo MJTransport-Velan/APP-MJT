@@ -7,7 +7,7 @@
           label="Search"
           prepend-inner-icon="mdi-magnify"
           clearable
-          @update:model-value="(v: string) => update('search', v)"
+          @update:model-value="(v: string | number | undefined) => update('search', String(v ?? ''))"
         />
       </div>
 

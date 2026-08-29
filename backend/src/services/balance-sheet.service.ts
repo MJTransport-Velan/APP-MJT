@@ -33,6 +33,7 @@
  *     approximation, not an exact replay.
  */
 import { prisma } from '../config/db';
+import { loanGivenRepository } from '../repositories/loan-given.repository';
 import { AppError } from '../middlewares/error.middleware';
 import { financialStateService } from './financial-state.service';
 import { openingBalanceService } from './opening-balance.service';
@@ -176,6 +177,28 @@ async function employeeAdvancesRecoverable(cutoff: Date): Promise<{ rows: NamedA
   const nameMap = new Map(employees.map((e) => [e.id, `${e.name} (${e.employeeCode})`]));
   const rows = grouped
     .map((g) => ({ id: g.employeeId, name: nameMap.get(g.employeeId) ?? 'Unknown', amount: round2(Number(g._sum.amount ?? 0)) }))
+    .filter((r) => r.amount > EPS)
+    .sort((a, b) => b.amount - a.amount);
+  return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)) };
+}
+
+/**
+ * Money lent out to friends, relatives and anyone else with no master
+ * record — an asset, reported on its own line rather than folded into
+ * Advances, because it is lending rather than an advance against work.
+ *
+ * Outstanding is amount − repayments received by the cutoff, never a stored
+ * figure. Written-off loans are excluded at the query: the whole point of
+ * writing one off is that the Balance Sheet stops claiming it is coming back.
+ */
+async function loansGivenRecoverable(cutoff: Date): Promise<{ rows: NamedAmountRow[]; total: number }> {
+  const loans = await loanGivenRepository.findOutstandingAsOf(cutoff);
+  const rows = loans
+    .map((l) => ({
+      id: l.id,
+      name: `${l.partyName} (${l.referenceNumber})`,
+      amount: round2(Number(l.amount) - l.repayments.reduce((s, r) => s + Number(r.amount), 0)),
+    }))
     .filter((r) => r.amount > EPS)
     .sort((a, b) => b.amount - a.amount);
   return { rows, total: round2(rows.reduce((s, r) => s + r.amount, 0)) };
@@ -384,18 +407,20 @@ export const balanceSheetService = {
   async get(asOfDateInput?: string) {
     const { dateStr, cutoff, isToday } = resolveAsOf(asOfDateInput);
 
-    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, ownerFunds, loans, openingOther] = await Promise.all([
-      financialStateService.bankAndCashState(undefined),
-      customerBreakdown(cutoff),
-      supplierBreakdown(cutoff),
-      driverAdvancesRecoverable(cutoff),
-      employeeAdvancesRecoverable(cutoff),
-      fixedAssetsBreakdown(cutoff),
-      driverPayable(cutoff),
-      ownerFundsBreakdown(cutoff),
-      loansBreakdown(cutoff),
-      openingBalanceService.openingOther(cutoff),
-    ]);
+    const [bankCash, customerRows, supplierRows, driverAdv, employeeAdv, fixedAssets, driverPay, ownerFunds, loans, openingOther, loansGiven] =
+      await Promise.all([
+        financialStateService.bankAndCashState(undefined),
+        customerBreakdown(cutoff),
+        supplierBreakdown(cutoff),
+        driverAdvancesRecoverable(cutoff),
+        employeeAdvancesRecoverable(cutoff),
+        fixedAssetsBreakdown(cutoff),
+        driverPayable(cutoff),
+        ownerFundsBreakdown(cutoff),
+        loansBreakdown(cutoff),
+        openingBalanceService.openingOther(cutoff),
+        loansGivenRecoverable(cutoff),
+      ]);
 
     const customerReceivable = customerRows.filter((r) => r.net > EPS);
     const customerAdvance = customerRows
@@ -433,7 +458,11 @@ export const balanceSheetService = {
       bank: round2(bankCash.totalBankBalance),
       receivables: totalCustomerReceivable,
       advances: advancesRecoverable,
-      total: round2(bankAndCash + totalCustomerReceivable + advancesRecoverable),
+      // Its own line, not folded into Advances: an advance is money paid
+      // against work still to come, this is money lent that is simply owed
+      // back. Reading them as one figure hides both.
+      loansGiven: loansGiven.total,
+      total: round2(bankAndCash + totalCustomerReceivable + advancesRecoverable + loansGiven.total),
     };
     const assets = {
       fixedAssets: fixedAssetsGroup,
@@ -549,6 +578,7 @@ export const balanceSheetService = {
         supplierAdvances: supplierAdvance.sort((a, b) => b.amount - a.amount),
         driverAdvances: driverAdv.rows,
         employeeAdvances: employeeAdv.rows,
+        loansGiven: loansGiven.rows,
         driverPayables: driverPay.rows,
         employeePayables: [] as NamedAmountRow[],
         fixedAssets: fixedAssets.rows,

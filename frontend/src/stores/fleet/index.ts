@@ -4,11 +4,19 @@ import {
   vehicleFleetApi,
   vehicleAssignmentApi,
   fuelEntryApi,
+  adBlueEntryApi,
+  adBlueStockApi,
   maintenanceApi,
   sparePartUsageApi,
   vehicleExpenseApi,
   fleetDashboardApi,
 } from '@/services/fleet';
+import type {
+  AdBlueEntry,
+  AdBlueStock,
+  AdBlueStockSummary,
+  AdBlueStockTransaction,
+} from '@/types/adBlue.types';
 import type {
   FleetVehicle,
   VehicleTracking,
@@ -176,6 +184,102 @@ export const useFuelEntryStore = defineStore('fleetFuelEntries', {
     async advanceBalance(advanceId: string) {
       const response = await fuelEntryApi.advanceBalance(advanceId);
       return response.data.data;
+    },
+  },
+});
+
+export const useAdBlueEntryStore = defineStore('fleetAdBlueEntries', {
+  state: () => ({
+    items: [] as AdBlueEntry[],
+    meta: null as PaginationMeta | null,
+    loading: false,
+  }),
+  actions: {
+    async fetchList(params: Record<string, unknown> = {}) {
+      this.loading = true;
+      try {
+        const response = await adBlueEntryApi.list(params);
+        this.items = response.data.data;
+        this.meta = response.data.meta;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async create(payload: Record<string, unknown>) {
+      const response = await adBlueEntryApi.create(payload);
+      return response.data.data;
+    },
+    async update(id: string, payload: Record<string, unknown>) {
+      const response = await adBlueEntryApi.update(id, payload);
+      return response.data.data;
+    },
+    async remove(id: string) {
+      await adBlueEntryApi.remove(id);
+    },
+    async uploadBill(id: string, file: File) {
+      const response = await adBlueEntryApi.uploadBill(id, file);
+      return response.data.data;
+    },
+    async summary(params: Record<string, unknown> = {}) {
+      const response = await adBlueEntryApi.summary(params);
+      return response.data.data;
+    },
+    async vehicleSummary(vehicleId: string, params: Record<string, unknown> = {}) {
+      const response = await adBlueEntryApi.vehicleSummary(vehicleId, params);
+      return response.data.data;
+    },
+    async vehicleConsumption(params: Record<string, unknown> = {}) {
+      const response = await adBlueEntryApi.vehicleConsumption(params);
+      return response.data.data;
+    },
+  },
+});
+
+export const useAdBlueStockStore = defineStore('fleetAdBlueStock', {
+  state: () => ({
+    stock: null as AdBlueStock | null,
+    summary: null as AdBlueStockSummary | null,
+    transactions: [] as AdBlueStockTransaction[],
+    transactionsMeta: null as PaginationMeta | null,
+    loading: false,
+  }),
+  actions: {
+    async fetchStock() {
+      this.loading = true;
+      try {
+        const response = await adBlueStockApi.getStock();
+        this.stock = response.data.data;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async fetchSummary() {
+      const response = await adBlueStockApi.summary();
+      this.summary = response.data.data;
+    },
+    async fetchTransactions(params: Record<string, unknown> = {}) {
+      const response = await adBlueStockApi.listTransactions(params);
+      this.transactions = response.data.data;
+      this.transactionsMeta = response.data.meta;
+    },
+    async purchase(payload: Record<string, unknown>) {
+      const response = await adBlueStockApi.purchase(payload);
+      return response.data.data;
+    },
+    async returnToSupplier(payload: Record<string, unknown>) {
+      const response = await adBlueStockApi.returnToSupplier(payload);
+      return response.data.data;
+    },
+    async adjust(payload: Record<string, unknown>) {
+      const response = await adBlueStockApi.adjust(payload);
+      return response.data.data;
+    },
+    async updateTransaction(transactionId: string, payload: Record<string, unknown>) {
+      const response = await adBlueStockApi.updateTransaction(transactionId, payload);
+      return response.data.data;
+    },
+    async removeTransaction(transactionId: string) {
+      await adBlueStockApi.removeTransaction(transactionId);
     },
   },
 });

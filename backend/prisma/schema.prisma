@@ -415,6 +415,10 @@ model Vehicle {
   // Dedicated Diesel/Fuel Card module — the shared prepaid card account.
   fuelCardTransactions FuelCardTransaction[]
 
+  // Dedicated AdBlue module — per-vehicle top-ups and the stock rows they draw.
+  adBlueEntries           AdBlueEntry[]
+  adBlueStockTransactions AdBlueStockTransaction[]
+
   // Phase 17 — Loans & EMI.
   loans Loan[]
 
@@ -455,7 +459,8 @@ model Driver {
   salaryStructures DriverSalaryStructure[]
   salaryPayments   DriverSalaryPayment[]
 
-  fuelEntries FuelEntry[]
+  fuelEntries   FuelEntry[]
+  adBlueEntries AdBlueEntry[]
 
   // Phase 16 — Booking & LR.
   bookings Booking[]
@@ -490,7 +495,9 @@ model Supplier {
   fixedAssets     FixedAsset[]
   vehicleExpenses VehicleExpense[]
 
-  fuelEntries FuelEntry[]
+  fuelEntries             FuelEntry[]
+  adBlueEntries           AdBlueEntry[]
+  adBlueStockTransactions AdBlueStockTransaction[]
 
   openingBalances OpeningBalance[]
 
@@ -565,6 +572,7 @@ model PaymentMode {
   employeeAdvances EmployeeAdvance[]
   financialEntries FinancialEntry[]
   fuelEntries      FuelEntry[]
+  adBlueEntries    AdBlueEntry[]
   loanInstallments LoanInstallment[]
 
   @@map("payment_modes")
@@ -710,6 +718,9 @@ enum VehicleExpenseCategory {
   ACCESSORIES
   GREASE_LUBRICANTS
   BREAKDOWN
+  // AdBlue / DEF. Deliberately not FUEL: it is a separate consumable with
+  // its own stock, bought and consumed independently of diesel.
+  ADBLUE
   // Mirrors a trip-linked DriverEarning onto that trip's vehicle — see
   // vehicleExpenseInternalService usage in driver-earning.service.ts.
   DRIVER_SALARY
@@ -903,6 +914,158 @@ model FuelCardTransaction {
   @@index([vehicleId])
   @@index([transactionDate])
   @@map("fuel_card_transactions")
+}
+
+// ===========================================================
+// ADBLUE / DEF
+// ===========================================================
+// AdBlue reaches a truck two ways, and the fleet needs both:
+//
+//   FROM_STOCK      — drums bought in bulk and kept at the yard, then
+//                     poured into whichever truck needs topping up.
+//   DIRECT_PURCHASE — bought at a pump on the road and put straight into
+//                     the tank; nothing is ever stored.
+//
+// The first moves inventory, the second does not, which is why AdBlue gets
+// its own stock ledger rather than reusing the diesel card's money-only
+// account. Both kinds of entry still mirror into VehicleExpense (category
+// ADBLUE), so the cost lands on the truck either way and exactly once.
+
+enum AdBlueSource {
+  FROM_STOCK
+  DIRECT_PURCHASE
+}
+
+enum AdBlueStockTransactionType {
+  PURCHASE
+  ISSUE
+  RETURN
+  ADJUSTMENT
+}
+
+// One shared AdBlue store for the whole fleet, in the same spirit as
+// FuelCardAccount and FastTagAccount — the app enforces a single
+// non-deleted row via adBlueStockRepository.getOrCreateStock().
+//
+// Two caches, not one: litres on hand AND what those litres cost. Both are
+// derived from the transactions below and every write path in
+// adblue-stock.service keeps them in step, because an issue has to be
+// valued at what the stock actually cost (currentValue /
+// currentQuantityLiters — a running weighted average) rather than at
+// whatever the latest drum happened to be priced at.
+model AdBlueStock {
+  id                    String    @id @default(uuid())
+  currentQuantityLiters Decimal   @default(0) @db.Decimal(12, 2)
+  currentValue          Decimal   @default(0) @db.Decimal(12, 2)
+  isActive              Boolean   @default(true)
+  deletedAt             DateTime?
+  createdById           String?
+  updatedById           String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  transactions AdBlueStockTransaction[]
+
+  @@map("adblue_stocks")
+}
+
+// PURCHASE / RETURN / ADJUSTMENT rows are entered by hand on the Stock tab.
+// ISSUE rows are never entered there: they are written by adblue-entry
+// .service whenever a FROM_STOCK top-up is recorded, and adBlueEntryId ties
+// the two together so editing or deleting that top-up keeps the stock in
+// step instead of stranding a withdrawal.
+//
+// fundAccountType/fundAccountId record which Bank/Cash account a PURCHASE
+// actually debited, so edit/delete can reverse that debit rather than only
+// touching the stock caches.
+model AdBlueStockTransaction {
+  id              String                     @id @default(uuid())
+  stockId         String
+  type            AdBlueStockTransactionType
+  // Signed for ADJUSTMENT rows (see adjust() in adblue-stock.service),
+  // positive for every other type — the type implies the direction.
+  quantityLiters  Decimal                    @db.Decimal(10, 2)
+  ratePerLiter    Decimal?                   @db.Decimal(10, 2)
+  amount          Decimal                    @db.Decimal(12, 2)
+  vehicleId       String?
+  supplierId      String?
+  adBlueEntryId   String?                    @unique
+  transactionDate DateTime                   @default(now())
+  invoiceNumber   String?
+  referenceNumber String?
+  remarks         String?
+  billDocument    String?
+  fundAccountType String?
+  fundAccountId   String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  stock       AdBlueStock  @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle?     @relation(fields: [vehicleId], references: [id])
+  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
+  adBlueEntry AdBlueEntry? @relation(fields: [adBlueEntryId], references: [id])
+
+  @@index([stockId])
+  @@index([vehicleId])
+  @@index([supplierId])
+  @@index([transactionDate])
+  @@map("adblue_stock_transactions")
+}
+
+// One AdBlue top-up of one truck. Odometer is optional and there is no
+// mileage figure anywhere here on purpose: AdBlue consumption is measured
+// against diesel burnt, not against distance, so a per-fill km/l has no
+// meaning the way it does for FuelEntry.
+//
+// A FROM_STOCK entry never carries a hand-typed rate — it is valued at the
+// stock's weighted-average rate at the moment it is recorded, and the
+// stockTransaction below is the withdrawal it owns. A DIRECT_PURCHASE
+// entry carries whatever the roadside bill said and touches no stock.
+model AdBlueEntry {
+  id              String       @id @default(uuid())
+  vehicleId       String
+  source          AdBlueSource @default(FROM_STOCK)
+  tripId          String?
+  driverId        String?
+  supplierId      String?
+  paymentModeId   String?
+  location        String?
+  quantityLiters  Decimal?     @db.Decimal(10, 2)
+  ratePerLiter    Decimal?     @db.Decimal(10, 2)
+  totalAmount     Decimal?     @db.Decimal(12, 2)
+  odometerReading Int?
+  invoiceNumber   String?
+  referenceNumber String?
+  remarks         String?
+  entryDate       DateTime     @default(now())
+  billDocument    String?
+  deletedAt       DateTime?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  vehicle     Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  trip        Trip?        @relation(fields: [tripId], references: [id])
+  driver      Driver?      @relation(fields: [driverId], references: [id])
+  supplier    Supplier?    @relation(fields: [supplierId], references: [id])
+  paymentMode PaymentMode? @relation(fields: [paymentModeId], references: [id])
+
+  // The stock withdrawal a FROM_STOCK top-up owns. At most one per entry —
+  // it is the same consumption as this row, not a second one.
+  stockTransaction AdBlueStockTransaction?
+
+  // Set when this top-up was raised from the Financial Entry screen rather
+  // than from the AdBlue screen — the money movement lives there, this row
+  // is the fleet-side record of the same purchase, not a second cost.
+  financialEntry FinancialEntry?
+
+  @@index([vehicleId])
+  @@index([tripId])
+  @@index([driverId])
+  @@map("adblue_entries")
 }
 
 model MaintenanceRecord {
@@ -1230,6 +1393,9 @@ model Trip {
 
   // Dedicated FASTag & Diesel/Fuel modules.
   fuelEntries FuelEntry[]
+
+  // Dedicated AdBlue module.
+  adBlueEntries AdBlueEntry[]
 
   @@index([intentId])
   @@index([vehicleId])
@@ -2875,6 +3041,86 @@ model LoanInstallment {
   @@map("loan_installments")
 }
 
+enum LoanGivenStatus {
+  OUTSTANDING
+  REPAID
+  WRITTEN_OFF
+}
+
+// Money the business LENDS OUT — to a friend, a relative, or anyone with no
+// master record of their own. The mirror image of Loan above, which is only
+// ever money the business BORROWED.
+//
+// This is an asset, never an expense: cash turns into something owed back,
+// so nothing here reaches Profit & Loss. Giving the money debits the chosen
+// Bank/Cash account and a repayment credits it, both through
+// adjustFundAccountBalance like every other money movement in the app.
+//
+// Nothing stores the outstanding amount: it is always
+// amount - SUM(repayments), computed live, exactly like Loan's own
+// outstanding principal. `status` is a lifecycle flag only — it records the
+// decision to write the money off, which no arithmetic can infer.
+model LoanGiven {
+  id                 String          @id @default(uuid())
+  referenceNumber    String          @unique
+  // Free text on purpose: a friend or relative is not a Customer, Supplier,
+  // Driver or Employee, and forcing one of those masters on them is what
+  // left this money with nowhere to go in the first place.
+  partyName          String
+  partyContact       String?
+  amount             Decimal         @db.Decimal(14, 2)
+  givenDate          DateTime
+  expectedReturnDate DateTime?
+  // The account the money went out of. Each repayment names its own, since
+  // it does not have to come back into the same one.
+  fundAccountType    FundAccountType
+  fundAccountId      String
+  status             LoanGivenStatus @default(OUTSTANDING)
+  // Migration (Phase 18): an OPENING loan was already out on the migration
+  // date. Registering one moves NO money — the opening Bank/Cash balance
+  // already reflects that the cash left — so the fund account below records
+  // only which account it originally went out of, for reference. A NEW loan
+  // debits that account as usual. Same rule as Loan.origin, which is why it
+  // shares the enum.
+  origin             LoanOrigin      @default(NEW)
+  openingAsOfDate    DateTime?
+  remarks            String?
+  writtenOffAt       DateTime?
+  writtenOffReason   String?
+  organizationId     String?
+  deletedAt          DateTime?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  repayments LoanGivenRepayment[]
+
+  @@index([status])
+  @@index([givenDate])
+  @@map("loans_given")
+}
+
+model LoanGivenRepayment {
+  id              String          @id @default(uuid())
+  loanGivenId     String
+  amount          Decimal         @db.Decimal(14, 2)
+  repaymentDate   DateTime
+  fundAccountType FundAccountType
+  fundAccountId   String
+  referenceNumber String?
+  remarks         String?
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  loanGiven LoanGiven @relation(fields: [loanGivenId], references: [id], onDelete: Cascade)
+
+  @@index([loanGivenId])
+  @@map("loan_given_repayments")
+}
+
 enum FastTagTransactionType {
   RECHARGE
   USAGE
@@ -3695,6 +3941,12 @@ enum FinancialEntryPurpose {
   // FastTagTransaction (fastTagLink below), the same way FUEL logs a
   // FuelEntry, instead of falling back to the pooled misc-expense ledger.
   TOLL
+  // Same idea again for AdBlue: an EXPENSE against a Vehicle logs a real
+  // DIRECT_PURCHASE AdBlueEntry, so the AdBlue module sees the top-up
+  // instead of it existing only as a line on this screen. Buying AdBlue
+  // into the yard store is NOT this — that is the Stock tab, which debits
+  // Bank/Cash itself and would double-count if recorded here too.
+  ADBLUE
   OTHER
 }
 
@@ -3735,10 +3987,10 @@ model FinancialEntry {
   // any balance (design constraint: no duplicate allocation engines).
   settlementPlan       Json?
   // Optional Fleet-module linkage — set when this entry's Purpose is
-  // FUEL/TOLL and the extra fields needed to log a real FuelEntry /
-  // FastTagTransaction were supplied, so Fleet's own screens stay in
-  // sync instead of only a ledger posting existing (design intent: see
-  // "diesel and fast[tag]" follow-up request).
+  // FUEL/TOLL/ADBLUE and the extra fields needed to log a real FuelEntry /
+  // FastTagTransaction / AdBlueEntry were supplied, so Fleet's own screens
+  // stay in sync instead of only a ledger posting existing (design intent:
+  // see "diesel and fast[tag]" follow-up request).
   vehicleId            String?
   tripId               String?
   quantityLiters       Decimal?              @db.Decimal(10, 2)
@@ -3746,6 +3998,7 @@ model FinancialEntry {
   odometerReading      Int?
   fuelEntryId          String?
   fastTagTransactionId String?
+  adBlueEntryId        String?               @unique
   correctionOfId       String?               @unique
   reversalOfId         String?               @unique
   cancelledById        String?
@@ -3767,6 +4020,7 @@ model FinancialEntry {
   trip               Trip?               @relation(fields: [tripId], references: [id])
   fuelEntry          FuelEntry?          @relation(fields: [fuelEntryId], references: [id])
   fastTagTransaction FastTagTransaction? @relation(fields: [fastTagTransactionId], references: [id])
+  adBlueEntry        AdBlueEntry?        @relation(fields: [adBlueEntryId], references: [id])
 
   @@unique([organizationId, entryNumber])
   @@index([organizationId, entryType])
@@ -3797,6 +4051,33 @@ enum BookingStatus {
   DELIVERED
 }
 
+// How the consignment physically moves. Present on the printed LR because a
+// GST e-way bill records the mode against the document, and a consignee's
+// clerk reads it off the LR when reconciling.
+enum LrTransportMode {
+  ROAD
+  RAIL
+  AIR
+  SEA
+}
+
+// Who settles the freight, and when. TO_PAY collects at delivery, PAID is
+// prepaid at booking, TO_BE_BILLED runs on the party's credit account.
+enum LrFreightPayment {
+  TO_PAY
+  PAID
+  TO_BE_BILLED
+}
+
+// Which side of the consignment a commercial role sits on. Used for both the
+// billing party (who gets the invoice) and the freight payer (whose money it
+// is) — they are usually the same party but need not be.
+enum LrParty {
+  CONSIGNOR
+  CONSIGNEE
+  THIRD_PARTY
+}
+
 // Which channel a booking arrived through. WEBSITE bookings are typed by the
 // customer and need their route mapped at confirmation; COUNTER bookings are
 // keyed in by staff, who pick the route and agree a price up front.
@@ -3812,22 +4093,34 @@ model Booking {
   // Consignor/consignee identity is plain text, not a Company FK: bookings
   // arrive from walk-in customers on the public site who are not onboarded
   // as Companies. Same reasoning as Trip's market-truck fields.
-  customerName    String
-  mobile          String
+  //
+  // Everything in this block is optional. A booking taken over the phone
+  // often starts as little more than a name and a destination, and staff must
+  // be able to save that and fill the rest in as it arrives rather than hold
+  // the whole record hostage to one unknown field. NULL here means "not known
+  // yet" — distinct from a zero weight or an empty address, which would be
+  // claims about the consignment rather than an absence of one.
+  //
+  // The public website form is the exception and still requires its fields;
+  // it is unauthenticated, and an open endpoint that accepts an empty body
+  // would let anyone fill this table with blank rows. See
+  // createBookingSchema vs createCounterBookingSchema in the validator.
+  customerName    String?
+  mobile          String?
   email           String?
-  pickupAddress   String
-  deliveryAddress String
+  pickupAddress   String?
+  deliveryAddress String?
 
-  fromPlace            String
-  toPlace              String
-  parcelType           String
-  packages             Int
-  weight               Decimal   @db.Decimal(10, 2)
+  fromPlace            String?
+  toPlace              String?
+  parcelType           String?
+  packages             Int?
+  weight               Decimal?  @db.Decimal(10, 2)
   // What the customer asked for on the website, free text from a fixed
   // picklist — distinct from vehicleTypeName below, which is what was
   // actually allocated.
-  vehicleTypeRequested String
-  pickupDate           DateTime
+  vehicleTypeRequested String?
+  pickupDate           DateTime?
   expectedDeliveryDate DateTime?
   instructions         String?
 
@@ -3869,6 +4162,46 @@ model Booking {
   lrGeneratedAt   DateTime?
   deliveredAt     DateTime?
 
+  // ----- Printed LR detail -------------------------------------------------
+  // Everything below exists to fill the Lorry Receipt and nothing else. It is
+  // all optional: a booking is workable long before anyone sits down to key in
+  // invoice numbers, and the public website supplies none of it.
+  //
+  // Consignor identity reuses the booking's customerName/mobile/pickupAddress —
+  // only the GSTIN has nowhere else to live. The consignee, though, is a party
+  // in its own right on the LR and is NOT the customer, so it gets a full set
+  // of fields; they fall back to deliveryAddress/toPlace when left blank.
+  consignorGstin   String?
+  consigneeName    String?
+  consigneeAddress String?
+  consigneePhone   String?
+  consigneeGstin   String?
+
+  transportMode LrTransportMode?
+  // Credit term agreed with the billing party ("To Be Billed", "15 Days"),
+  // free text because it is commercial wording, not a workflow state.
+  paymentTerm   String?
+  // When the vehicle actually left. Distinct from pickupDate, which is what
+  // the customer asked for at booking time.
+  dispatchAt    DateTime?
+
+  // Charge breakdown. freightAmount above stays the single agreed price that
+  // Operations and Trip Financials consume; these four are the LR's itemised
+  // presentation of it and are summed for TOTAL FREIGHT on the document.
+  freightCharges   Decimal? @db.Decimal(12, 2)
+  loadingCharges   Decimal? @db.Decimal(12, 2)
+  unloadingCharges Decimal? @db.Decimal(12, 2)
+  otherCharges     Decimal? @db.Decimal(12, 2)
+
+  freightPayment  LrFreightPayment?
+  billingParty    LrParty?
+  freightPayer    LrParty?
+  advanceReceived Decimal?          @db.Decimal(12, 2)
+  // Free-form note printed in the LR's Remarks box. Kept apart from
+  // `instructions`, which is what the customer wrote at booking time and is
+  // internal handling guidance rather than something to print.
+  remarks         String?
+
   isActive    Boolean   @default(true)
   deletedAt   DateTime?
   createdById String?
@@ -3882,6 +4215,7 @@ model Booking {
   toLocation   Location? @relation("BookingToLocation", fields: [toLocationId], references: [id])
 
   statusHistory BookingStatusHistory[]
+  goodsItems    BookingGoodsItem[]
 
   @@index([status])
   @@index([mobile])
@@ -3889,6 +4223,34 @@ model Booking {
   @@index([vehicleId])
   @@index([driverId])
   @@map("bookings")
+}
+
+// One row of the LR's GOODS DETAILS table. A consignment can move against
+// several invoices, each with its own e-way bill, so this is a child table
+// rather than a flat set of columns on Booking.
+//
+// The whole set is replaced wholesale whenever LR details are saved — these
+// rows have no identity anyone refers to outside the document, so diffing
+// them individually would buy nothing.
+model BookingGoodsItem {
+  id           String    @id @default(uuid())
+  bookingId    String
+  invoiceNo    String?
+  invoiceDate  DateTime?
+  description  String
+  units        Int       @default(0)
+  goodsValue   Decimal   @default(0) @db.Decimal(12, 2)
+  ewayBillNo   String?
+  ewayBillDate DateTime?
+  // Preserves the order the operator keyed the rows in; the LR must print
+  // them the way they were entered, not in insertion-id order.
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("booking_goods_items")
 }
 
 // Append-only trail of workflow transitions. Backs the dated timeline on the
@@ -3953,8 +4315,9 @@ model DocumentCounter {
 //
 // Where an opening amount belongs to a register that already exists, it is
 // stored THERE rather than duplicated here:
-//   - opening assets -> FixedAsset.assetOrigin = OPENING
-//   - opening loans  -> Loan.origin = OPENING
+//   - opening assets      -> FixedAsset.assetOrigin = OPENING
+//   - opening loans       -> Loan.origin = OPENING
+//   - opening loans given -> LoanGiven.origin = OPENING
 // The rows below cover what has no register of its own: bank/cash balances,
 // customer/supplier outstandings, owner funds and free-form adjustments.
 

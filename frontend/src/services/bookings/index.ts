@@ -6,6 +6,7 @@ import type {
   AssignVehiclePayload,
   CounterBookingPayload,
   DeliveryStatus,
+  LrDetailsPayload,
   PaginationMeta,
 } from '@/types/bookings.types';
 
@@ -38,6 +39,10 @@ export const bookingApi = {
   },
   generateLr(id: string) {
     return api.patch<ApiResponse<Booking>>(`/bookings/${id}/generate-lr`);
+  },
+  /** Saves the printed LR's own detail, including an overridden LR number. */
+  updateLrDetails(id: string, payload: LrDetailsPayload) {
+    return api.patch<ApiResponse<Booking>>(`/bookings/${id}/lr-details`, payload);
   },
   updateStatus(id: string, status: DeliveryStatus, note?: string) {
     return api.patch<ApiResponse<Booking>>(`/bookings/${id}/status`, { status, note });

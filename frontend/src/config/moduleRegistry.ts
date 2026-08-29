@@ -86,6 +86,7 @@ export const moduleRegistry: ModuleDef[] = [
       { title: 'Vehicles', icon: 'mdi-truck-outline', to: '/operations/vehicles' },
       { title: 'Vehicle Assignments', icon: 'mdi-account-switch-outline', to: '/operations/assignments' },
       { title: 'Diesel / Fuel', icon: 'mdi-gas-station-outline', to: '/operations/fuel' },
+      { title: 'AdBlue', icon: 'mdi-water-outline', to: '/operations/adblue' },
       { title: 'FASTag', icon: 'mdi-credit-card-wireless-outline', to: '/operations/fasttag' },
       { title: 'Maintenance', icon: 'mdi-wrench-outline', to: '/operations/maintenance' },
       { title: 'Spare Parts Usage', icon: 'mdi-cog-outline', to: '/operations/spare-parts-usage' },
@@ -113,6 +114,7 @@ export const moduleRegistry: ModuleDef[] = [
       // is what a non-accountant should reach for first.
       { title: 'Financial Entries', icon: 'mdi-cash-fast', to: '/accounts/financial-entry' },
       { title: 'Loans & EMI', icon: 'mdi-bank-outline', to: '/accounts/loans' },
+      { title: 'Loans & Advances Given', icon: 'mdi-hand-coin-outline', to: '/accounts/loans-given' },
       { title: 'Capital & Owner Funds', icon: 'mdi-wallet-outline', to: '/accounts/capital-account' },
       { title: 'Opening Balance & Migration', icon: 'mdi-database-import-outline', to: '/accounts/opening-balance' },
       { title: 'Finance Dashboard', icon: 'mdi-view-dashboard-variant-outline', to: '/accounts/dashboard' },

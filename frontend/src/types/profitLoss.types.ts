@@ -10,6 +10,7 @@ export interface ProfitLossResult {
     vehicleOperatingCost: {
       fastTag: number;
       diesel: number;
+      adBlue: number;
       repairs: number;
       insurance: number;
       tyres: number;

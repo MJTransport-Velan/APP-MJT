@@ -47,6 +47,7 @@ export const financialEntryPurposeEnum = z.enum([
   'SUPPLIER_REFUND',
   'OFFICE_EXPENSE',
   'TOLL',
+  'ADBLUE',
   'OTHER',
 ]);
 
@@ -110,7 +111,8 @@ export const createFinancialEntrySchema = z.object({
       // DriverSalaryPayment).
       salaryPeriod: isoMonth.optional(),
       // Optional Fleet-module linkage — only used when purpose is FUEL
-      // (all three fuel fields present) or TOLL (vehicleId present); see
+      // (all three fuel fields present), ADBLUE (vehicleId + quantity) or
+      // TOLL (vehicleId present); see
       // maybeLinkFleetRecords() in financial-entry.service.ts. Harmless to
       // omit — the entry still posts as a plain expense either way.
       vehicleId: z.string().uuid().optional(),
