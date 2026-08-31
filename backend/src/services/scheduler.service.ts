@@ -2,9 +2,43 @@ import cron, { type ScheduledTask } from 'node-cron';
 import { AutomationRule, AutomationRunTrigger } from '@prisma/client';
 import { automationRuleRepository } from '../repositories/automation-rule.repository';
 import { executeAutomationAction } from './automation-action.handlers';
+import { dueReminderService } from './due-reminder.service';
 import { logger } from '../config/logger';
 
 const activeTasks = new Map<string, ScheduledTask>();
+
+/**
+ * The due-date reminder scan is built in rather than an AutomationRule: EMI,
+ * document-expiry and payment reminders have to work on a fresh install with
+ * nothing configured. It is kept out of `activeTasks` so a rule reload never
+ * cancels it.
+ */
+let dueReminderTask: ScheduledTask | null = null;
+
+async function runDueReminderScan() {
+  try {
+    await dueReminderService.run();
+  } catch (err) {
+    // No Organization yet on a fresh database is the usual cause, and it must
+    // not take the scheduler (or boot) down with it.
+    logger.error('Due-date reminder scan failed', err);
+  }
+}
+
+async function reloadDueReminderTask() {
+  dueReminderTask?.stop();
+  dueReminderTask = null;
+
+  const expression = await dueReminderService.cronExpression();
+  if (!cron.validate(expression)) {
+    logger.error(`Due-date reminder cron expression is invalid: ${expression}`);
+    return;
+  }
+  dueReminderTask = cron.schedule(expression, () => {
+    void runDueReminderScan();
+  });
+  logger.info(`Scheduler: due-date reminder scan registered (${expression})`);
+}
 
 async function runRule(rule: AutomationRule, triggeredBy: AutomationRunTrigger, actorId?: string) {
   const runLog = await automationRuleRepository.createRunLog({ automationRuleId: rule.id, triggeredBy, status: 'RUNNING' });
@@ -38,6 +72,17 @@ export const schedulerService = {
       activeTasks.set(rule.id, task);
     }
     logger.info(`Scheduler: ${activeTasks.size} automation rule(s) registered`);
+
+    await reloadDueReminderTask();
+    // Catch up immediately on boot so a server that was down at scan time
+    // still warns about anything falling due — the scan is idempotent, so an
+    // extra run raises nothing that today's already raised.
+    void runDueReminderScan();
+  },
+
+  /** Runs the due-date reminder scan now, outside its schedule. */
+  runDueReminderScanNow(leadDays?: number) {
+    return dueReminderService.run(leadDays === undefined ? undefined : { leadDays });
   },
 
   async runManual(ruleId: string, actorId: string) {

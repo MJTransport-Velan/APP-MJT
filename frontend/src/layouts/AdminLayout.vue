@@ -138,11 +138,67 @@
 
       <div class="spacer"></div>
 
-      <button type="button" class="mj-nav-icon mj-app-bar__bell">
-        <AppBadge dot color="secondary">
-          <AppIcon icon="mdi-bell-outline" color="white" />
-        </AppBadge>
-      </button>
+      <div class="mj-app-bar__bell-wrap">
+        <button type="button" class="mj-nav-icon mj-app-bar__bell" title="Notifications" @click="toggleNotifications">
+          <AppBadge v-if="unreadCount > 0" :content="unreadCount > 99 ? '99+' : unreadCount" color="error">
+            <AppIcon icon="mdi-bell-outline" color="white" />
+          </AppBadge>
+          <AppIcon v-else icon="mdi-bell-outline" color="white" />
+        </button>
+
+        <Transition name="fade">
+          <div v-if="notificationsOpen" class="mj-notif-panel">
+            <div class="mj-notif-panel__head">
+              <span class="mj-notif-panel__title">Notifications</span>
+              <button v-if="unreadCount > 0" type="button" class="mj-notif-panel__link" @click="onMarkAllRead">
+                Mark all read
+              </button>
+            </div>
+
+            <div v-if="dueSoon.length" class="mj-notif-panel__section">
+              <p class="mj-notif-panel__section-title">
+                Due in the next {{ leadDays }} days
+              </p>
+              <button
+                v-for="due in dueSoon"
+                :key="`${due.kind}-${due.entityId}`"
+                type="button"
+                class="mj-notif-panel__row"
+                @click="goToNotifications"
+              >
+                <span class="mj-notif-panel__dot" :class="`mj-notif-panel__dot--${dueTone(due.daysLeft)}`"></span>
+                <span class="mj-notif-panel__row-body">
+                  <span class="mj-notif-panel__row-title">{{ due.title }}</span>
+                  <span class="mj-notif-panel__row-meta">{{ dueWhen(due.daysLeft) }}</span>
+                </span>
+              </button>
+            </div>
+
+            <div class="mj-notif-panel__section">
+              <p class="mj-notif-panel__section-title">Recent</p>
+              <button
+                v-for="n in recentNotifications"
+                :key="n.id"
+                type="button"
+                class="mj-notif-panel__row"
+                :class="{ 'mj-notif-panel__row--unread': !n.isRead }"
+                @click="openNotification(n)"
+              >
+                <span class="mj-notif-panel__dot" :class="`mj-notif-panel__dot--${priorityTone(n.priority)}`"></span>
+                <span class="mj-notif-panel__row-body">
+                  <span class="mj-notif-panel__row-title">{{ n.title }}</span>
+                  <span class="mj-notif-panel__row-meta">{{ n.message }}</span>
+                </span>
+              </button>
+              <p v-if="!recentNotifications.length" class="mj-notif-panel__empty">Nothing to show</p>
+            </div>
+
+            <button type="button" class="mj-notif-panel__all" @click="goToNotifications">
+              View all notifications
+            </button>
+          </div>
+        </Transition>
+      </div>
     </header>
 
     <main class="mj-main main" :class="{ 'mj-main--rail': rail, 'mj-main--closed': !drawer }">
@@ -165,6 +221,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { moduleRegistry, moduleGrantsAccess } from '@/config/moduleRegistry';
 import { useTheme } from '@/composables/useTheme';
 import { useEscapeBack } from '@/composables/useEscapeBack';
+import { notificationApi } from '@/services/system/phase8';
+import type { AppNotification, DueReminder, NotificationPriority } from '@/types/phase8.types';
 import mjLogo from '@/assets/login/MJ Transport Logo.png';
 import {
   AppIcon,
@@ -250,13 +308,109 @@ useEscapeBack();
 // useTheme() so other components (e.g. Dashboard's charts) can react to it.
 const { isDark } = useTheme();
 
+// --- Notification bell. The unread count is polled (no websocket in this
+// app); the "Due soon" block is the live due-date list the backend computes
+// from EMIs, document expiries, cheques and invoices, so it shows what is
+// coming even before the daily scan has raised a notification for it.
+const NOTIFICATION_POLL_MS = 60_000;
+
+const notificationsOpen = ref(false);
+const unreadCount = ref(0);
+const recentNotifications = ref<AppNotification[]>([]);
+const dueSoon = ref<DueReminder[]>([]);
+const leadDays = ref(5);
+let notificationPollId: ReturnType<typeof setInterval> | undefined;
+
+function priorityTone(priority: NotificationPriority) {
+  return ({ LOW: 'muted', NORMAL: 'info', HIGH: 'warning', URGENT: 'error' } as Record<string, string>)[priority] || 'info';
+}
+
+function dueTone(daysLeft: number) {
+  if (daysLeft < 0) return 'error';
+  if (daysLeft <= 2) return 'warning';
+  return 'info';
+}
+
+function dueWhen(daysLeft: number) {
+  if (daysLeft < 0) return `${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} overdue`;
+  if (daysLeft === 0) return 'Due today';
+  if (daysLeft === 1) return 'Due tomorrow';
+  return `Due in ${daysLeft} days`;
+}
+
+async function refreshUnreadCount() {
+  try {
+    unreadCount.value = (await notificationApi.unreadCount()).data.data.count;
+  } catch {
+    /* the bell must never break the layout */
+  }
+}
+
+async function loadNotificationPanel() {
+  try {
+    const [list, due] = await Promise.all([
+      notificationApi.list({ pageSize: 6 }),
+      notificationApi.dueReminders(),
+    ]);
+    recentNotifications.value = list.data.data;
+    leadDays.value = due.data.data.leadDays;
+    dueSoon.value = due.data.data.items.slice(0, 6);
+  } catch {
+    /* leave whatever was already loaded on screen */
+  }
+}
+
+function toggleNotifications() {
+  notificationsOpen.value = !notificationsOpen.value;
+  if (notificationsOpen.value) loadNotificationPanel();
+}
+
+async function openNotification(n: AppNotification) {
+  if (!n.isRead) {
+    try {
+      await notificationApi.markRead(n.id);
+      n.isRead = true;
+      unreadCount.value = Math.max(0, unreadCount.value - 1);
+    } catch {
+      /* non-critical */
+    }
+  }
+  goToNotifications();
+}
+
+async function onMarkAllRead() {
+  try {
+    await notificationApi.markAllRead();
+    unreadCount.value = 0;
+    recentNotifications.value.forEach((n) => (n.isRead = true));
+  } catch {
+    /* non-critical */
+  }
+}
+
+function goToNotifications() {
+  notificationsOpen.value = false;
+  router.push('/system/notifications');
+}
+
+function onDocumentPointerDown(event: MouseEvent) {
+  if (!notificationsOpen.value) return;
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest('.mj-app-bar__bell-wrap')) notificationsOpen.value = false;
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
   mobileQuery?.addEventListener('change', onMobileQueryChange);
+  document.addEventListener('mousedown', onDocumentPointerDown);
+  refreshUnreadCount();
+  notificationPollId = setInterval(refreshUnreadCount, NOTIFICATION_POLL_MS);
 });
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown);
   mobileQuery?.removeEventListener('change', onMobileQueryChange);
+  document.removeEventListener('mousedown', onDocumentPointerDown);
+  if (notificationPollId) clearInterval(notificationPollId);
 });
 
 function onMobileQueryChange(event: MediaQueryListEvent) {
@@ -710,6 +864,138 @@ async function onLogout() {
   color: var(--color-text-medium);
   text-align: center;
   margin: 0;
+}
+
+.mj-app-bar__bell-wrap {
+  position: relative;
+  display: flex;
+}
+.mj-notif-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  max-height: 460px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-3);
+  padding: 6px;
+  z-index: 100;
+}
+.mj-notif-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px 6px;
+}
+.mj-notif-panel__title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.mj-notif-panel__link {
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.mj-notif-panel__section + .mj-notif-panel__section {
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.mj-notif-panel__section-title {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-medium);
+}
+.mj-notif-panel__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+.mj-notif-panel__row:hover {
+  background: var(--color-hover);
+}
+.mj-notif-panel__row--unread {
+  background: rgba(30, 58, 138, 0.05);
+}
+.mj-notif-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  background: var(--color-info);
+}
+.mj-notif-panel__dot--warning {
+  background: var(--color-warning);
+}
+.mj-notif-panel__dot--error {
+  background: var(--color-error);
+}
+.mj-notif-panel__dot--muted {
+  background: var(--color-text-medium);
+}
+.mj-notif-panel__row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mj-notif-panel__row-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.mj-notif-panel__row-meta {
+  font-size: 11.5px;
+  color: var(--color-text-medium);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mj-notif-panel__empty {
+  padding: 12px 10px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-medium);
+  text-align: center;
+}
+.mj-notif-panel__all {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px;
+}
+.mj-notif-panel__all:hover {
+  background: var(--color-hover);
 }
 
 .mj-main {

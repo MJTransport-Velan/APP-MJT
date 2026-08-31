@@ -1625,7 +1625,7 @@ async function main() {
   }
 
   console.log('Seeding Enterprise Integration, Automation, Audit & Security defaults (docs Phase 8)...');
-  const DEFAULT_SYSTEM_SETTINGS: { category: 'SECURITY' | 'BACKUP' | 'WORKFLOW'; key: string; value: string; description: string }[] = [
+  const DEFAULT_SYSTEM_SETTINGS: { category: 'SECURITY' | 'BACKUP' | 'WORKFLOW' | 'NOTIFICATION'; key: string; value: string; description: string }[] = [
     { category: 'SECURITY', key: 'passwordMinLength', value: '8', description: 'Minimum password length' },
     { category: 'SECURITY', key: 'passwordRequireUppercase', value: 'true', description: 'Require at least one uppercase letter' },
     { category: 'SECURITY', key: 'passwordRequireNumber', value: 'true', description: 'Require at least one number' },
@@ -1633,6 +1633,8 @@ async function main() {
     { category: 'SECURITY', key: 'sessionTimeoutMinutes', value: '30', description: 'Idle session timeout, in minutes (advisory — access tokens are still governed by JWT_ACCESS_EXPIRES_IN)' },
     { category: 'BACKUP', key: 'retentionDays', value: '30', description: 'How many days of backups to retain before they are eligible for cleanup' },
     { category: 'WORKFLOW', key: 'defaultEscalationHours', value: '48', description: 'Default approval escalation window when an ApprovalRule does not set its own' },
+    { category: 'NOTIFICATION', key: 'dueReminderLeadDays', value: '5', description: 'How many days ahead to warn about EMIs, document expiries, cheques and invoice payments falling due' },
+    { category: 'NOTIFICATION', key: 'dueReminderCron', value: '0 8 * * *', description: 'When the daily due-date reminder scan runs (cron expression, server time)' },
   ];
   for (const setting of DEFAULT_SYSTEM_SETTINGS) {
     await prisma.systemSetting.upsert({

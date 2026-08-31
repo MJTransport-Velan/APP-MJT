@@ -47,7 +47,9 @@
                 :error-messages="errors.password"
                 :type="showPassword ? 'text' : 'password'"
                 prepend-inner-icon="mdi-lock-outline"
-                :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                :append-inner-icon="
+                  showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'
+                "
                 placeholder="Enter your password"
                 autocomplete="current-password"
                 @click:append-inner="showPassword = !showPassword"
@@ -59,17 +61,24 @@
               <a class="forgot-link" href="#" @click.prevent>Forgot Password?</a>
             </div>
 
-            <AppBtn type="submit" size="large" block :loading="loading" prepend-icon="mdi-login" class="login-btn">
+            <AppBtn
+              type="submit"
+              size="large"
+              block
+              :loading="loading"
+              prepend-icon="mdi-login"
+              class="login-btn"
+            >
               Sign In
             </AppBtn>
           </form>
-
+          <!-- 
           <div class="divider"><span>OR</span></div>
 
           <button type="button" class="secondary-btn" disabled title="Contact your administrator to get an account">
             <AppIcon icon="mdi-account-plus-outline" size="small" />
             Create New Account
-          </button>
+          </button> -->
 
           <div class="security-badge">
             <AppIcon icon="mdi-shield-check-outline" size="small" />
@@ -127,7 +136,9 @@ const onSubmit = handleSubmit(async (values) => {
   loading.value = true;
   try {
     await authStore.login(values.username, values.password);
-    const redirect = (route.query.redirect as string) || firstAccessibleModulePath(authStore.hasPermission);
+    const redirect =
+      (route.query.redirect as string) ||
+      firstAccessibleModulePath(authStore.hasPermission);
     router.push(redirect);
   } catch (err: any) {
     snackbar.text =
@@ -193,8 +204,11 @@ const onSubmit = handleSubmit(async (values) => {
   justify-content: center;
   padding: 40px 32px;
   overflow-y: auto;
-  background:
-    repeating-linear-gradient(135deg, transparent 0 60px, rgba(96, 165, 250, 0.035) 60px 61px),
+  background: repeating-linear-gradient(
+      135deg,
+      transparent 0 60px,
+      rgba(96, 165, 250, 0.035) 60px 61px
+    ),
     linear-gradient(160deg, #0a1224 0%, #060b18 100%);
 }
 
@@ -207,7 +221,8 @@ const onSubmit = handleSubmit(async (values) => {
   border: 1px solid rgba(96, 165, 250, 0.25);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.08), 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 80px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.08), 0 24px 60px rgba(0, 0, 0, 0.5),
+    0 0 80px rgba(37, 99, 235, 0.12);
 }
 
 .login-header {

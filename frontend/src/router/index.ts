@@ -156,10 +156,17 @@ const routes: RouteRecordRaw[] = [
             meta: { breadcrumb: 'Operations Dashboard' },
           },
           {
+            // Gated on vehicle.view — the permission this page's API
+            // actually authorizes on (/fleet/vehicles/tracking, /:id,
+            // /:id/timeline, /:id/availability all use vehicle.view).
+            // It used to require fleet.view, which OWN_FLEET_OPERATOR /
+            // MARKET_FLEET_OPERATOR do not hold: they were shown the
+            // Vehicles tile in Operations and bounced to Unauthorized on
+            // click, even though every call the page makes was allowed.
             path: 'vehicles',
             name: 'operations-vehicles',
             component: () => import('@/pages/fleet/Vehicles.vue'),
-            meta: { breadcrumb: 'Vehicles', permission: 'fleet.view' },
+            meta: { breadcrumb: 'Vehicles', permission: 'vehicle.view' },
           },
           {
             path: 'assignments',

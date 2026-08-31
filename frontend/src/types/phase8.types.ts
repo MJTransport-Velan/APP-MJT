@@ -290,3 +290,42 @@ export interface ReadinessResult {
   passedCount: number;
   totalCount: number;
 }
+
+// Due-date reminders (EMI, document expiry, cheques, invoices...)
+export type DueReminderKind =
+  | 'LOAN_EMI'
+  | 'LOAN_EMI_OVERDUE'
+  | 'LOAN_GIVEN_RETURN'
+  | 'VEHICLE_INSURANCE'
+  | 'VEHICLE_PERMIT'
+  | 'VEHICLE_FITNESS'
+  | 'VEHICLE_PUC'
+  | 'VEHICLE_RC'
+  | 'VEHICLE_SERVICE'
+  | 'DRIVER_LICENCE'
+  | 'CHEQUE'
+  | 'INVOICE';
+
+export interface DueReminder {
+  kind: DueReminderKind;
+  permission: string;
+  entityId: string;
+  title: string;
+  message: string;
+  dueDate: string;
+  daysLeft: number;
+  amount: number | null;
+  priority: NotificationPriority;
+}
+
+export interface DueReminderList {
+  leadDays: number;
+  items: DueReminder[];
+}
+
+export interface DueReminderScanResult {
+  leadDays: number;
+  scanned: number;
+  created: number;
+  skipped: number;
+}

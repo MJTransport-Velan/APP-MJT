@@ -4,6 +4,8 @@ import type {
   AutomationRule,
   AutomationRunLog,
   AppNotification,
+  DueReminderList,
+  DueReminderScanResult,
   ApprovalDelegation,
   AuditOverview,
   AuditLogRow,
@@ -65,6 +67,15 @@ export const notificationApi = {
   },
   markAllRead() {
     return api.patch<ApiResponse<{ updated: number }>>('/notifications/mark-all-read');
+  },
+  /** What falls due in the next `leadDays` days — computed live, nothing stored. */
+  dueReminders(params: { leadDays?: number } = {}) {
+    return api.get<ApiResponse<DueReminderList>>('/notifications/due-reminders', { params });
+  },
+  runDueScan(params: { leadDays?: number } = {}) {
+    // Body must be {} rather than null: express.json() is strict, so a bare
+    // `null` payload is rejected as malformed JSON before the route is reached.
+    return api.post<ApiResponse<DueReminderScanResult>>('/notifications/due-reminders/scan', {}, { params });
   },
 };
 
