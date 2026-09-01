@@ -1,5 +1,6 @@
 import { organizationService } from './organization.service';
 import { prisma } from '../config/db';
+import { DateRange, hasRange, rangeWhere, resolveRange, todayRange } from '../utils/dateRange';
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -14,7 +15,14 @@ function round2(n: number) {
  * "Money In / Money Out".
  */
 export const bankingDashboardService = {
-  async summary(organizationId: string | undefined) {
+  /**
+   * @param range From/To window for money-in / money-out and the recent
+   * transfer list. Bank and cash balances are a single running figure with
+   * no dated movement history behind them (see the note above), and pending
+   * cheques / approvals are an open-items queue — none of the three can be
+   * asked "as at" a past date, so they ignore the window.
+   */
+  async summary(organizationId: string | undefined, range: DateRange = {}) {
     const orgId = await organizationService.resolveOrganizationId(organizationId);
 
     const [bankAccounts, cashAccounts] = await Promise.all([
@@ -40,16 +48,17 @@ export const bankingDashboardService = {
       balance: round2(Number(c.currentBalance)),
     }));
 
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setUTCHours(23, 59, 59, 999);
+    const period = resolveRange(range, todayRange);
+    const entryWhere = rangeWhere('entryDate', period);
+    // The transfer list is "the last few transfers", not a period total —
+    // defaulting it to today would blank it on any day with no transfer.
+    const transferWhere = hasRange(range) ? rangeWhere('transferDate', period) : {};
 
     const [moneyIn, moneyOut] = await Promise.all([
       prisma.financialEntry.aggregate({
         where: {
           organizationId: orgId,
-          entryDate: { gte: startOfDay, lte: endOfDay },
+          ...entryWhere,
           entryType: { in: ['MONEY_RECEIVED', 'ADVANCE_RECEIVED', 'REFUND_RECEIVED', 'LOAN_RECEIVED'] },
           status: { notIn: ['CANCELLED'] },
           deletedAt: null,
@@ -59,7 +68,7 @@ export const bankingDashboardService = {
       prisma.financialEntry.aggregate({
         where: {
           organizationId: orgId,
-          entryDate: { gte: startOfDay, lte: endOfDay },
+          ...entryWhere,
           entryType: { in: ['MONEY_PAID', 'ADVANCE_GIVEN', 'REFUND_PAID', 'LOAN_REPAYMENT', 'EXPENSE', 'SALARY_SETTLEMENT'] },
           status: { notIn: ['CANCELLED'] },
           deletedAt: null,
@@ -76,13 +85,14 @@ export const bankingDashboardService = {
     });
 
     const recentTransfers = await prisma.bankTransfer.findMany({
-      where: { organizationId: orgId, deletedAt: null },
+      where: { organizationId: orgId, deletedAt: null, ...transferWhere },
       orderBy: { createdAt: 'desc' },
       take: 8,
       select: { id: true, transferNumber: true, transferDate: true, amount: true, fromAccountType: true, toAccountType: true },
     });
 
     return {
+      period: { from: period.from, to: period.to, filtered: hasRange(range) },
       bankAccounts: bankBalances,
       cashAccounts: cashBalances,
       todaysReceipts: round2(Number(moneyIn._sum.amount ?? 0)),

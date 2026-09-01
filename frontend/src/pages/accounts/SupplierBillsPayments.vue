@@ -154,6 +154,8 @@
               <thead>
                 <tr>
                   <th>Supplier</th>
+                  <th class="text-right">Opening</th>
+                  <th class="text-right">Current</th>
                   <th class="text-right">Total Outstanding</th>
                   <th class="text-right">0-15</th>
                   <th class="text-right">15+</th>
@@ -161,39 +163,46 @@
                 </tr>
               </thead>
               <tbody>
-                <template v-for="row in supplierOutstandingSummary" :key="row.supplierId">
-                  <tr class="outstanding-customer-row" @click="toggleSupplierOutstanding(row.supplierId)">
+                <template v-for="row in supplierOutstandingSummary" :key="row.partyId">
+                  <tr class="outstanding-customer-row" @click="toggleSupplierOutstanding(row.partyId)">
                     <td>
                       <span class="d-flex align-center ga-2">
-                        <AppIcon :icon="expandedSupplierId === row.supplierId ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" />
-                        {{ row.supplierName }}
+                        <AppIcon :icon="expandedSupplierId === row.partyId ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" />
+                        {{ row.partyName }}
                       </span>
                     </td>
+                    <td class="text-right">{{ row.opening > 0 ? formatCurrency(row.opening) : '—' }}</td>
+                    <td class="text-right">{{ formatCurrency(row.current) }}</td>
                     <td class="text-right font-weight-medium">{{ formatCurrency(row.total) }}</td>
                     <td class="text-right">{{ formatCurrency(row.bucket0To15) }}</td>
                     <td class="text-right" :class="row.bucket15Plus > 0 ? 'text-warning' : ''">{{ formatCurrency(row.bucket15Plus) }}</td>
                     <td class="text-right" :class="row.bucket30Plus > 0 ? 'text-error' : ''">{{ formatCurrency(row.bucket30Plus) }}</td>
                   </tr>
-                  <tr v-if="expandedSupplierId === row.supplierId">
-                    <td colspan="5" class="pa-0">
+                  <tr v-if="expandedSupplierId === row.partyId">
+                    <td colspan="7" class="pa-0">
                       <div class="outstanding-detail">
                         <AppTable>
                           <thead>
                             <tr>
-                              <th>Bill No.</th>
-                              <th>Bill Date</th>
+                              <th>Reference</th>
+                              <th>Source</th>
+                              <th>Date</th>
                               <th>Due Date</th>
                               <th class="text-right">Total</th>
                               <th class="text-right">Outstanding</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="bill in expandedSupplierBills" :key="bill.id">
-                              <td>{{ bill.billNumber }}</td>
-                              <td>{{ new Date(bill.billDate).toLocaleDateString() }}</td>
-                              <td>{{ bill.dueDate ? new Date(bill.dueDate).toLocaleDateString() : '-' }}</td>
-                              <td class="text-right">{{ formatCurrency(bill.totalAmount) }}</td>
-                              <td class="text-right text-error">{{ formatCurrency(bill.outstandingAmount) }}</td>
+                            <tr v-for="line in expandedSupplierLines" :key="line.id">
+                              <td>{{ line.billNumber }}</td>
+                              <td>
+                                <AppChip v-if="line.isOpening" size="x-small" color="info" variant="tonal">Opening</AppChip>
+                                <span v-else class="text-caption text-medium-emphasis">Bill</span>
+                              </td>
+                              <td>{{ line.billDate ? new Date(line.billDate).toLocaleDateString() : '-' }}</td>
+                              <td>{{ line.dueDate ? new Date(line.dueDate).toLocaleDateString() : '-' }}</td>
+                              <td class="text-right">{{ formatCurrency(line.totalAmount) }}</td>
+                              <td class="text-right text-error">{{ formatCurrency(line.outstandingAmount) }}</td>
                             </tr>
                           </tbody>
                         </AppTable>
@@ -204,7 +213,10 @@
               </tbody>
             </AppTable>
           </div>
-          <p v-if="supplierOutstandingSummary.length === 0" class="text-caption text-medium-emphasis pa-4">No outstanding bills.</p>
+          <p v-if="supplierOutstandingSummary.length === 0" class="text-caption text-medium-emphasis pa-4">Nothing outstanding.</p>
+          <p v-else-if="supplierOutstandingTotals.opening > 0" class="text-caption text-medium-emphasis pa-4 pt-0">
+            Includes {{ formatCurrency(supplierOutstandingTotals.opening) }} of opening balances carried over from the previous system.
+          </p>
         </AppCard>
       </AppWindowItem>
     </AppWindow>
@@ -385,7 +397,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useSupplierBillStore, useSupplierPaymentStore } from '@/stores/accounts';
-import { supplierBillApi } from '@/services/accounts';
+import {
+  supplierBillApi,
+  partyOutstandingApi,
+  type PartyOutstandingRow,
+  type PartyOutstandingTotals,
+  type PartyOutstandingLine,
+} from '@/services/accounts';
 import { supplierApi } from '@/services/masters';
 import { tripApi } from '@/services/operations';
 import { usePaymentModeStore } from '@/stores/masters';
@@ -767,15 +785,6 @@ async function submitDelete() {
 // each supplier row expands (accordion — only one open at a time) into its
 // own outstanding bills. Sourced from its own date-filtered fetch so it
 // never disturbs payablesBills above (which the Payment dialog depends on).
-interface SupplierOutstandingSummary {
-  supplierId: string;
-  supplierName: string;
-  total: number;
-  bucket0To15: number;
-  bucket15Plus: number;
-  bucket30Plus: number;
-}
-
 function daysOverdue(dueDate: string | null): number {
   if (!dueDate) return 0;
   return Math.floor((Date.now() - new Date(dueDate).getTime()) / 86400000);
@@ -794,33 +803,39 @@ async function fetchOutstandingTabBills() {
 }
 function onOutstandingDateRangeChange() {
   fetchOutstandingTabBills();
+  fetchSupplierOutstandingSummary();
 }
 
-const supplierOutstandingSummary = computed<SupplierOutstandingSummary[]>(() => {
-  const map = new Map<string, SupplierOutstandingSummary>();
-  for (const bill of outstandingTabBills.value) {
-    const key = bill.supplier.id;
-    const row = map.get(key) || { supplierId: key, supplierName: bill.supplier.name, total: 0, bucket0To15: 0, bucket15Plus: 0, bucket30Plus: 0 };
-    // Decimal fields (outstandingAmount) come back JSON-serialized as
-    // strings — Number(...) avoids "+=" silently string-concatenating.
-    const amount = Number(bill.outstandingAmount || 0);
-    row.total += amount;
-    const overdue = daysOverdue(bill.dueDate);
-    if (overdue > 30) row.bucket30Plus += amount;
-    else if (overdue > 15) row.bucket15Plus += amount;
-    else row.bucket0To15 += amount;
-    map.set(key, row);
-  }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total);
-});
+// Grouped server-side rather than over the bill list: an opening balance
+// carried over from the previous system is not a SupplierBill, so no amount
+// of client-side grouping could surface it, and a supplier whose whole debt
+// was migrated did not appear here at all.
+const supplierOutstandingSummary = ref<PartyOutstandingRow[]>([]);
+const supplierOutstandingTotals = ref<PartyOutstandingTotals>({ opening: 0, current: 0, total: 0 });
+
+async function fetchSupplierOutstandingSummary() {
+  const response = await partyOutstandingApi.suppliers({
+    ...(outstandingDateFrom.value ? { dateFrom: outstandingDateFrom.value } : {}),
+    ...(outstandingDateTo.value ? { dateTo: outstandingDateTo.value } : {}),
+  });
+  supplierOutstandingSummary.value = response.data.data;
+  supplierOutstandingTotals.value = response.data.meta.totals;
+}
 
 const expandedSupplierId = ref<string | null>(null);
-function toggleSupplierOutstanding(supplierId: string) {
-  expandedSupplierId.value = expandedSupplierId.value === supplierId ? null : supplierId;
+const expandedSupplierLines = ref<PartyOutstandingLine[]>([]);
+
+async function toggleSupplierOutstanding(supplierId: string) {
+  if (expandedSupplierId.value === supplierId) {
+    expandedSupplierId.value = null;
+    expandedSupplierLines.value = [];
+    return;
+  }
+  expandedSupplierId.value = supplierId;
+  // Fetched rather than filtered from the bill list so opening balance rows
+  // come down with the bills they sit beside.
+  expandedSupplierLines.value = (await partyOutstandingApi.supplierLines(supplierId)).data.data;
 }
-const expandedSupplierBills = computed(() =>
-  outstandingTabBills.value.filter((bill) => bill.supplier.id === expandedSupplierId.value)
-);
 
 onMounted(async () => {
   const [suppliersRes, tripsRes] = await Promise.all([
@@ -831,6 +846,7 @@ onMounted(async () => {
     cashAccountStore.fetchList({ pageSize: 200, isActive: 'true' }),
     loadPayablesBills(),
     fetchOutstandingTabBills(),
+    fetchSupplierOutstandingSummary(),
   ]);
   supplierOptions.value = suppliersRes.data.data.map((s: any) => ({ id: s.id, name: s.name }));
   completedTrips.value = tripsRes.data.data.map((t: any) => ({

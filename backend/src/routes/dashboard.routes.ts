@@ -6,6 +6,7 @@ import { authorize } from '../middlewares/authorize.middleware';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { organizationService } from '../services/organization.service';
+import { parseDateRange } from '../utils/dateRange';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const organizationId = await organizationService.resolveOrganizationId(undefined);
     const keys = (req.query.keys as string | undefined)?.split(',').map((k) => k.trim()).filter(Boolean) ?? dashboardEngineService.listKeys();
-    const data = await dashboardEngineService.getWidgets(keys, { organizationId });
+    const data = await dashboardEngineService.getWidgets(keys, { organizationId, range: parseDateRange(req.query) });
     return sendSuccess(res, 200, { message: 'Dashboard widgets fetched', data });
   })
 );

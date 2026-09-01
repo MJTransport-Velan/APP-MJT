@@ -1,7 +1,8 @@
 import { Prisma, InvoiceStatus } from '@prisma/client';
 import { prisma } from '../config/db';
-import { ReportFilters, dateRangeWhere } from '../utils/reportFilters';
+import { ReportFilters, dateRangeWhere, toDateRange } from '../utils/reportFilters';
 import { ReportDefinition } from '../reports/report.types';
+import { partyOutstandingService } from '../services/party-outstanding.service';
 
 const customerOutstandingReport: ReportDefinition = {
   key: 'customerOutstandingReport',
@@ -9,6 +10,7 @@ const customerOutstandingReport: ReportDefinition = {
   columns: [
     { key: 'invoiceNumber', label: 'Invoice No.' },
     { key: 'company', label: 'Company' },
+    { key: 'source', label: 'Source' },
     { key: 'totalAmount', label: 'Total' },
     { key: 'paidAmount', label: 'Paid' },
     { key: 'outstandingAmount', label: 'Outstanding' },
@@ -21,35 +23,71 @@ const customerOutstandingReport: ReportDefinition = {
       status: { notIn: ['CANCELLED'] },
       AND: [filters.companyId ? { companyId: filters.companyId } : {}, dateRangeWhere('invoiceDate', filters)],
     };
-    const [rows, total] = await prisma.$transaction([
-      prisma.invoice.findMany({
-        where,
-        include: { company: true },
-        orderBy: { outstandingAmount: 'desc' },
-        skip,
-        take,
-      }),
+
+    // Opening balances are a POSITION, not an Invoice, so they are absent
+    // from the query above — a customer whose whole debt was carried over
+    // from the old system did not appear on this report at all. They are
+    // pulled in as their own rows and paginated together with the invoices
+    // so the page total is the real total.
+    const openingRows = await openingInvoiceRows(filters);
+
+    const [invoices, invoiceCount] = await prisma.$transaction([
+      prisma.invoice.findMany({ where, include: { company: true }, orderBy: { outstandingAmount: 'desc' } }),
       prisma.invoice.count({ where }),
     ]);
-    return {
-      rows: rows.map((i) => ({
+
+    const rows = [
+      ...openingRows,
+      ...invoices.map((i) => ({
         invoiceNumber: i.invoiceNumber,
         company: i.company.name,
+        source: 'Invoice',
         totalAmount: i.totalAmount,
         paidAmount: i.paidAmount,
         outstandingAmount: i.outstandingAmount,
         dueDate: i.dueDate,
       })),
-      total,
-    };
+    ];
+
+    return { rows: rows.slice(skip, skip + take), total: invoiceCount + openingRows.length };
   },
 };
+
+/**
+ * Opening receivables shaped like the invoice rows beside them. Filtered by
+ * the same company and date window the invoice query uses, reading the
+ * opening row's reference date — the date it was owed from in the old books.
+ */
+async function openingInvoiceRows(filters: ReportFilters) {
+  const range = toDateRange(filters);
+  const rows = await partyOutstandingService.customerRows(range);
+  const wanted = filters.companyId ? rows.filter((r) => r.partyId === filters.companyId) : rows;
+
+  const lines = await Promise.all(
+    wanted
+      .filter((r) => r.opening > 0)
+      .map(async (r) => {
+        const openingLines = await partyOutstandingService.customerOpeningLines(r.partyId);
+        return openingLines.map((line) => ({
+          invoiceNumber: line.reference,
+          company: r.partyName,
+          source: 'Opening Balance',
+          totalAmount: line.totalAmount,
+          paidAmount: line.paidAmount,
+          outstandingAmount: line.outstandingAmount,
+          dueDate: line.dueDate,
+        }));
+      })
+  );
+  return lines.flat();
+}
 
 const supplierOutstandingReport: ReportDefinition = {
   key: 'supplierOutstandingReport',
   label: 'Supplier Outstanding Report',
   columns: [
     { key: 'supplierName', label: 'Supplier' },
+    { key: 'opening', label: 'Opening' },
     { key: 'totalCharges', label: 'Total Charges' },
     { key: 'totalPaid', label: 'Total Paid' },
     { key: 'outstanding', label: 'Outstanding' },
@@ -81,14 +119,32 @@ const supplierOutstandingReport: ReportDefinition = {
     });
     const paidBySupplier = new Map(payments.map((p) => [p.supplierId, Number(p._sum.amount || 0)]));
 
-    const rows = Array.from(chargeBySupplier.entries())
-      .map(([supplierId, v]) => ({
-        supplierName: v.name,
-        totalCharges: v.charge,
-        totalPaid: paidBySupplier.get(supplierId) || 0,
-        outstanding: v.charge - (paidBySupplier.get(supplierId) || 0),
-      }))
-      .filter((r) => r.outstanding > 0);
+    // Opening payables live outside Trip/SupplierPayment entirely, so they
+    // are added per supplier — and a supplier who only carries an opening
+    // balance gets a row of their own rather than being dropped.
+    const openingRows = await partyOutstandingService.supplierRows(toDateRange(filters));
+    const openingBySupplier = new Map(
+      openingRows.filter((r) => r.opening > 0).map((r) => [r.partyId, { name: r.partyName, amount: r.opening }])
+    );
+
+    const supplierIds = new Set([...chargeBySupplier.keys(), ...openingBySupplier.keys()]);
+    const rows = Array.from(supplierIds)
+      .filter((id) => !filters.supplierId || id === filters.supplierId)
+      .map((supplierId) => {
+        const charge = chargeBySupplier.get(supplierId);
+        const opening = openingBySupplier.get(supplierId)?.amount ?? 0;
+        const totalCharges = charge?.charge ?? 0;
+        const totalPaid = paidBySupplier.get(supplierId) || 0;
+        return {
+          supplierName: charge?.name ?? openingBySupplier.get(supplierId)?.name ?? 'Unknown',
+          opening,
+          totalCharges,
+          totalPaid,
+          outstanding: opening + totalCharges - totalPaid,
+        };
+      })
+      .filter((r) => r.outstanding > 0)
+      .sort((a, b) => b.outstanding - a.outstanding);
 
     return { rows, total: rows.length };
   },

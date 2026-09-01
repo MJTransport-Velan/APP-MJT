@@ -165,7 +165,7 @@ export const tripNoteApi = {
 };
 
 export const operationsDashboardApi = {
-  getSummary() {
-    return api.get<ApiResponse<OperationsDashboardSummary>>('/operations/dashboard');
+  getSummary(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<OperationsDashboardSummary>>('/operations/dashboard', { params });
   },
 };

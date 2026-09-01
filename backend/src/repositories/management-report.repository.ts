@@ -1,5 +1,7 @@
 import { prisma } from '../config/db';
-import { ReportFilters, dateRangeWhere } from '../utils/reportFilters';
+import { ReportFilters, dateRangeWhere, toDateRange } from '../utils/reportFilters';
+import { hasRange } from '../utils/dateRange';
+import { partyOutstandingService } from '../services/party-outstanding.service';
 import { ReportDefinition } from '../reports/report.types';
 
 const companyWiseReport: ReportDefinition = {
@@ -10,6 +12,7 @@ const companyWiseReport: ReportDefinition = {
     { key: 'intentCount', label: 'Intents' },
     { key: 'tripCount', label: 'Trips' },
     { key: 'revenue', label: 'Revenue' },
+    { key: 'opening', label: 'Opening' },
     { key: 'outstanding', label: 'Outstanding' },
   ],
   run: async (filters) => {
@@ -17,9 +20,16 @@ const companyWiseReport: ReportDefinition = {
       where: { deletedAt: null, ...(filters.companyId ? { id: filters.companyId } : {}) },
     });
 
+    // Outstanding here has to match every other outstanding figure in the
+    // app, which means counting the opening balance carried over from the
+    // previous system alongside the unpaid invoices.
+    const outstandingByCompany = new Map(
+      (await partyOutstandingService.customerRows()).map((r) => [r.partyId, r])
+    );
+
     const rows = await Promise.all(
       companies.map(async (company) => {
-        const [intentCount, trips, outstandingAgg] = await Promise.all([
+        const [intentCount, trips] = await Promise.all([
           prisma.intent.count({ where: { deletedAt: null, companyId: company.id, ...dateRangeWhere('createdAt', filters) } }),
           prisma.trip.findMany({
             where: {
@@ -30,10 +40,6 @@ const companyWiseReport: ReportDefinition = {
             },
             select: { freightAmount: true },
           }),
-          prisma.invoice.aggregate({
-            where: { deletedAt: null, companyId: company.id, status: { notIn: ['CANCELLED'] } },
-            _sum: { outstandingAmount: true },
-          }),
         ]);
 
         return {
@@ -41,7 +47,8 @@ const companyWiseReport: ReportDefinition = {
           intentCount,
           tripCount: trips.length,
           revenue: trips.reduce((sum, t) => sum + Number(t.freightAmount || 0), 0),
-          outstanding: Number(outstandingAgg._sum.outstandingAmount || 0),
+          opening: outstandingByCompany.get(company.id)?.opening ?? 0,
+          outstanding: outstandingByCompany.get(company.id)?.total ?? 0,
         };
       })
     );
@@ -79,6 +86,29 @@ async function computePeriodSummary(from: Date, to: Date) {
   };
 }
 
+/**
+ * The month-by-month rows a From/To window covers, oldest first. A window
+ * that starts or ends mid-month still yields that whole month's row —
+ * these are calendar-month summaries, and a part-month row would not be
+ * comparable with the ones either side of it.
+ */
+function monthsInRange(filters: ReportFilters) {
+  const range = toDateRange(filters);
+  const first = range.from ?? new Date();
+  const last = range.to ?? new Date();
+  const months: { from: Date; to: Date }[] = [];
+  const cursor = new Date(first.getFullYear(), first.getMonth(), 1);
+  const end = new Date(last.getFullYear(), last.getMonth(), 1);
+  while (cursor <= end) {
+    months.push({
+      from: new Date(cursor.getFullYear(), cursor.getMonth(), 1),
+      to: new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999),
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
 const monthlyBusinessSummaryReport: ReportDefinition = {
   key: 'monthlyBusinessSummaryReport',
   label: 'Monthly Business Summary',
@@ -91,6 +121,19 @@ const monthlyBusinessSummaryReport: ReportDefinition = {
     { key: 'profit', label: 'Profit' },
   ],
   run: async (filters: ReportFilters) => {
+    // A From/To window wins over the year/month pair: it is the filter the
+    // report toolbar actually offers, and it can span several months, so
+    // each month in it gets its own row.
+    if (hasRange(toDateRange(filters))) {
+      const rows = await Promise.all(
+        monthsInRange(filters).map(async (m) => ({
+          month: m.from.toISOString().slice(0, 7),
+          ...(await computePeriodSummary(m.from, m.to)),
+        }))
+      );
+      return { rows, total: rows.length };
+    }
+
     const now = new Date();
     const year = filters.year || now.getFullYear();
     const month = filters.month || now.getMonth() + 1;
@@ -115,6 +158,16 @@ const yearlyBusinessSummaryReport: ReportDefinition = {
     { key: 'profit', label: 'Profit' },
   ],
   run: async (filters: ReportFilters) => {
+    if (hasRange(toDateRange(filters))) {
+      const rows = await Promise.all(
+        monthsInRange(filters).map(async (m) => ({
+          month: m.from.toISOString().slice(0, 7),
+          ...(await computePeriodSummary(m.from, m.to)),
+        }))
+      );
+      return { rows, total: rows.length };
+    }
+
     const year = filters.year || new Date().getFullYear();
     const rows = [];
     for (let m = 0; m < 12; m++) {

@@ -5,13 +5,23 @@
       <AppBtn variant="outlined" :loading="store.loading" @click="refresh">Refresh</AppBtn>
     </div>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Bank and cash balances, pending cheques and approvals are current figures, not period totals."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="store.summary" class="dashboard-grid mb-4">
       <AppCard><AppCardText>
-        <div class="text-caption text-medium-emphasis">Today's Receipts</div>
+        <div class="text-caption text-medium-emphasis">{{ isActive ? 'Receipts in Period' : "Today's Receipts" }}</div>
         <div class="text-h6 text-success">{{ formatCurrency(store.summary.todaysReceipts) }}</div>
       </AppCardText></AppCard>
       <AppCard><AppCardText>
-        <div class="text-caption text-medium-emphasis">Today's Payments</div>
+        <div class="text-caption text-medium-emphasis">{{ isActive ? 'Payments in Period' : "Today's Payments" }}</div>
         <div class="text-h6 text-error">{{ formatCurrency(store.summary.todaysPayments) }}</div>
       </AppCardText></AppCard>
       <AppCard><AppCardText>
@@ -64,6 +74,8 @@
 import { onMounted } from 'vue';
 import { useBankingDashboardStore } from '@/stores/banking';
 import { AppBtn, AppCard, AppCardTitle, AppCardText } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const store = useBankingDashboardStore();
 
@@ -71,8 +83,10 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(value);
 }
 
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: refresh });
+
 async function refresh() {
-  await store.fetchSummary();
+  await store.fetchSummary(params.value);
 }
 
 onMounted(refresh);

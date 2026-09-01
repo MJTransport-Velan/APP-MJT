@@ -11,7 +11,11 @@ router.use(authenticate);
 const summarySchema = z.object({
   body: z.object({}).optional(),
   params: z.object({}).optional(),
-  query: z.object({ organizationId: z.string().uuid().optional() }),
+  query: z.object({
+    organizationId: z.string().uuid().optional(),
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+  }),
 });
 
 router.get('/', authorize('bankDashboard.view'), validate(summarySchema), bankingDashboardController.summary);

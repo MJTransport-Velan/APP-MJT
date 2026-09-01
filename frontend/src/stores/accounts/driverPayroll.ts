@@ -333,10 +333,10 @@ export const useDriverSalaryPaymentStore = defineStore('driverSalaryPayments', {
 export const usePayrollDashboardStore = defineStore('payrollDashboard', {
   state: () => ({ summary: null as PayrollDashboardSummary | null, loading: false }),
   actions: {
-    async fetchSummary() {
+    async fetchSummary(params: Record<string, string> = {}) {
       this.loading = true;
       try {
-        const response = await payrollDashboardApi.getSummary();
+        const response = await payrollDashboardApi.getSummary(params);
         this.summary = response.data.data;
       } finally {
         this.loading = false;

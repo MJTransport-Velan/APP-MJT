@@ -1,9 +1,17 @@
 import { prisma } from '../config/db';
+import { DateRange, hasRange, rangeWhere, resolveRange, currentMonthRange } from '../utils/dateRange';
 
 export const fleetDashboardService = {
-  async getSummary() {
+  /**
+   * @param range From/To window for the cost figures. Vehicle counts and
+   * status are live fleet state, and the document-expiry list looks
+   * forward 30 days from today — neither is something a reporting window
+   * over past expenses can narrow, so both stay as they are.
+   */
+  async getSummary(range: DateRange = {}) {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const costRange = resolveRange(range, currentMonthRange);
+    const costWhere = rangeWhere('expenseDate', costRange);
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     const [
@@ -14,9 +22,9 @@ export const fleetDashboardService = {
       runningVehicles,
       underMaintenanceVehicles,
       inactiveVehicles,
-      monthlyFuelCost,
-      monthlyMaintenanceCost,
-      monthlyExpensesByCategory,
+      periodFuelCost,
+      periodMaintenanceCost,
+      periodExpensesByCategory,
       expiringDocuments,
     ] = await Promise.all([
       prisma.vehicle.count({ where: { deletedAt: null } }),
@@ -27,16 +35,16 @@ export const fleetDashboardService = {
       prisma.vehicle.count({ where: { deletedAt: null, status: 'UNDER_MAINTENANCE' } }),
       prisma.vehicle.count({ where: { deletedAt: null, status: 'INACTIVE' } }),
       prisma.vehicleExpense.aggregate({
-        where: { deletedAt: null, category: 'FUEL', expenseDate: { gte: startOfMonth } },
+        where: { deletedAt: null, category: 'FUEL', ...costWhere },
         _sum: { amount: true },
       }),
       prisma.vehicleExpense.aggregate({
-        where: { deletedAt: null, category: 'MAINTENANCE', expenseDate: { gte: startOfMonth } },
+        where: { deletedAt: null, category: 'MAINTENANCE', ...costWhere },
         _sum: { amount: true },
       }),
       prisma.vehicleExpense.groupBy({
         by: ['category'],
-        where: { deletedAt: null, expenseDate: { gte: startOfMonth } },
+        where: { deletedAt: null, ...costWhere },
         _sum: { amount: true },
       }),
       prisma.vehicle.findMany({
@@ -73,11 +81,14 @@ export const fleetDashboardService = {
         underMaintenance: underMaintenanceVehicles,
         inactive: inactiveVehicles,
       },
+      period: { from: costRange.from, to: costRange.to, filtered: hasRange(range) },
       costSummary: {
-        month: startOfMonth.toISOString().slice(0, 7),
-        fuelCost: monthlyFuelCost._sum.amount || 0,
-        maintenanceCost: monthlyMaintenanceCost._sum.amount || 0,
-        byCategory: monthlyExpensesByCategory.map((row) => ({
+        month: costRange.from.toISOString().slice(0, 7),
+        from: costRange.from,
+        to: costRange.to,
+        fuelCost: periodFuelCost._sum.amount || 0,
+        maintenanceCost: periodMaintenanceCost._sum.amount || 0,
+        byCategory: periodExpensesByCategory.map((row) => ({
           category: row.category,
           total: row._sum.amount || 0,
         })),

@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { DateRange, rangeWhere } from './dateRange';
 
 export interface ReportFilters {
   dateFrom?: Date;
@@ -45,20 +46,20 @@ export function parseReportFilters(query: Request['query']): ReportFilters {
 }
 
 export function dateRangeWhere(field: string, filters: ReportFilters) {
-  if (!filters.dateFrom && !filters.dateTo) return {};
-  // dateTo arrives as a date-only value (parsed as UTC midnight, per the
-  // YYYY-MM-DD spec) — without pushing it to the end of that day, `lte`
-  // would exclude every record from "dateTo" itself except one at exactly
-  // 00:00:00.000. Push to 23:59:59.999 UTC so the whole day is inclusive.
-  let dateTo: Date | undefined;
+  return rangeWhere(field, toDateRange(filters));
+}
+
+/**
+ * The report filter set carries `dateTo` as parsed (UTC midnight for a
+ * date-only value); the shared range type carries it already widened to the
+ * end of that day. Converting here keeps one implementation of the
+ * inclusive-To rule in dateRange.ts.
+ */
+export function toDateRange(filters: ReportFilters): DateRange {
+  let to: Date | undefined;
   if (filters.dateTo) {
-    dateTo = new Date(filters.dateTo);
-    dateTo.setUTCHours(23, 59, 59, 999);
+    to = new Date(filters.dateTo);
+    to.setUTCHours(23, 59, 59, 999);
   }
-  return {
-    [field]: {
-      ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
-      ...(dateTo ? { lte: dateTo } : {}),
-    },
-  };
+  return { from: filters.dateFrom, to };
 }

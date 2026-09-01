@@ -4,6 +4,7 @@ import { vehicleCostSummaryService } from '../services/vehicle-cost-summary.serv
 import { dashboardEngineService } from '../services/dashboard-engine.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
+import { parseDateRange } from '../utils/dateRange';
 import { AuthRequest } from '../middlewares/auth.middleware';
 
 export const fixedAssetController = {
@@ -11,8 +12,8 @@ export const fixedAssetController = {
     const result = await fixedAssetService.list(req.query);
     return sendSuccess(res, 200, { message: 'Fixed Assets fetched', data: result.data, meta: result.meta });
   }),
-  dashboard: asyncHandler(async (_req, res: Response) => {
-    const dashboard = await dashboardEngineService.getWidget('assets');
+  dashboard: asyncHandler(async (req, res: Response) => {
+    const dashboard = await dashboardEngineService.getWidget('assets', { range: parseDateRange(req.query) });
     return sendSuccess(res, 200, { message: 'Asset Dashboard fetched', data: dashboard });
   }),
   costSummary: asyncHandler(async (req, res: Response) => {

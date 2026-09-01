@@ -1,5 +1,15 @@
 <template>
   <div>
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Trip counts, money figures, both charts and the recent lists all follow this window."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="dashboardStore.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -41,7 +51,7 @@
         </div>
         <div class="col-12 col-md-5">
           <AppCard class="pa-4" elevation="1">
-            <h3 class="section-title">Trips This Week</h3>
+            <h3 class="section-title">{{ isActive ? 'Trips in Period' : 'Trips This Week' }}</h3>
             <apexchart type="bar" height="300" :options="tripChartOptions" :series="tripChartSeries" />
           </AppCard>
         </div>
@@ -102,6 +112,8 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useDashboardStore } from '@/stores/dashboard.store';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 import { formatCurrency, formatNumber, formatRelativeTime } from '@/utils/format';
 import { useTheme } from '@/composables/useTheme';
 import StatCard from '@/components/StatCard.vue';
@@ -121,9 +133,13 @@ import {
 const dashboardStore = useDashboardStore();
 const { isDark } = useTheme();
 
-onMounted(() => {
-  dashboardStore.fetchSummary();
-});
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+function load() {
+  dashboardStore.fetchSummary(params.value);
+}
+
+onMounted(load);
 
 const cards = computed(() => dashboardStore.summary!.cards);
 

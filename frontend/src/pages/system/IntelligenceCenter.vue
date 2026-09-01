@@ -37,6 +37,15 @@
       </AppWindowItem>
 
       <AppWindowItem value="kpi">
+        <DateRangeFilterBar
+          :date-from="dateFrom"
+          :date-to="dateTo"
+          snapshot-note="Each card shows the last snapshot inside the window."
+          @update:date-from="setFrom"
+          @update:date-to="setTo"
+          @preset="apply"
+          @clear="clear"
+        />
         <div class="d-flex justify-end mb-3">
           <AppBtn variant="outlined" prepend-icon="mdi-refresh" :loading="computing" @click="onComputeSnapshots">Compute Today's Snapshot</AppBtn>
         </div>
@@ -63,6 +72,8 @@ import { ref, onMounted } from 'vue';
 import { aiInsightApi, kpiApi } from '@/services/system/phase8';
 import { useSnackbar, extractErrorMessage } from '@/composables/useSnackbar';
 import { AppTabs, AppTab, AppWindow, AppWindowItem, AppCard, AppTable, AppChip, AppBtn, AppSelect } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 import type { AiInsight, KpiCard } from '@/types/phase8.types';
 
 const { success, error } = useSnackbar();
@@ -96,8 +107,10 @@ function formatValue(value: number, unit: string | null) {
   if (unit === '%') return `${value}%`;
   return String(value);
 }
+const { dateFrom, dateTo, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: fetchKpiDashboard });
+
 async function fetchKpiDashboard() {
-  kpiCards.value = (await kpiApi.executiveDashboard()).data.data.cards;
+  kpiCards.value = (await kpiApi.executiveDashboard(params.value)).data.data.cards;
 }
 async function onComputeSnapshots() {
   computing.value = true;

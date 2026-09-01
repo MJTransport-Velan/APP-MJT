@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Asset Dashboard</h2>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Asset counts and current value are the register as it stands today."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="store.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -24,7 +34,7 @@
           <ProfitCard label="Total Vehicle Value" :value="dashboard.stats.totalVehicleValue" icon="mdi-truck-outline" color="primary" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Today's Expenses" :value="dashboard.stats.todaysExpenses" icon="mdi-cash-fast" color="info" />
+          <ProfitCard :label="isActive ? 'Expenses in Period' : `Today's Expenses`" :value="dashboard.stats.todaysExpenses" icon="mdi-cash-fast" color="info" />
         </div>
       </div>
 
@@ -49,7 +59,7 @@
         </div>
         <div class="col-12 col-md-6">
           <AppCard class="pa-4">
-            <div class="text-subtitle-2 mb-2">Top Expense Vehicles</div>
+            <div class="text-subtitle-2 mb-2">Top Expense Vehicles{{ isActive ? ' (Period)' : '' }}</div>
             <div v-if="dashboard.topExpenseVehicles.length === 0" class="text-caption text-medium-emphasis">No expense data yet.</div>
             <div class="tblwrap" v-else>
               <AppTable density="compact">
@@ -75,13 +85,19 @@ import { useFixedAssetStore } from '@/stores/accounts/vehicleAssets';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
 import { formatCurrency } from '@/utils/format';
 import { AppProgressCircular, AppCard, AppTable } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const store = useFixedAssetStore();
 const dashboard = computed(() => store.dashboard);
 
-onMounted(() => {
-  store.fetchDashboard();
-});
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+function load() {
+  store.fetchDashboard(params.value);
+}
+
+onMounted(load);
 </script>
 
 <style scoped>

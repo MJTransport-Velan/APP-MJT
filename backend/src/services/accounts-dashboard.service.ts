@@ -3,6 +3,7 @@ import { balanceSheetService } from './balance-sheet.service';
 import { loanDashboardService } from './loan-dashboard.service';
 import { profitLossService } from './profit-loss.service';
 import { openingBalanceService } from './opening-balance.service';
+import { DateRange, hasRange, rangeWhere, resolveRange, currentMonthRange, todayRange } from '../utils/dateRange';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -145,17 +146,34 @@ export const accountsDashboardService = {
     return { monthlyPerformance: performance, upcomingEmiByMonth };
   },
 
-  async getSummary() {
+  /**
+   * @param range From/To window. Revenue, expenses, profit and the
+   * collection/payment tiles are period figures and follow it; so do the
+   * recent receipt and payment lists. Outstanding receivables/payables,
+   * overdue counts, advance balances, credit-limit alerts and the whole
+   * finance overview (balances, loans, EMI) are "where things stand today"
+   * figures with no dated movement history behind them, so a past window
+   * cannot restate them and they are left whole.
+   */
+  async getSummary(range: DateRange = {}) {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const filtered = hasRange(range);
+    const period = resolveRange(range, currentMonthRange);
+    // "Today's collection / payment" becomes "collection / payment in the
+    // selected period" once a window is picked.
+    const dayPeriod = filtered ? period : resolveRange({}, todayRange);
+    const periodWhere = (field: string) => rangeWhere(field, period);
+    const dayWhere = (field: string) => rangeWhere(field, dayPeriod);
+    // The recent lists are "the last ten", not a period total — narrowing
+    // them by default would blank them outside the current month.
+    const recentWhere = (field: string) => (filtered ? rangeWhere(field, period) : {});
 
     const [
       outstandingReceivables,
       outstandingPayableTrips,
-      monthlyReceipts,
-      monthlyTripExpenses,
-      monthlySupplierPayments,
+      periodReceipts,
+      periodTripExpenses,
+      periodSupplierPayments,
       customerOutstanding,
       recentPayments,
       recentReceipts,
@@ -169,15 +187,15 @@ export const accountsDashboardService = {
         select: { id: true, supplierId: true, supplierRate: true },
       }),
       prisma.receipt.aggregate({
-        where: { deletedAt: null, receiptDate: { gte: startOfMonth } },
+        where: { deletedAt: null, ...periodWhere('receiptDate') },
         _sum: { amount: true },
       }),
       prisma.tripExpense.aggregate({
-        where: { deletedAt: null, expenseDate: { gte: startOfMonth } },
+        where: { deletedAt: null, ...periodWhere('expenseDate') },
         _sum: { amount: true },
       }),
       prisma.supplierPayment.aggregate({
-        where: { deletedAt: null, paymentDate: { gte: startOfMonth } },
+        where: { deletedAt: null, ...periodWhere('paymentDate') },
         _sum: { amount: true },
       }),
       prisma.invoice.groupBy({
@@ -186,13 +204,13 @@ export const accountsDashboardService = {
         _sum: { outstandingAmount: true },
       }),
       prisma.supplierPayment.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...recentWhere('paymentDate') },
         include: { supplier: true },
         orderBy: { paymentDate: 'desc' },
         take: 10,
       }),
       prisma.receipt.findMany({
-        where: { deletedAt: null },
+        where: { deletedAt: null, ...recentWhere('receiptDate') },
         include: { company: true },
         orderBy: { receiptDate: 'desc' },
         take: 10,
@@ -239,9 +257,9 @@ export const accountsDashboardService = {
     const companies = await prisma.company.findMany({ where: { id: { in: companyIds } } });
     const companyNameMap = new Map(companies.map((c) => [c.id, c.name]));
 
-    const monthlyExpensesTotal =
-      Number(monthlyTripExpenses._sum.amount || 0) + Number(monthlySupplierPayments._sum.amount || 0);
-    const monthlyRevenue = Number(monthlyReceipts._sum.amount || 0);
+    const periodExpensesTotal =
+      Number(periodTripExpenses._sum.amount || 0) + Number(periodSupplierPayments._sum.amount || 0);
+    const periodRevenue = Number(periodReceipts._sum.amount || 0);
 
     // Phase 10 — Receivables & Payables additions. All computed live, no stored metric table.
     const [
@@ -256,8 +274,8 @@ export const accountsDashboardService = {
       blockedOrOverLimitCompanies,
     ] = await Promise.all([
       prisma.supplierBill.aggregate({ where: { deletedAt: null, status: { notIn: ['CANCELLED'] } }, _sum: { outstandingAmount: true } }),
-      prisma.receipt.aggregate({ where: { deletedAt: null, receiptDate: { gte: startOfToday } }, _sum: { amount: true } }),
-      prisma.supplierPayment.aggregate({ where: { deletedAt: null, paymentDate: { gte: startOfToday } }, _sum: { amount: true } }),
+      prisma.receipt.aggregate({ where: { deletedAt: null, ...dayWhere('receiptDate') }, _sum: { amount: true } }),
+      prisma.supplierPayment.aggregate({ where: { deletedAt: null, ...dayWhere('paymentDate') }, _sum: { amount: true } }),
       prisma.invoice.count({ where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, dueDate: { lt: now }, outstandingAmount: { gt: 0 } } }),
       prisma.supplierBill.count({ where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, dueDate: { lt: now }, outstandingAmount: { gt: 0 } } }),
       prisma.receipt.count({ where: { deletedAt: null, isAdvance: true } }),
@@ -299,6 +317,7 @@ export const accountsDashboardService = {
 
     return {
       ...overview,
+      period: { from: period.from, to: period.to, filtered },
       outstandingReceivables: round2(Number(outstandingReceivables._sum.outstandingAmount || 0) + openingReceivables.total),
       // Now sourced from SupplierBill (Phase 10) where it exists — falls back
       // to the legacy trip-based estimate for suppliers with no bill yet.
@@ -307,9 +326,9 @@ export const accountsDashboardService = {
       ),
       openingReceivables: openingReceivables.total,
       openingPayables: openingPayables.total,
-      monthlyRevenue,
-      monthlyExpenses: monthlyExpensesTotal,
-      profit: monthlyRevenue - monthlyExpensesTotal,
+      monthlyRevenue: periodRevenue,
+      monthlyExpenses: periodExpensesTotal,
+      profit: periodRevenue - periodExpensesTotal,
       todaysCollection: Number(todaysCollection._sum.amount || 0),
       todaysPayment: Number(todaysPayment._sum.amount || 0),
       overdueReceivablesCount: overdueInvoices,

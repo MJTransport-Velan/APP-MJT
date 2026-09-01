@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Trip Financials</h2>
 
+    <DateRangeFilterBar
+      v-if="activeTab !== 'trip'"
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <AppTabs v-model="activeTab" color="primary" class="mb-4">
       <AppTab value="trip">Trip Lookup</AppTab>
       <AppTab value="vehicle">Vehicle Profit</AppTab>
@@ -173,6 +183,8 @@ import {
   AppTable,
 } from '@/components/ui';
 import type { Trip } from '@/types/operations.types';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const store = useTripFinancialStore();
 
@@ -200,10 +212,26 @@ async function onTripSelected(tripId: string) {
   await store.fetchForTrip(tripId);
 }
 
+// These endpoints take `from`/`to` rather than the `dateFrom`/`dateTo` pair
+// the dashboards use; both spellings are accepted server-side, but the
+// store's own signature is `from`/`to`, so map to it here.
+const { dateFrom, dateTo, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: reloadActive });
+
+const rangeParams = computed(() => ({
+  ...(dateFrom.value ? { from: dateFrom.value } : {}),
+  ...(dateTo.value ? { to: dateTo.value } : {}),
+}));
+
+function reloadActive() {
+  if (activeTab.value === 'vehicle') store.fetchVehicleWise(rangeParams.value);
+  if (activeTab.value === 'supplier') store.fetchSupplierWise(rangeParams.value);
+  if (activeTab.value === 'customer') store.fetchCustomerWise(rangeParams.value);
+}
+
 watch(activeTab, (tab) => {
-  if (tab === 'vehicle' && store.vehicleWise.length === 0) store.fetchVehicleWise();
-  if (tab === 'supplier' && store.supplierWise.length === 0) store.fetchSupplierWise();
-  if (tab === 'customer' && store.customerWise.length === 0) store.fetchCustomerWise();
+  if (tab === 'vehicle' && store.vehicleWise.length === 0) store.fetchVehicleWise(rangeParams.value);
+  if (tab === 'supplier' && store.supplierWise.length === 0) store.fetchSupplierWise(rangeParams.value);
+  if (tab === 'customer' && store.customerWise.length === 0) store.fetchCustomerWise(rangeParams.value);
 });
 
 onMounted(async () => {

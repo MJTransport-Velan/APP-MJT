@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Finance Dashboard</h2>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Balances, receivables, payables, EMI and credit alerts are where things stand today — a past window cannot restate them."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="dashboardStore.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -59,19 +69,19 @@
           <ProfitCard label="Total Assets" :value="summary.totalAssets || 0" icon="mdi-scale-balance" color="info" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Profit (This Month)" :value="summary.profit" icon="mdi-chart-line" color="primary" color-by-value />
+          <ProfitCard :label="isActive ? 'Profit (Period)' : 'Profit (This Month)'" :value="summary.profit" icon="mdi-chart-line" color="primary" color-by-value />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Revenue (This Month)" :value="summary.monthlyRevenue" icon="mdi-cash-plus" color="success" />
+          <ProfitCard :label="isActive ? 'Revenue (Period)' : 'Revenue (This Month)'" :value="summary.monthlyRevenue" icon="mdi-cash-plus" color="success" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Expenses (This Month)" :value="summary.monthlyExpenses" icon="mdi-cash-minus" color="error" />
+          <ProfitCard :label="isActive ? 'Expenses (Period)' : 'Expenses (This Month)'" :value="summary.monthlyExpenses" icon="mdi-cash-minus" color="error" />
         </div>
       </div>
 
       <div class="row mt-1">
-        <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Today's Collection" :value="summary.todaysCollection || 0" icon="mdi-cash-fast" color="success" /></div>
-        <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Today's Payment" :value="summary.todaysPayment || 0" icon="mdi-cash-minus" color="error" /></div>
+        <div class="col-12 col-sm-6 col-md-2"><ProfitCard :label="isActive ? 'Collection (Period)' : `Today's Collection`" :value="summary.todaysCollection || 0" icon="mdi-cash-fast" color="success" /></div>
+        <div class="col-12 col-sm-6 col-md-2"><ProfitCard :label="isActive ? 'Payment (Period)' : `Today's Payment`" :value="summary.todaysPayment || 0" icon="mdi-cash-minus" color="error" /></div>
         <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Overdue Invoices" :value="summary.overdueReceivablesCount || 0" icon="mdi-alert-outline" color="warning" /></div>
         <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Overdue Bills" :value="summary.overduePayablesCount || 0" icon="mdi-alert-outline" color="warning" /></div>
         <div class="col-12 col-sm-6 col-md-2"><ProfitCard label="Customer Advances" :value="summary.advanceBalance?.customer || 0" icon="mdi-piggy-bank-outline" color="info" /></div>
@@ -229,6 +239,8 @@ import {
   AppTable,
   AppChip,
 } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const dashboardStore = useAccountsDashboardStore();
 const summary = computed(() => dashboardStore.summary);
@@ -278,10 +290,18 @@ const profitOptions = {
   legend: { position: 'bottom' },
 };
 
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+function load() {
+  dashboardStore.fetchSummary(params.value);
+}
+
 onMounted(() => {
   // Cards first; the trend series runs a Profit & Loss per month and must
   // not delay the figures at the top of the page.
-  dashboardStore.fetchSummary();
+  load();
+  // The trend charts are a fixed rolling months-back/months-ahead series,
+  // not a window the From/To pair selects — they keep their own horizon.
   dashboardStore.fetchTrends();
 });
 </script>

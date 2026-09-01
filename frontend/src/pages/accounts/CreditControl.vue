@@ -34,7 +34,12 @@
       <AppCard v-if="current">
         <AppCardTitle class="text-h6">{{ current.name }} — Credit Control</AppCardTitle>
         <AppCardText>
-          <p class="text-caption text-medium-emphasis mb-2">Live outstanding: {{ formatCurrency(current.liveOutstanding) }}</p>
+          <p class="text-caption text-medium-emphasis mb-2">
+            Live outstanding: {{ formatCurrency(current.liveOutstanding) }}
+            <span v-if="current.openingOutstanding">
+              (incl. {{ formatCurrency(current.openingOutstanding) }} opening balance)
+            </span>
+          </p>
           <AppTextField v-model.number="form.creditLimit" type="number" label="Credit Limit" class="mb-2" />
           <AppTextField v-model.number="form.creditDays" type="number" label="Credit Days" class="mb-2" />
           <AppCheckbox v-model="form.isBlocked" label="Block this customer" class="mb-2" />

@@ -16,11 +16,11 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   actions: {
-    async fetchSummary() {
+    async fetchSummary(params: Record<string, string> = {}) {
       this.loading = true;
       this.error = null;
       try {
-        const response = await dashboardApi.getSummary();
+        const response = await dashboardApi.getSummary(params);
         this.summary = response.data.data;
       } catch (err) {
         this.error = 'Failed to load dashboard data';

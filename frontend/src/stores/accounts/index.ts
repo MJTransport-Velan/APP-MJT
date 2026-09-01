@@ -244,10 +244,10 @@ export const useAccountsDashboardStore = defineStore('acctsDashboard', {
     loading: false,
   }),
   actions: {
-    async fetchSummary() {
+    async fetchSummary(params: Record<string, string> = {}) {
       this.loading = true;
       try {
-        const response = await accountsDashboardApi.getSummary();
+        const response = await accountsDashboardApi.getSummary(params);
         this.summary = response.data.data;
       } finally {
         this.loading = false;

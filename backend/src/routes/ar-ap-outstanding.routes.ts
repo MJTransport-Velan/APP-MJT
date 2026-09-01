@@ -15,7 +15,9 @@ const idParamSchema = z.object({
 });
 router.get('/customers/:id/outstanding', authorize('invoice.view'), validate(idParamSchema), arApOutstandingController.customerOutstanding);
 router.get('/customers/aging', authorize('invoice.view'), arApOutstandingController.customerAging);
+router.get('/customers/summary', authorize('invoice.view'), arApOutstandingController.customerSummary);
 router.get('/suppliers/:id/outstanding', authorize('supplierBill.view'), validate(idParamSchema), arApOutstandingController.supplierOutstanding);
 router.get('/suppliers/aging', authorize('supplierBill.view'), arApOutstandingController.supplierAging);
+router.get('/suppliers/summary', authorize('supplierBill.view'), arApOutstandingController.supplierSummary);
 
 export default router;

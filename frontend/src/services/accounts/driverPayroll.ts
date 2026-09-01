@@ -196,7 +196,7 @@ export const salaryPaymentQuoteApi = {
 };
 
 export const payrollDashboardApi = {
-  getSummary() {
-    return api.get<ApiResponse<PayrollDashboardSummary>>('/accounts/payroll/dashboard');
+  getSummary(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<PayrollDashboardSummary>>('/accounts/payroll/dashboard', { params });
   },
 };

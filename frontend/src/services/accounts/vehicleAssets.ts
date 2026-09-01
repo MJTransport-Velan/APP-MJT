@@ -54,8 +54,8 @@ export const fixedAssetApi = {
   costSummary(id: string) {
     return api.get<ApiResponse<VehicleCostSummary>>(`/accounts/assets/${id}/cost-summary`);
   },
-  dashboard() {
-    return api.get<ApiResponse<AssetDashboardSummary>>('/accounts/assets/dashboard');
+  dashboard(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<AssetDashboardSummary>>('/accounts/assets/dashboard', { params });
   },
 };
 

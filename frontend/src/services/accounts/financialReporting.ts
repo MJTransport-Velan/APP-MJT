@@ -41,8 +41,8 @@ export const expenseAnalysisApi = {
 };
 
 export const misDashboardApi = {
-  get() {
-    return api.get<ApiResponse<MisDashboardSummary>>('/accounts/mis-dashboard');
+  get(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<MisDashboardSummary>>('/accounts/mis-dashboard', { params });
   },
 };
 

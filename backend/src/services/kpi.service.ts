@@ -2,6 +2,7 @@ import { prisma } from '../config/db';
 import { organizationService } from './organization.service';
 import { misDashboardService } from './mis-dashboard.service';
 import { auditService } from './audit.service';
+import { DateRange, rangeWhere } from '../utils/dateRange';
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -62,13 +63,19 @@ export const kpiService = {
     return { computed, periodDate };
   },
 
-  async executiveDashboard() {
+  /**
+   * @param range From/To window over the snapshot period date. "Latest" then
+   * means the last snapshot inside the window rather than the last one
+   * recorded, so the cards read as at the end of the chosen period.
+   */
+  async executiveDashboard(range: DateRange = {}) {
     const organizationId = await organizationService.resolveOrganizationId(undefined);
     const definitions = await prisma.kpiDefinition.findMany({ where: { isActive: true } });
+    const periodWhere = rangeWhere('periodDate', range);
 
     const cards = await Promise.all(
       definitions.map(async (def) => {
-        const snapshots = await prisma.kpiSnapshot.findMany({ where: { kpiDefinitionId: def.id, organizationId }, orderBy: { periodDate: 'desc' }, take: 30 });
+        const snapshots = await prisma.kpiSnapshot.findMany({ where: { kpiDefinitionId: def.id, organizationId, ...periodWhere }, orderBy: { periodDate: 'desc' }, take: 30 });
         const latest = snapshots[0];
         const trend = snapshots.slice(0, 14).reverse().map((s) => ({ periodDate: s.periodDate, value: Number(s.value) }));
         return {

@@ -76,10 +76,10 @@ export const useFixedAssetStore = defineStore('fixedAssets', {
     async remove(id: string) {
       await fixedAssetApi.remove(id);
     },
-    async fetchDashboard() {
+    async fetchDashboard(params: Record<string, string> = {}) {
       this.loading = true;
       try {
-        const response = await fixedAssetApi.dashboard();
+        const response = await fixedAssetApi.dashboard(params);
         this.dashboard = response.data.data;
       } finally {
         this.loading = false;

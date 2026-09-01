@@ -3,7 +3,7 @@ import type { ApiResponse } from '@/types/api.types';
 import type { DashboardSummary } from '@/types/dashboard.types';
 
 export const dashboardApi = {
-  getSummary() {
-    return api.get<ApiResponse<DashboardSummary>>('/dashboard');
+  getSummary(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<DashboardSummary>>('/dashboard', { params });
   },
 };

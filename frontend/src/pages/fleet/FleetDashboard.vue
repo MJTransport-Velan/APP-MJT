@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Fleet Dashboard</h2>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Vehicle counts, status and document expiry show the fleet as it stands today."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="dashboardStore.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -27,13 +37,13 @@
           <ExpenseSummaryCard label="Expiring Documents" :value="formatNumber(summary.documentExpirySummary.length)" icon="mdi-file-alert-outline" color="error" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ExpenseSummaryCard label="Fuel Cost (Month)" :value="formatCurrency(summary.costSummary.fuelCost)" icon="mdi-gas-station-outline" color="info" />
+          <ExpenseSummaryCard label="Fuel Cost" :value="formatCurrency(summary.costSummary.fuelCost)" icon="mdi-gas-station-outline" color="info" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ExpenseSummaryCard label="Maintenance Cost (Month)" :value="formatCurrency(summary.costSummary.maintenanceCost)" icon="mdi-wrench-outline" color="warning" />
+          <ExpenseSummaryCard label="Maintenance Cost" :value="formatCurrency(summary.costSummary.maintenanceCost)" icon="mdi-wrench-outline" color="warning" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ExpenseSummaryCard label="Monthly Expenses" :value="formatCurrency(totalMonthlyExpense)" icon="mdi-cash-multiple" color="primary" />
+          <ExpenseSummaryCard label="Total Expenses" :value="formatCurrency(totalPeriodExpense)" icon="mdi-cash-multiple" color="primary" />
         </div>
       </div>
 
@@ -46,7 +56,7 @@
         </div>
         <div class="col-12 col-md-6">
           <AppCard class="pa-4" elevation="1">
-            <h3 class="section-title">Expense Analysis (This Month)</h3>
+            <h3 class="section-title">Expense Analysis{{ isActive ? '' : ' (This Month)' }}</h3>
             <apexchart type="bar" height="280" :options="expenseOptions" :series="expenseSeries" />
           </AppCard>
         </div>
@@ -102,6 +112,8 @@ import ExpenseSummaryCard from '@/components/fleet/ExpenseSummaryCard.vue';
 import DocumentExpiryChip from '@/components/fleet/DocumentExpiryChip.vue';
 import MaintenanceTimeline from '@/components/fleet/MaintenanceTimeline.vue';
 import { AppProgressCircular, AppCard, AppTable } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const dashboardStore = useFleetDashboardStore();
 const maintenanceStore = useMaintenanceStore();
@@ -109,7 +121,7 @@ const maintenanceStore = useMaintenanceStore();
 const summary = computed(() => dashboardStore.summary!);
 const upcomingMaintenance = computed(() => maintenanceStore.upcomingDue);
 
-const totalMonthlyExpense = computed(() =>
+const totalPeriodExpense = computed(() =>
   (dashboardStore.summary?.costSummary.byCategory || []).reduce((sum, c) => sum + Number(c.total), 0)
 );
 
@@ -134,8 +146,14 @@ const expenseOptions = computed(() => ({
   xaxis: { categories: (dashboardStore.summary?.costSummary.byCategory || []).map((c) => c.category) },
 }));
 
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+function load() {
+  return dashboardStore.fetchSummary(params.value);
+}
+
 onMounted(async () => {
-  await Promise.all([dashboardStore.fetchSummary(), maintenanceStore.fetchUpcomingDue()]);
+  await Promise.all([load(), maintenanceStore.fetchUpcomingDue()]);
 });
 </script>
 

@@ -5,6 +5,7 @@
  */
 import { prisma } from '../config/db';
 import { AppError } from '../middlewares/error.middleware';
+import { partyOutstandingService } from './party-outstanding.service';
 
 interface CompanyCreditFields {
   id: string;
@@ -15,13 +16,16 @@ interface CompanyCreditFields {
 }
 
 export const creditControlService = {
-  /** Live-computed — never a stored "customer balance" column (the core mandate, carried from Phase 7 through here). */
+  /**
+   * Live-computed — never a stored "customer balance" column (the core
+   * mandate, carried from Phase 7 through here).
+   *
+   * Includes the opening balance carried over from the old system: a
+   * customer already at their limit on migrated debt was previously read
+   * as owing nothing, so the credit hold never fired for them.
+   */
   async computeLiveOutstanding(companyId: string): Promise<number> {
-    const result = await prisma.invoice.aggregate({
-      where: { companyId, deletedAt: null, status: { notIn: ['CANCELLED'] } },
-      _sum: { outstandingAmount: true },
-    });
-    return Number(result._sum.outstandingAmount || 0);
+    return (await partyOutstandingService.customerTotal(companyId)).total;
   },
 
   async assertInvoiceAllowed(company: CompanyCreditFields, newInvoiceAmount: number, override: boolean): Promise<void> {

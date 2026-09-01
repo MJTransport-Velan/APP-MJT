@@ -1,5 +1,6 @@
 import { prisma } from '../config/db';
 import { logger } from '../config/logger';
+import { DateRange, rangeWhere } from '../utils/dateRange';
 
 export interface RecordAuditInput {
   userId?: string | null;
@@ -39,8 +40,9 @@ export const auditService = {
    * optimization pass) — a "recent activity" feed is just the newest
    * AuditLog rows with a human-readable message, not a second table.
    */
-  async recentActivity(limit = 10) {
+  async recentActivity(limit = 10, range?: DateRange) {
     const rows = await prisma.auditLog.findMany({
+      where: range ? rangeWhere('createdAt', range) : undefined,
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: { user: { select: { fullName: true, username: true } } },

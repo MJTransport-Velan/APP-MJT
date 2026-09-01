@@ -5,6 +5,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { AppError } from '../middlewares/error.middleware';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { partyOutstandingService } from '../services/party-outstanding.service';
 
 export const creditControlController = {
   get: asyncHandler(async (req, res: Response) => {
@@ -13,8 +14,18 @@ export const creditControlController = {
       select: { id: true, name: true, creditLimit: true, creditDays: true, isBlocked: true, blockedReason: true, blockedAt: true },
     });
     if (!company) throw new AppError('Company not found', 404);
-    const liveOutstanding = await creditControlService.computeLiveOutstanding(req.params.id);
-    return sendSuccess(res, 200, { message: 'Credit control fetched', data: { ...company, liveOutstanding } });
+    // Broken out so the screen can say how much of the exposure is migrated
+    // debt rather than showing one figure the user cannot reconcile.
+    const outstanding = await partyOutstandingService.customerTotal(req.params.id);
+    return sendSuccess(res, 200, {
+      message: 'Credit control fetched',
+      data: {
+        ...company,
+        liveOutstanding: outstanding.total,
+        openingOutstanding: outstanding.opening,
+        currentOutstanding: outstanding.current,
+      },
+    });
   }),
   set: asyncHandler(async (req: AuthRequest, res: Response) => {
     const company = await creditControlService.setCreditControl(req.params.id, req.body, req.user!.userId);

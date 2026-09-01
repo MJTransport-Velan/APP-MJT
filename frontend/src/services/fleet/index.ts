@@ -282,7 +282,7 @@ export const vehicleExpenseApi = {
 };
 
 export const fleetDashboardApi = {
-  getSummary() {
-    return api.get<ApiResponse<FleetDashboardSummary>>('/fleet/dashboard');
+  getSummary(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<FleetDashboardSummary>>('/fleet/dashboard', { params });
   },
 };

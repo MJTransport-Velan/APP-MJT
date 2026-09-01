@@ -265,6 +265,9 @@ export interface CreditControl {
   blockedReason: string | null;
   blockedAt: string | null;
   liveOutstanding: number;
+  /** How much of liveOutstanding was carried over from the previous system. */
+  openingOutstanding?: number;
+  currentOutstanding?: number;
 }
 
 export interface CollectionActivity {

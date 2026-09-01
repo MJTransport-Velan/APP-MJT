@@ -236,10 +236,10 @@ export const useOperationsDashboardStore = defineStore('opsDashboard', {
     loading: false,
   }),
   actions: {
-    async fetchSummary() {
+    async fetchSummary(params: Record<string, string> = {}) {
       this.loading = true;
       try {
-        const response = await operationsDashboardApi.getSummary();
+        const response = await operationsDashboardApi.getSummary(params);
         this.summary = response.data.data;
       } finally {
         this.loading = false;

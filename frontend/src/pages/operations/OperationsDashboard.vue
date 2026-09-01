@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Operations Dashboard</h2>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Delayed trips are those running late right now, whatever window is picked."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="dashboardStore.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -33,7 +43,7 @@
           <ExpenseSummaryCard label="Supplier Trips" :value="formatNumber(summary.fleetMixSummary.supplierTrips)" icon="mdi-account-tie-outline" color="secondary" />
         </div>
         <div class="col-12 col-sm-6 col-md-3">
-          <ExpenseSummaryCard label="Revenue (This Month)" :value="formatCurrency(summary.revenueSummary.totalFreightRevenue)" icon="mdi-cash-multiple" color="success" />
+          <ExpenseSummaryCard :label="isActive ? 'Revenue (Period)' : 'Revenue (This Month)'" :value="formatCurrency(summary.revenueSummary.totalFreightRevenue)" icon="mdi-cash-multiple" color="success" />
         </div>
       </div>
 
@@ -98,6 +108,8 @@ import {
   AppListItemSubtitle,
 } from '@/components/ui';
 import type { Trip } from '@/types/operations.types';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const dashboardStore = useOperationsDashboardStore();
 const summary = computed(() => dashboardStore.summary!);
@@ -167,11 +179,18 @@ const routeChartOptions = computed(() => {
   };
 });
 
-onMounted(async () => {
-  await dashboardStore.fetchSummary();
-  const response = await tripApi.list({ pageSize: 200 });
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+// The three breakdown charts read the same window as the tiles so a picked
+// range narrows the whole screen, not just the summary row. The trip list
+// filters on scheduled start date, which is the dated field a trip carries.
+async function load() {
+  await dashboardStore.fetchSummary(params.value);
+  const response = await tripApi.list({ pageSize: 200, ...params.value });
   recentTrips.value = response.data.data;
-});
+}
+
+onMounted(load);
 </script>
 
 <style scoped>

@@ -389,10 +389,10 @@ export const useFleetDashboardStore = defineStore('fleetDashboard', {
     loading: false,
   }),
   actions: {
-    async fetchSummary() {
+    async fetchSummary(params: Record<string, string> = {}) {
       this.loading = true;
       try {
-        const response = await fleetDashboardApi.getSummary();
+        const response = await fleetDashboardApi.getSummary(params);
         this.summary = response.data.data;
       } finally {
         this.loading = false;

@@ -1,4 +1,5 @@
 import { AppError } from '../middlewares/error.middleware';
+import { DateRange } from '../utils/dateRange';
 import { dashboardService } from './dashboard.service';
 import { accountsDashboardService } from './accounts-dashboard.service';
 import { assetDashboardService } from './asset-dashboard.service';
@@ -11,6 +12,14 @@ import { systemDashboardService } from './system-dashboard.service';
 
 export interface WidgetContext {
   organizationId?: string;
+  /**
+   * The From/To window the user picked on the dashboard. Every widget
+   * receives it; each decides which of its own figures are period
+   * measures (money moved, trips run, expenses booked) and which are
+   * live-state measures that a date range cannot sensibly narrow
+   * (current bank balance, vehicles on the road right now).
+   */
+  range?: DateRange;
 }
 
 /**
@@ -25,14 +34,16 @@ export interface WidgetContext {
  * queries belong.
  */
 const registry: Record<string, (ctx: WidgetContext) => Promise<unknown>> = {
-  'top-nav': () => dashboardService.getSummary(),
-  accounts: () => accountsDashboardService.getSummary(),
-  assets: () => assetDashboardService.get(),
-  banking: (ctx) => bankingDashboardService.summary(ctx.organizationId),
-  fleet: () => fleetDashboardService.getSummary(),
-  mis: () => misDashboardService.summary(),
-  operations: () => operationsDashboardService.getSummary(),
-  payroll: () => payrollDashboardService.getSummary(),
+  'top-nav': (ctx) => dashboardService.getSummary(ctx.range ?? {}),
+  accounts: (ctx) => accountsDashboardService.getSummary(ctx.range ?? {}),
+  assets: (ctx) => assetDashboardService.get(ctx.range ?? {}),
+  banking: (ctx) => bankingDashboardService.summary(ctx.organizationId, ctx.range ?? {}),
+  fleet: (ctx) => fleetDashboardService.getSummary(ctx.range ?? {}),
+  mis: (ctx) => misDashboardService.summary(ctx.range ?? {}),
+  operations: (ctx) => operationsDashboardService.getSummary(ctx.range ?? {}),
+  payroll: (ctx) => payrollDashboardService.getSummary(ctx.range ?? {}),
+  // System health/metrics/readiness are live process readings — there is
+  // no history behind them for a date range to select from.
   'system.health': () => systemDashboardService.health(),
   'system.metrics': () => systemDashboardService.metrics(),
   'system.readiness': () => systemDashboardService.readiness(),

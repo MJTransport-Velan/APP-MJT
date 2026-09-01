@@ -3,10 +3,11 @@ import { dashboardEngineService } from '../services/dashboard-engine.service';
 import { accountsDashboardService } from '../services/accounts-dashboard.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/response';
+import { parseDateRange } from '../utils/dateRange';
 
 export const accountsDashboardController = {
   summary: asyncHandler(async (req, res: Response) => {
-    const summary = await dashboardEngineService.getWidget('accounts');
+    const summary = await dashboardEngineService.getWidget('accounts', { range: parseDateRange(req.query) });
     return sendSuccess(res, 200, { message: 'Accounts dashboard summary fetched', data: summary });
   }),
   trends: asyncHandler(async (req, res: Response) => {

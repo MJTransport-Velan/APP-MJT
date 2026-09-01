@@ -235,6 +235,8 @@
               <thead>
                 <tr>
                   <th>Customer</th>
+                  <th class="text-right">Opening</th>
+                  <th class="text-right">Current</th>
                   <th class="text-right">Total Outstanding</th>
                   <th class="text-right">0-15</th>
                   <th class="text-right">15+</th>
@@ -242,39 +244,46 @@
                 </tr>
               </thead>
               <tbody>
-                <template v-for="row in customerOutstandingSummary" :key="row.companyId">
-                  <tr class="outstanding-customer-row" @click="toggleCustomerOutstanding(row.companyId)">
+                <template v-for="row in customerOutstandingSummary" :key="row.partyId">
+                  <tr class="outstanding-customer-row" @click="toggleCustomerOutstanding(row.partyId)">
                     <td>
                       <span class="d-flex align-center ga-2">
-                        <AppIcon :icon="expandedCompanyId === row.companyId ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" />
-                        {{ row.companyName }}
+                        <AppIcon :icon="expandedCompanyId === row.partyId ? 'mdi-chevron-down' : 'mdi-chevron-right'" size="small" />
+                        {{ row.partyName }}
                       </span>
                     </td>
+                    <td class="text-right">{{ row.opening > 0 ? formatCurrency(row.opening) : '—' }}</td>
+                    <td class="text-right">{{ formatCurrency(row.current) }}</td>
                     <td class="text-right font-weight-medium">{{ formatCurrency(row.total) }}</td>
                     <td class="text-right">{{ formatCurrency(row.bucket0To15) }}</td>
                     <td class="text-right" :class="row.bucket15Plus > 0 ? 'text-warning' : ''">{{ formatCurrency(row.bucket15Plus) }}</td>
                     <td class="text-right" :class="row.bucket30Plus > 0 ? 'text-error' : ''">{{ formatCurrency(row.bucket30Plus) }}</td>
                   </tr>
-                  <tr v-if="expandedCompanyId === row.companyId">
-                    <td colspan="5" class="pa-0">
+                  <tr v-if="expandedCompanyId === row.partyId">
+                    <td colspan="7" class="pa-0">
                       <div class="outstanding-detail">
                         <AppTable>
                           <thead>
                             <tr>
-                              <th>Invoice No.</th>
-                              <th>Invoice Date</th>
+                              <th>Reference</th>
+                              <th>Source</th>
+                              <th>Date</th>
                               <th>Due Date</th>
                               <th class="text-right">Total</th>
                               <th class="text-right">Outstanding</th>
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="inv in expandedCompanyInvoices" :key="inv.id">
-                              <td>{{ inv.invoiceNumber }}</td>
-                              <td>{{ new Date(inv.invoiceDate).toLocaleDateString() }}</td>
-                              <td>{{ inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '-' }}</td>
-                              <td class="text-right">{{ formatCurrency(inv.totalAmount) }}</td>
-                              <td class="text-right text-error">{{ formatCurrency(inv.outstandingAmount) }}</td>
+                            <tr v-for="line in expandedCompanyLines" :key="line.id">
+                              <td>{{ line.invoiceNumber }}</td>
+                              <td>
+                                <AppChip v-if="line.isOpening" size="x-small" color="info" variant="tonal">Opening</AppChip>
+                                <span v-else class="text-caption text-medium-emphasis">Invoice</span>
+                              </td>
+                              <td>{{ line.invoiceDate ? new Date(line.invoiceDate).toLocaleDateString() : '-' }}</td>
+                              <td>{{ line.dueDate ? new Date(line.dueDate).toLocaleDateString() : '-' }}</td>
+                              <td class="text-right">{{ formatCurrency(line.totalAmount) }}</td>
+                              <td class="text-right text-error">{{ formatCurrency(line.outstandingAmount) }}</td>
                             </tr>
                           </tbody>
                         </AppTable>
@@ -285,7 +294,10 @@
               </tbody>
             </AppTable>
           </div>
-          <p v-if="customerOutstandingSummary.length === 0" class="text-caption text-medium-emphasis pa-4">No outstanding invoices.</p>
+          <p v-if="customerOutstandingSummary.length === 0" class="text-caption text-medium-emphasis pa-4">Nothing outstanding.</p>
+          <p v-else-if="customerOutstandingTotals.opening > 0" class="text-caption text-medium-emphasis pa-4 pt-0">
+            Includes {{ formatCurrency(customerOutstandingTotals.opening) }} of opening balances carried over from the previous system.
+          </p>
         </AppCard>
       </AppWindowItem>
     </AppWindow>
@@ -492,7 +504,13 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useInvoiceStore, useReceiptStore } from '@/stores/accounts';
-import { invoiceApi } from '@/services/accounts';
+import {
+  invoiceApi,
+  partyOutstandingApi,
+  type PartyOutstandingRow,
+  type PartyOutstandingTotals,
+  type PartyOutstandingLine,
+} from '@/services/accounts';
 import { adminCompanyApi } from '@/services/admin-company.service';
 import { tripApi } from '@/services/operations';
 import { gstMasterApi } from '@/services/masters';
@@ -844,46 +862,38 @@ const outstandingInvoices = ref<Invoice[]>([]);
 
 // --- Outstanding tab: customer-grouped summary with a 3-tier aging split,
 // each customer row expands (accordion — only one open at a time) into its
-// own outstanding invoices.
-interface CustomerOutstandingSummary {
-  companyId: string;
-  companyName: string;
-  total: number;
-  bucket0To15: number;
-  bucket15Plus: number;
-  bucket30Plus: number;
-}
+// own outstanding lines.
+//
+// Grouped server-side rather than over the invoice list: an opening balance
+// carried over from the previous system is not an Invoice, so no amount of
+// client-side grouping could ever surface it, and a customer whose whole
+// debt was migrated did not appear here at all.
+const customerOutstandingSummary = ref<PartyOutstandingRow[]>([]);
+const customerOutstandingTotals = ref<PartyOutstandingTotals>({ opening: 0, current: 0, total: 0 });
 
-function daysOverdue(dueDate: string | null): number {
-  if (!dueDate) return 0;
-  return Math.floor((Date.now() - new Date(dueDate).getTime()) / 86400000);
+async function fetchCustomerOutstandingSummary() {
+  const response = await partyOutstandingApi.customers({
+    ...(outstandingDateFrom.value ? { dateFrom: outstandingDateFrom.value } : {}),
+    ...(outstandingDateTo.value ? { dateTo: outstandingDateTo.value } : {}),
+  });
+  customerOutstandingSummary.value = response.data.data;
+  customerOutstandingTotals.value = response.data.meta.totals;
 }
-
-const customerOutstandingSummary = computed<CustomerOutstandingSummary[]>(() => {
-  const map = new Map<string, CustomerOutstandingSummary>();
-  for (const inv of outstandingTabInvoices.value) {
-    const key = inv.company.id;
-    const row = map.get(key) || { companyId: key, companyName: inv.company.name, total: 0, bucket0To15: 0, bucket15Plus: 0, bucket30Plus: 0 };
-    // Decimal fields (outstandingAmount) come back JSON-serialized as
-    // strings — Number(...) avoids "+=" silently string-concatenating.
-    const amount = Number(inv.outstandingAmount || 0);
-    row.total += amount;
-    const overdue = daysOverdue(inv.dueDate);
-    if (overdue > 30) row.bucket30Plus += amount;
-    else if (overdue > 15) row.bucket15Plus += amount;
-    else row.bucket0To15 += amount;
-    map.set(key, row);
-  }
-  return Array.from(map.values()).sort((a, b) => b.total - a.total);
-});
 
 const expandedCompanyId = ref<string | null>(null);
-function toggleCustomerOutstanding(companyId: string) {
-  expandedCompanyId.value = expandedCompanyId.value === companyId ? null : companyId;
+const expandedCompanyLines = ref<PartyOutstandingLine[]>([]);
+
+async function toggleCustomerOutstanding(companyId: string) {
+  if (expandedCompanyId.value === companyId) {
+    expandedCompanyId.value = null;
+    expandedCompanyLines.value = [];
+    return;
+  }
+  expandedCompanyId.value = companyId;
+  // Fetched rather than filtered from the invoice list so the opening
+  // balance rows come down with the invoices they sit beside.
+  expandedCompanyLines.value = (await partyOutstandingApi.customerLines(companyId)).data.data;
 }
-const expandedCompanyInvoices = computed(() =>
-  outstandingTabInvoices.value.filter((inv) => inv.company.id === expandedCompanyId.value)
-);
 
 const bankAccountOptions = computed(() => bankAccountStore.items.map((b) => ({ id: b.id, accountHolderName: b.accountHolderName, accountNumber: b.accountNumber })));
 const cashAccountOptions = computed(() => cashAccountStore.items.map((c) => ({ id: c.id, label: c.cashAccountType })));
@@ -952,6 +962,7 @@ async function fetchOutstandingTabInvoices() {
 }
 function onOutstandingDateRangeChange() {
   fetchOutstandingTabInvoices();
+  fetchCustomerOutstandingSummary();
 }
 
 const receiptDialog = ref(false);
@@ -1034,6 +1045,7 @@ onMounted(async () => {
     loadCompletedTrips(),
     loadOutstandingInvoices(),
     fetchOutstandingTabInvoices(),
+    fetchCustomerOutstandingSummary(),
   ]);
   companyOptions.value = companiesRes.data.data.map((c) => ({ id: c.id, name: c.name }));
   gstOptions.value = gstRes.data.data.map((g: any) => ({ id: g.id, name: g.name }));

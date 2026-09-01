@@ -133,11 +133,70 @@ export const tripFinancialApi = {
 };
 
 export const accountsDashboardApi = {
-  getSummary() {
-    return api.get<ApiResponse<AccountsDashboardSummary>>('/accounts/dashboard');
+  getSummary(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<AccountsDashboardSummary>>('/accounts/dashboard', { params });
   },
   getTrends(params: { monthsBack?: number; monthsAhead?: number } = {}) {
     return api.get<ApiResponse<AccountsDashboardTrends>>('/accounts/dashboard/trends', { params });
+  },
+};
+
+export interface PartyOutstandingRow {
+  partyId: string;
+  partyName: string;
+  /** Carried over from the previous system. */
+  opening: number;
+  /** Raised in this system — unpaid invoices / bills. */
+  current: number;
+  total: number;
+  bucket0To15: number;
+  bucket15Plus: number;
+  bucket30Plus: number;
+}
+
+export interface PartyOutstandingTotals {
+  opening: number;
+  current: number;
+  total: number;
+}
+
+/** One line on a party's outstanding list — an invoice/bill, or an opening balance. */
+export interface PartyOutstandingLine {
+  id: string;
+  isOpening: boolean;
+  invoiceNumber?: string;
+  billNumber?: string;
+  invoiceDate?: string | null;
+  billDate?: string | null;
+  dueDate: string | null;
+  totalAmount: number;
+  outstandingAmount: number;
+}
+
+/**
+ * Party-grouped outstanding, opening balances included. Grouping happens
+ * server-side because an opening balance is not an Invoice or a
+ * SupplierBill — no amount of client-side grouping over those lists can
+ * surface it.
+ */
+export const partyOutstandingApi = {
+  customers(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<PartyOutstandingRow[]> & { meta: { totals: PartyOutstandingTotals } }>(
+      '/accounts/customers/summary',
+      { params }
+    );
+  },
+  suppliers(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<PartyOutstandingRow[]> & { meta: { totals: PartyOutstandingTotals } }>(
+      '/accounts/suppliers/summary',
+      { params }
+    );
+  },
+  customerLines(companyId: string) {
+    return api.get<ApiResponse<PartyOutstandingLine[]>>(`/accounts/customers/${companyId}/outstanding`);
+  },
+  supplierLines(supplierId: string) {
+    return api.get<ApiResponse<PartyOutstandingLine[]>>(`/accounts/suppliers/${supplierId}/outstanding`);
   },
 };
 

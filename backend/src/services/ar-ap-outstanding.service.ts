@@ -3,7 +3,7 @@
  * (Phase 10 design doc §12). Buckets: CURRENT, 1-30, 31-60, 61-90, 91-180, 180+.
  */
 import { prisma } from '../config/db';
-import { openingBalanceService } from './opening-balance.service';
+import { partyOutstandingService } from './party-outstanding.service';
 
 type Bucket = 'CURRENT' | '1-30' | '31-60' | '61-90' | '91-180' | '180+';
 
@@ -18,106 +18,94 @@ function bucketFor(dueDate: Date | null, today: Date): Bucket {
   return '180+';
 }
 
-function emptyBuckets(): Record<Bucket, number> {
-  return { CURRENT: 0, '1-30': 0, '31-60': 0, '61-90': 0, '91-180': 0, '180+': 0 };
-}
-
 export const arApOutstandingService = {
+  /**
+   * One customer's unpaid invoices, with any opening balance listed first —
+   * it is money owed exactly like an invoice is, and leaving it out made
+   * this list disagree with every total built from it.
+   */
   async customerOutstanding(companyId: string) {
+    const openingLines = await partyOutstandingService.customerOpeningLines(companyId);
     const invoices = await prisma.invoice.findMany({
       where: { companyId, deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
       select: { id: true, invoiceNumber: true, invoiceDate: true, dueDate: true, totalAmount: true, paidAmount: true, outstandingAmount: true },
       orderBy: { invoiceDate: 'asc' },
     });
-    return invoices.map((inv) => ({
-      ...inv,
-      bucket: bucketFor(inv.dueDate, new Date()),
-    }));
+    const today = new Date();
+    return [
+      ...openingLines.map((line) => ({
+        id: line.id,
+        isOpening: true,
+        invoiceNumber: line.reference,
+        invoiceDate: line.date,
+        dueDate: line.dueDate,
+        totalAmount: line.totalAmount,
+        paidAmount: line.paidAmount,
+        outstandingAmount: line.outstandingAmount,
+        bucket: bucketFor(line.dueDate, today),
+      })),
+      ...invoices.map((inv) => ({ ...inv, isOpening: false, bucket: bucketFor(inv.dueDate, today) })),
+    ];
   },
 
+  /** One supplier's unpaid bills, with any opening balance listed first. */
   async supplierOutstanding(supplierId: string) {
+    const openingLines = await partyOutstandingService.supplierOpeningLines(supplierId);
     const bills = await prisma.supplierBill.findMany({
       where: { supplierId, deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
       select: { id: true, billNumber: true, billDate: true, dueDate: true, totalAmount: true, paidAmount: true, outstandingAmount: true, retentionAmount: true },
       orderBy: { billDate: 'asc' },
     });
-    return bills.map((bill) => ({
-      ...bill,
-      bucket: bucketFor(bill.dueDate, new Date()),
-    }));
+    const today = new Date();
+    return [
+      ...openingLines.map((line) => ({
+        id: line.id,
+        isOpening: true,
+        billNumber: line.reference,
+        billDate: line.date,
+        dueDate: line.dueDate,
+        totalAmount: line.totalAmount,
+        paidAmount: line.paidAmount,
+        outstandingAmount: line.outstandingAmount,
+        retentionAmount: 0,
+        bucket: bucketFor(line.dueDate, today),
+      })),
+      ...bills.map((bill) => ({ ...bill, isOpening: false, bucket: bucketFor(bill.dueDate, today) })),
+    ];
   },
 
   /**
-   * Customer-wise + Route-wise grouping.
+   * Customer-wise grouping. Delegates to the shared party-outstanding model
+   * so this screen, the Outstanding tabs and the reports cannot drift into
+   * reporting three different figures for the same customer.
    *
-   * An opening outstanding brought over from the old system ages from the
-   * date it was carried over (its reference date), so a migrated balance
-   * does not quietly sit in CURRENT forever.
+   * `opening` and `current` are carried alongside the total: an opening
+   * balance ages from the date it was carried over, so it lands in a real
+   * bucket rather than sitting in CURRENT forever, but the user still needs
+   * to see how much of the debt came across from the old books.
    */
   async customerAging() {
-    const today = new Date();
-    const opening = await openingBalanceService.openingReceivables();
-    const invoices = await prisma.invoice.findMany({
-      where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
-      select: { companyId: true, dueDate: true, outstandingAmount: true, company: { select: { name: true } } },
-    });
-
-    const grouped = new Map<string, { companyName: string; buckets: Record<Bucket, number>; total: number }>();
-    for (const inv of invoices) {
-      const bucket = bucketFor(inv.dueDate, today);
-      const amount = Number(inv.outstandingAmount);
-      const existing = grouped.get(inv.companyId) || { companyName: inv.company.name, buckets: emptyBuckets(), total: 0 };
-      existing.buckets[bucket] += amount;
-      existing.total += amount;
-      grouped.set(inv.companyId, existing);
-    }
-
-    for (const row of opening.rows) {
-      if (!row.companyId) continue;
-      const bucket = bucketFor(row.referenceDate, today);
-      const amount = Number(row.amount);
-      const existing = grouped.get(row.companyId) || { companyName: row.company?.name ?? 'Unknown', buckets: emptyBuckets(), total: 0 };
-      existing.buckets[bucket] += amount;
-      existing.total += amount;
-      grouped.set(row.companyId, existing);
-    }
-
-    return Array.from(grouped.entries())
-      .map(([companyId, v]) => ({ companyId, ...v }))
-      .sort((a, b) => b.total - a.total);
+    const rows = await partyOutstandingService.customerRows();
+    return rows.map((r) => ({
+      companyId: r.partyId,
+      companyName: r.partyName,
+      opening: r.opening,
+      current: r.current,
+      buckets: r.buckets,
+      total: r.total,
+    }));
   },
 
-  /** Supplier-wise + Vehicle-wise grouping, including opening payables. */
+  /** Supplier-wise grouping, including opening payables. */
   async supplierAging() {
-    const today = new Date();
-    const opening = await openingBalanceService.openingPayables();
-    const bills = await prisma.supplierBill.findMany({
-      where: { deletedAt: null, status: { notIn: ['CANCELLED', 'PAID'] }, outstandingAmount: { gt: 0 } },
-      select: { supplierId: true, dueDate: true, outstandingAmount: true, supplier: { select: { name: true } } },
-    });
-
-    const grouped = new Map<string, { supplierName: string; buckets: Record<Bucket, number>; total: number }>();
-    for (const bill of bills) {
-      const bucket = bucketFor(bill.dueDate, today);
-      const amount = Number(bill.outstandingAmount);
-      const existing = grouped.get(bill.supplierId) || { supplierName: bill.supplier.name, buckets: emptyBuckets(), total: 0 };
-      existing.buckets[bucket] += amount;
-      existing.total += amount;
-      grouped.set(bill.supplierId, existing);
-    }
-
-    for (const row of opening.rows) {
-      if (!row.supplierId) continue;
-      const bucket = bucketFor(row.referenceDate, today);
-      const amount = Number(row.amount);
-      const existing = grouped.get(row.supplierId) || { supplierName: row.supplier?.name ?? 'Unknown', buckets: emptyBuckets(), total: 0 };
-      existing.buckets[bucket] += amount;
-      existing.total += amount;
-      grouped.set(row.supplierId, existing);
-    }
-
-    return Array.from(grouped.entries())
-      .map(([supplierId, v]) => ({ supplierId, ...v }))
-      .sort((a, b) => b.total - a.total);
+    const rows = await partyOutstandingService.supplierRows();
+    return rows.map((r) => ({
+      supplierId: r.partyId,
+      supplierName: r.partyName,
+      opening: r.opening,
+      current: r.current,
+      buckets: r.buckets,
+      total: r.total,
+    }));
   },
 };

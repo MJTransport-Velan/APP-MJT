@@ -1,4 +1,5 @@
 import { prisma } from '../config/db';
+import { DateRange, rangeWhere } from '../utils/dateRange';
 
 export const assetDashboardRepository = {
   countActiveAssets() {
@@ -13,8 +14,8 @@ export const assetDashboardRepository = {
     return prisma.fixedAsset.aggregate({ where: { status: 'ACTIVE', deletedAt: null, vehicleId: { not: null } }, _sum: { currentValue: true } });
   },
 
-  sumTodaysExpenses(startOfDay: Date, endOfDay: Date) {
-    return prisma.vehicleExpense.aggregate({ where: { deletedAt: null, expenseDate: { gte: startOfDay, lte: endOfDay } }, _sum: { totalAmount: true, amount: true } });
+  sumExpensesInRange(range: DateRange) {
+    return prisma.vehicleExpense.aggregate({ where: { deletedAt: null, ...rangeWhere('expenseDate', range) }, _sum: { totalAmount: true, amount: true } });
   },
 
   async countByCategory(take: number) {
@@ -35,10 +36,10 @@ export const assetDashboardRepository = {
     }));
   },
 
-  async topExpenseVehicles(take: number) {
+  async topExpenseVehicles(take: number, range: DateRange = {}) {
     const groups = await prisma.vehicleExpense.groupBy({
       by: ['vehicleId'],
-      where: { deletedAt: null, approvalStatus: 'APPROVED' },
+      where: { deletedAt: null, approvalStatus: 'APPROVED', ...rangeWhere('expenseDate', range) },
       _sum: { totalAmount: true },
       orderBy: { _sum: { totalAmount: 'desc' } },
       take,

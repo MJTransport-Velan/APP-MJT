@@ -252,8 +252,8 @@ export const kpiApi = {
   definitions() {
     return api.get<ApiResponse<KpiDefinition[]>>('/system/kpi/definitions');
   },
-  executiveDashboard() {
-    return api.get<ApiResponse<{ cards: KpiCard[] }>>('/system/kpi/executive-dashboard');
+  executiveDashboard(params: Record<string, string> = {}) {
+    return api.get<ApiResponse<{ cards: KpiCard[] }>>('/system/kpi/executive-dashboard', { params });
   },
   computeSnapshots() {
     return api.post<ApiResponse<{ computed: number }>>('/system/kpi/compute-snapshots');

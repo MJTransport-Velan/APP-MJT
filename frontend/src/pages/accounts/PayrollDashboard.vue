@@ -2,6 +2,16 @@
   <div>
     <h2 class="text-h6 mb-4">Payroll Dashboard</h2>
 
+    <DateRangeFilterBar
+      :date-from="dateFrom"
+      :date-to="dateTo"
+      snapshot-note="Outstanding advance balances are the running amount still owed, not a period total."
+      @update:date-from="setFrom"
+      @update:date-to="setTo"
+      @preset="apply"
+      @clear="clear"
+    />
+
     <div v-if="store.loading" class="d-flex justify-center align-center" style="min-height: 300px">
       <AppProgressCircular indeterminate color="primary" size="48" />
     </div>
@@ -27,7 +37,7 @@
 
       <div class="row mt-1">
         <div class="col-12 col-sm-6 col-md-3">
-          <ProfitCard label="Today's Payments" :value="summary.todaysPayments" icon="mdi-cash-fast" color="success" />
+          <ProfitCard :label="isActive ? 'Payments in Period' : `Today's Payments`" :value="summary.todaysPayments" icon="mdi-cash-fast" color="success" />
         </div>
       </div>
     </template>
@@ -39,11 +49,17 @@ import { computed, onMounted } from 'vue';
 import { usePayrollDashboardStore } from '@/stores/accounts/driverPayroll';
 import ProfitCard from '@/components/accounts/ProfitCard.vue';
 import { AppProgressCircular } from '@/components/ui';
+import { useDateRangeFilter } from '@/composables/useDateRangeFilter';
+import { DateRangeFilterBar } from '@/components/filters';
 
 const store = usePayrollDashboardStore();
 const summary = computed(() => store.summary);
 
-onMounted(() => {
-  store.fetchSummary();
-});
+const { dateFrom, dateTo, isActive, params, setFrom, setTo, apply, clear } = useDateRangeFilter({ onChange: load });
+
+function load() {
+  store.fetchSummary(params.value);
+}
+
+onMounted(load);
 </script>

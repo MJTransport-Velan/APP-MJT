@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/db';
-import { ReportFilters, dateRangeWhere } from '../utils/reportFilters';
+import { ReportFilters, dateRangeWhere, toDateRange } from '../utils/reportFilters';
 import { ReportDefinition } from '../reports/report.types';
 
 const vehicleStatusReport: ReportDefinition = {
@@ -58,18 +58,27 @@ const vehicleDocumentExpiryReport: ReportDefinition = {
     { key: 'pucExpiryDate', label: 'PUC Expiry' },
   ],
   run: async (filters, skip, take) => {
-    const before = filters.dateTo || undefined;
+    // On this report the From/To window reads as "documents expiring
+    // between these dates" — the only date on a vehicle row is an expiry,
+    // so From bounds it below and To above. Previously only To was honoured,
+    // which made the From box on the toolbar silently do nothing here.
+    const window = toDateRange(filters);
+    const expiryWindow = {
+      ...(window.from ? { gte: window.from } : {}),
+      ...(window.to ? { lte: window.to } : {}),
+    };
+    const hasWindow = Object.keys(expiryWindow).length > 0;
     const where: Prisma.VehicleWhereInput = {
       deletedAt: null,
       AND: [
         filters.vehicleTypeId ? { vehicleTypeId: filters.vehicleTypeId } : {},
-        before
+        hasWindow
           ? {
               OR: [
-                { insuranceExpiryDate: { lte: before } },
-                { permitExpiryDate: { lte: before } },
-                { fitnessExpiryDate: { lte: before } },
-                { pucExpiryDate: { lte: before } },
+                { insuranceExpiryDate: expiryWindow },
+                { permitExpiryDate: expiryWindow },
+                { fitnessExpiryDate: expiryWindow },
+                { pucExpiryDate: expiryWindow },
               ],
             }
           : {},

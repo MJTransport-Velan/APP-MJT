@@ -36,7 +36,13 @@ export interface ExpenseAnalysisResult {
 // MIS Dashboard — direct-table aggregation only; no ledger-derived
 // revenue/expense/netProfit/cashBalance/bankBalance/trend fields.
 export interface MisDashboardSummary {
-  outstanding: { customer: number; supplier: number };
+  outstanding: {
+    customer: number;
+    supplier: number;
+    /** How much of the total was carried over from the previous system. */
+    openingCustomer: number;
+    openingSupplier: number;
+  };
   vehicleCost: number;
   driverCost: number;
   topCustomers: { name: string; amount: number }[];
