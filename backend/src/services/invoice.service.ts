@@ -89,6 +89,25 @@ export const invoiceService = {
     return serialize(invoice);
   },
 
+  /**
+   * The invoice with everything the printable PDF needs. Runs the same
+   * company-scope check as getById — a PDF endpoint must not become the way
+   * around the access rule the JSON endpoint enforces.
+   */
+  async getForPdf(id: string, roles: string[] = [], userId?: string) {
+    const invoice = await invoiceRepository.findByIdForPdf(id);
+    if (!invoice) {
+      throw new AppError('Invoice not found', 404);
+    }
+    if (userId) {
+      const scope = await forcedCompanyScope(roles, userId);
+      if (scope !== undefined && !scope.includes(invoice.companyId)) {
+        throw new AppError('You do not have access to this invoice', 403);
+      }
+    }
+    return invoice;
+  },
+
   /** Generates an Invoice — pure receivable bookkeeping, no cash movement until a Receipt is recorded against it. */
   async generate(input: GenerateInvoiceInput, actorId: string) {
     const organizationId = await organizationService.resolveOrganizationId(undefined);

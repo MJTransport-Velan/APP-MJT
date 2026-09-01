@@ -169,12 +169,18 @@ export const adminRoleService = {
 
     await adminRoleRepository.setPermissions(id, input.permissionIds);
 
+    // Permissions travel inside the access token, so the new set only binds
+    // once the tokens minted against the old one are retired. Without this a
+    // permission removed here stayed usable until each holder's token
+    // expired — the revocation looked instant to the admin but was not.
+    const affected = await adminRoleRepository.bumpTokenVersionForRole(id);
+
     await auditService.record({
       userId: actorId,
       action: 'PERMISSION_CHANGE',
       entityType: 'Role',
       entityId: id,
-      description: `Updated permissions for role ${existing.name}`,
+      description: `Updated permissions for role ${existing.name} (${affected} session(s) re-authenticated)`,
     });
 
     return adminRoleService.getById(id);

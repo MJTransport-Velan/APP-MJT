@@ -9,6 +9,8 @@ import routes from './routes';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 import { apiRequestLogMiddleware } from './middlewares/apiRequestLog.middleware';
 import { uppercaseBody } from './middlewares/uppercaseBody.middleware';
+import { verifyAccessToken } from './utils/jwt';
+import { sendError } from './utils/response';
 
 const app: Application = express();
 
@@ -43,12 +45,14 @@ const limiter = rateLimit({
     const header = req.headers.authorization;
     if (header?.startsWith('Bearer ')) {
       try {
-        const payload = JSON.parse(
-          Buffer.from(header.split(' ')[1].split('.')[1], 'base64').toString()
-        );
+        // Verified, not merely decoded. The JWT payload is attacker-controlled
+        // until the signature is checked, so reading userId out of an
+        // unverified token let anyone mint a fresh bucket per request — or
+        // spend someone else's — simply by editing the middle segment.
+        const payload = verifyAccessToken(header.slice(7));
         if (payload?.userId) return `user:${payload.userId}`;
       } catch {
-        // Unparseable token — fall through to the IP key below.
+        // Invalid or expired token — fall through to the IP key below.
       }
     }
     return `ip:${req.ip}`;
@@ -73,7 +77,34 @@ app.use('/api/auth/login', loginLimiter);
 app.use('/api', limiter);
 app.use('/api', apiRequestLogMiddleware);
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+/**
+ * Uploaded files are business documents — vehicle RC and insurance, driver
+ * licences, supplier and bill documents, PODs, bank statements. Serving them
+ * as open static files made every one of them readable by anyone who could
+ * reach the host, with no login and (being outside /api) no rate limit
+ * either.
+ *
+ * They are still served statically, but only to a caller holding a valid
+ * access token. The token is accepted from the Authorization header for API
+ * clients, and from a `token` query parameter because the browser cannot
+ * attach a header to an <img src> or a target="_blank" link — the two ways
+ * the UI actually opens these files.
+ */
+app.use(
+  '/uploads',
+  (req, res, next) => {
+    const header = req.headers.authorization;
+    const raw = header?.startsWith('Bearer ') ? header.slice(7) : (req.query.token as string | undefined);
+    if (!raw) return sendError(res, 401, 'Authentication required to access this file');
+    try {
+      verifyAccessToken(raw);
+      return next();
+    } catch {
+      return sendError(res, 401, 'Invalid or expired token');
+    }
+  },
+  express.static(path.join(__dirname, '..', 'uploads'))
+);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

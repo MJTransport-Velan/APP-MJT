@@ -15,6 +15,24 @@ const invoiceWithRelations = Prisma.validator<Prisma.InvoiceInclude>()({
 
 export type InvoiceWithRelations = Prisma.InvoiceGetPayload<{ include: typeof invoiceWithRelations }>;
 
+/**
+ * The printable invoice needs each trip's route, which the list payload
+ * deliberately does not carry — pulling two location joins per trip into
+ * every paginated list page would be a real cost for data no list column
+ * shows.
+ */
+const invoiceForPdf = Prisma.validator<Prisma.InvoiceInclude>()({
+  company: true,
+  gstMaster: true,
+  charges: { orderBy: { sequence: 'asc' } },
+  trips: {
+    include: { fromLocation: { select: { name: true } }, toLocation: { select: { name: true } } },
+    orderBy: { tripNumber: 'asc' },
+  },
+});
+
+export type InvoiceForPdf = Prisma.InvoiceGetPayload<{ include: typeof invoiceForPdf }>;
+
 export const invoiceRepository = {
   async findManyPaginated(params: {
     skip: number;
@@ -53,6 +71,10 @@ export const invoiceRepository = {
 
   findById(id: string) {
     return prisma.invoice.findFirst({ where: { id, deletedAt: null }, include: invoiceWithRelations });
+  },
+
+  findByIdForPdf(id: string) {
+    return prisma.invoice.findFirst({ where: { id, deletedAt: null }, include: invoiceForPdf });
   },
 
   findByIdBasic(id: string) {

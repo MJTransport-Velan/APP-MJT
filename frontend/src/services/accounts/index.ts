@@ -23,6 +23,48 @@ export const invoiceApi = {
   getById(id: string) {
     return api.get<ApiResponse<Invoice>>(`/accounts/invoices/${id}`);
   },
+
+  /*
+   * The PDF is always produced server-side — the frontend never renders the
+   * document itself, so what is viewed on screen and what is downloaded (or
+   * later emailed) is byte-for-byte the same file.
+   *
+   * Fetched as a blob rather than pointed at with window.open: the endpoint is
+   * behind the same bearer token as every other call, and a bare browser
+   * navigation would not carry it.
+   */
+  async viewPdf(id: string) {
+    const response = await api.get(`/accounts/invoices/${id}/pdf`, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(response.data as Blob);
+    const opened = window.open(url, '_blank');
+    if (!opened) {
+      // Pop-up blocked — revoking immediately would leave the user with
+      // nothing, so fall back to a download.
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+    // Revoked on a delay so the new tab has taken ownership of the blob first.
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+  },
+
+  async downloadPdf(id: string, filename: string) {
+    const response = await api.get(`/accounts/invoices/${id}/pdf`, {
+      params: { download: 1 },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(response.data as Blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
   generate(payload: Record<string, unknown>) {
     return api.post<ApiResponse<Invoice>>('/accounts/invoices', payload);
   },

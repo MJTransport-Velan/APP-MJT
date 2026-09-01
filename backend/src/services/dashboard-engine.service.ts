@@ -49,7 +49,44 @@ const registry: Record<string, (ctx: WidgetContext) => Promise<unknown>> = {
   'system.readiness': () => systemDashboardService.readiness(),
 };
 
+/**
+ * The permission each widget's own dedicated endpoint requires.
+ *
+ * /dashboard/widgets serves the same aggregations as those endpoints, so
+ * without this it was a way around every one of them: an account with no
+ * permissions at all could read Accounts, Banking and MIS in one call.
+ * Keyed by the same widget key as `registry`, and the two are checked
+ * against each other on startup so a widget added later cannot quietly
+ * arrive unguarded.
+ */
+const WIDGET_PERMISSIONS: Record<string, string> = {
+  'top-nav': 'dashboard.view',
+  accounts: 'accounts.dashboard',
+  assets: 'asset.view',
+  banking: 'bankDashboard.view',
+  fleet: 'fleet.view',
+  mis: 'mis_dashboard.view',
+  operations: 'operations.view',
+  payroll: 'payrollDashboard.view',
+  'system.health': 'system_dashboard.view',
+  'system.metrics': 'system_dashboard.view',
+  'system.readiness': 'system_dashboard.view',
+};
+
+const unguarded = Object.keys(registry).filter((key) => !WIDGET_PERMISSIONS[key]);
+if (unguarded.length) {
+  throw new Error(
+    `Dashboard widgets with no permission mapping: ${unguarded.join(', ')}. ` +
+      'Add them to WIDGET_PERMISSIONS in dashboard-engine.service.ts.'
+  );
+}
+
 export const dashboardEngineService = {
+  /** The permission a caller must hold to read this widget. */
+  permissionFor(key: string): string | undefined {
+    return WIDGET_PERMISSIONS[key];
+  },
+
   async getWidget(key: string, ctx: WidgetContext = {}) {
     const provider = registry[key];
     if (!provider) throw new AppError(`Unknown dashboard widget: "${key}"`, 404);

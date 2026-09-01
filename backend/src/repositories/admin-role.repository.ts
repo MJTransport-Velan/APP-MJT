@@ -48,6 +48,20 @@ export const adminRoleRepository = {
     return prisma.role.delete({ where: { id } });
   },
 
+  /**
+   * Retires every access token held by a user of this role. Permissions are
+   * carried inside the token, so editing a role's permission set otherwise
+   * had no effect on anyone already signed in until their token expired —
+   * a revoked permission stayed usable for the rest of that window.
+   */
+  async bumpTokenVersionForRole(roleId: string) {
+    const holders = await prisma.userRole.findMany({ where: { roleId }, select: { userId: true } });
+    if (!holders.length) return 0;
+    const userIds = holders.map((h) => h.userId);
+    await prisma.user.updateMany({ where: { id: { in: userIds } }, data: { tokenVersion: { increment: 1 } } });
+    return userIds.length;
+  },
+
   countUsers(roleId: string) {
     return prisma.userRole.count({ where: { roleId } });
   },

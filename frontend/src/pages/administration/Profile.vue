@@ -6,7 +6,7 @@
       <div class="col-12 col-md-4">
         <AppCard class="pa-6 text-center">
           <AppAvatar size="96" color="primary" class="mb-3">
-            <img v-if="authStore.user?.profilePhoto" :src="apiOrigin + authStore.user.profilePhoto" class="app-img" />
+            <img v-if="authStore.user?.profilePhoto" :src="uploadUrl(authStore.user.profilePhoto)" class="app-img" />
             <span v-else class="text-h5 text-white">{{ initials }}</span>
           </AppAvatar>
           <div class="text-subtitle-1 font-weight-medium">{{ authStore.user?.fullName }}</div>
@@ -97,7 +97,7 @@ import {
 const authStore = useAuthStore();
 const { success, error } = useSnackbar();
 
-const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+import { uploadUrl } from '@/utils/uploadUrl';
 
 const profileForm = reactive({ fullName: '', email: '', phone: '' });
 const passwordForm = reactive({ currentPassword: '', newPassword: '' });

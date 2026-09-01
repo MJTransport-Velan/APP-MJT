@@ -16,6 +16,7 @@ router.use(authenticate);
 
 router.get('/', authorize('invoice.view'), invoiceController.list);
 router.get('/:id', authorize('invoice.view'), validate(invoiceIdParamSchema), invoiceController.getById);
+router.get('/:id/pdf', authorize('invoice.view'), validate(invoiceIdParamSchema), invoiceController.pdf);
 router.post('/', authorize('invoice.create'), validate(generateInvoiceSchema), invoiceController.generate);
 router.put('/:id', authorize('invoice.edit'), validate(updateInvoiceSchema), invoiceController.update);
 router.patch('/:id/send', authorize('invoice.edit'), validate(invoiceIdParamSchema), invoiceController.send);

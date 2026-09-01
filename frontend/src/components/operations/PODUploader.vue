@@ -21,7 +21,7 @@
         <AppListItemSubtitle>{{ new Date(doc.createdAt).toLocaleString() }}</AppListItemSubtitle>
         <template #append>
           <AppChip size="x-small" :color="statusColor(doc.status)" variant="flat" class="mr-2">{{ doc.status }}</AppChip>
-          <AppBtn icon="mdi-eye-outline" variant="text" size="small" :href="apiOrigin + doc.fileUrl" target="_blank" />
+          <AppBtn icon="mdi-eye-outline" variant="text" size="small" :href="uploadUrl(doc.fileUrl)" target="_blank" />
           <AppBtn
             v-if="doc.status === 'PENDING' && canVerify"
             icon="mdi-check-circle-outline"
@@ -71,7 +71,7 @@ const emit = defineEmits<{
   verify: [doc: TripDocument, status: 'VERIFIED' | 'REJECTED'];
 }>();
 
-const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+import { uploadUrl } from '@/utils/uploadUrl';
 
 const docType = ref('POD');
 const file = ref<File[]>([]);

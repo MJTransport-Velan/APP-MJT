@@ -118,7 +118,23 @@
             </span>
           </template>
           <template #item.actions="{ item }">
-            <AppBtn icon="mdi-eye-outline" variant="text" size="small" @click="openPreview(item as any)" />
+            <AppBtn icon="mdi-eye-outline" variant="text" size="small" title="Quick preview" @click="openPreview(item as any)" />
+            <AppBtn
+              icon="mdi-file-pdf-box"
+              variant="text"
+              size="small"
+              title="View invoice PDF"
+              :loading="pdfBusyId === (item as any).id + ':view'"
+              @click="onViewPdf(item as any)"
+            />
+            <AppBtn
+              icon="mdi-download-outline"
+              variant="text"
+              size="small"
+              title="Download invoice PDF"
+              :loading="pdfBusyId === (item as any).id + ':download'"
+              @click="onDownloadPdf(item as any)"
+            />
             <AppBtn
               v-if="(item as any).status === 'GENERATED'"
               icon="mdi-send-outline"
@@ -347,7 +363,27 @@
       <AppCard v-if="previewTarget">
         <AppCardTitle class="d-flex justify-space-between align-center">
           <span class="text-h6">{{ previewTarget.invoiceNumber }}</span>
-          <AppBtn icon="mdi-close" variant="text" size="small" @click="previewDialog = false" />
+          <div class="d-flex align-center ga-1">
+            <AppBtn
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="pdfBusyId === previewTarget.id + ':view'"
+              @click="onViewPdf(previewTarget)"
+            >
+              View PDF
+            </AppBtn>
+            <AppBtn
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-download-outline"
+              :loading="pdfBusyId === previewTarget.id + ':download'"
+              @click="onDownloadPdf(previewTarget)"
+            >
+              Download
+            </AppBtn>
+            <AppBtn icon="mdi-close" variant="text" size="small" @click="previewDialog = false" />
+          </div>
         </AppCardTitle>
         <AppCardText>
           <div class="d-flex justify-space-between mb-3">
@@ -878,6 +914,38 @@ async function fetchCustomerOutstandingSummary() {
   });
   customerOutstandingSummary.value = response.data.data;
   customerOutstandingTotals.value = response.data.meta.totals;
+}
+
+/*
+ * Invoice PDF. `pdfBusyId` is keyed by "<id>:<action>" rather than a plain
+ * boolean so only the button actually clicked shows a spinner — the same
+ * invoice appears in the table and in the preview dialog at once.
+ */
+const pdfBusyId = ref<string | null>(null);
+
+async function onViewPdf(invoice: { id: string; invoiceNumber: string }) {
+  pdfBusyId.value = `${invoice.id}:view`;
+  try {
+    await invoiceApi.viewPdf(invoice.id);
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to open the invoice PDF'));
+  } finally {
+    pdfBusyId.value = null;
+  }
+}
+
+async function onDownloadPdf(invoice: { id: string; invoiceNumber: string }) {
+  pdfBusyId.value = `${invoice.id}:download`;
+  try {
+    // Invoice numbers can carry slashes, which a browser would read as a path
+    // in the download attribute — same sanitisation as the server's.
+    const base = invoice.invoiceNumber.replace(/[\\/:*?"<>|]+/g, '-');
+    await invoiceApi.downloadPdf(invoice.id, `${base}.pdf`);
+  } catch (err) {
+    error(extractErrorMessage(err, 'Failed to download the invoice PDF'));
+  } finally {
+    pdfBusyId.value = null;
+  }
 }
 
 const expandedCompanyId = ref<string | null>(null);

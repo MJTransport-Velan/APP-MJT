@@ -53,7 +53,7 @@
         <template #item.fullName="{ item }">
           <div class="d-flex align-center ga-2">
             <AppAvatar size="32" color="primary">
-              <img v-if="item.profilePhoto" :src="apiOrigin + item.profilePhoto" class="app-img" />
+              <img v-if="item.profilePhoto" :src="uploadUrl(item.profilePhoto)" class="app-img" />
               <span v-else class="text-caption text-white">{{ initials(item.fullName) }}</span>
             </AppAvatar>
             <div>
@@ -213,7 +213,7 @@ const userStore = useAdminUserStore();
 const authStore = useAuthStore();
 const { success, error } = useSnackbar();
 
-const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+import { uploadUrl } from '@/utils/uploadUrl';
 
 const search = ref('');
 const statusFilter = ref<string | null>(null);
